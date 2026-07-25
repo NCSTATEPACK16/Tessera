@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  body { margin: 0; background: #0B0D10; }
+  a { color: #6FA8FF; text-decoration: none; border-bottom: 1px solid rgba(111,168,255,0.35); }
+  a:hover { color: #A8C8FF; border-bottom-color: rgba(168,200,255,0.6); }
+  ::selection { background: rgba(111,168,255,0.28); }
+</style>
+</helmet>
+<div style="background:#0B0D10; color:#EDF0F4; font-family:'Inter Tight',system-ui,sans-serif; font-size:16px; line-height:1.6; padding:80px 32px 160px; display:flex; flex-direction:column; align-items:center">
+
+  <div style="width:100%; max-width:920px; display:flex; flex-direction:column; gap:88px">
+
+    <header style="display:flex; flex-direction:column; gap:28px; border-bottom:1px solid #2C333C; padding-bottom:56px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; text-transform:uppercase; color:#8A929E; display:flex; gap:20px; flex-wrap:wrap">
+        <span>Design document</span><span>v1 — pre-build</span><span>MVP: Classic · Daily · Zen</span>
+      </div>
+      <h1 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:64px; line-height:1.05; margin:0; letter-spacing:-0.01em">Tessera</h1>
+      <p style="margin:0; font-size:20px; line-height:1.5; color:#EDF0F4; max-width:640px; text-wrap:pretty">A photo jigsaw where progress is literally light. This document fixes the visual logic, the state model, and the component architecture — everything a build needs before a line of product code exists.</p>
+      <p style="margin:0; font-size:15px; color:#8A929E; max-width:640px; text-wrap:pretty">Scope: MVP only (Classic, Daily, Zen, plus Rotation as a modifier). Later modes are accounted for in the state model so nothing gets retrofitted, but they are not specified here.</p>
+    </header>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">01 — DECISIONS LOCKED</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">What your answers settled</h2>
+      <p style="margin:0; color:#EDF0F4; max-width:680px; text-wrap:pretty">These are now assumptions the rest of the document builds on. If any is wrong, tell me before build starts — three of them are expensive to reverse later.</p>
+      <div style="display:flex; flex-direction:column; margin-top:8px">
+        <div style="display:flex; gap:24px; padding:12px 0; border-bottom:1px solid #2C333C; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.12em; color:#8A929E; text-transform:uppercase">
+          <div style="flex:0 0 200px">Axis</div><div style="flex:1">Decision</div>
+        </div>
+        <sc-for list="{{ decisions }}" as="d" hint-placeholder-count="8">
+          <div style="display:flex; gap:24px; padding:14px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 200px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4">{{ d.k }}</div>
+            <div style="flex:1; font-size:15px; color:#B9C1CC; text-wrap:pretty">{{ d.v }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="border-left:2px solid #6FA8FF; padding:4px 0 4px 20px; margin-top:16px; color:#B9C1CC; font-size:15px; max-width:680px; text-wrap:pretty">
+        <strong style="color:#EDF0F4; font-weight:500">Expensive to reverse:</strong> rotation in MVP (touches piece state, snap maths, and every gesture), full-fidelity resume (dictates the save format and the worker boundary), and the tray-as-persistent-ordered-list model (dictates that filters are lenses, not sorts).
+      </div>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">02 — NAMING</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">Keep Tessera. Here are four that could beat it.</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Tessera is genuinely good: short, concrete, means the single tile of a mosaic, and it pairs with the collection wall. Its two weaknesses are that nobody knows how to say it out loud on first sight, and it reads slightly academic against a product whose emotional promise is <em style="color:#EDF0F4; font-style:italic">your photo, brought back into the light</em>. Alternatives, each with the trade it makes. All need a trademark and App Store search check before commitment.</p>
+      <div style="display:flex; flex-direction:column; margin-top:8px">
+        <sc-for list="{{ names }}" as="n" hint-placeholder-count="5">
+          <div style="display:flex; gap:24px; padding:16px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 160px; font-family:'Instrument Serif',Georgia,serif; font-size:24px; color:#EDF0F4">{{ n.name }}</div>
+            <div style="flex:1; font-size:15px; color:#B9C1CC; text-wrap:pretty">{{ n.note }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:8px 0 0; color:#8A929E; font-size:15px; max-width:680px; text-wrap:pretty">My recommendation: ship as Tessera, but reserve <strong style="color:#EDF0F4; font-weight:500">Bloom</strong> — if a marketing test shows the word-of-mouth cost of an unfamiliar word is real, Bloom is the one that survives the switch, because the light thesis already carries it.</p>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">03 — ENGINE</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">Two canvases and a DOM shell</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">You asked me to recommend and justify. The board is <strong style="color:#EDF0F4; font-weight:500">Canvas 2D</strong>; everything that is chrome — top bar, tray container, sheets, buttons, hint button — is DOM. Not WebGL, not DOM pieces.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Why not DOM/SVG pieces</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">250 elements each carrying a <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">clip-path</code>, a shadow, and a transform will composite acceptably on an M-series iPad and badly on an iPhone 12. Worse, the light thesis needs <em style="color:#EDF0F4; font-style:italic">additive</em> blending — assembled area emitting onto the mat — and CSS gives you no honest way to do that at 60fps. DOM pieces also make hit-testing a lie: the browser hit-tests the bounding box, so overlapping tabs pick the wrong piece, and you end up re-implementing point-in-path anyway.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Why not WebGL yet</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">At 250 pieces there is nothing WebGL buys you that a per-frame <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">drawImage</code> loop over pre-rendered piece bitmaps does not. It buys real cost: shader authoring, context-loss handling on iOS backgrounding, and text/UI becoming your problem. Build the renderer behind a thin interface (<code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">draw(scene, camera)</code>) so a WebGL backend can slot in the day 1000-piece boards ship.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">The layer stack</h3>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <sc-for list="{{ layers }}" as="l" hint-placeholder-count="5">
+          <div style="display:flex; gap:24px; padding:12px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 150px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4">{{ l.name }}</div>
+            <div style="flex:0 0 110px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8A929E">{{ l.rate }}</div>
+            <div style="flex:1; font-size:15px; color:#B9C1CC; text-wrap:pretty">{{ l.note }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:12px 0 0; color:#B9C1CC; max-width:680px; text-wrap:pretty">The split matters because the static layer holds the expensive thing — the assembled image and its bloom — and it only changes on a placement. The dynamic layer redraws every frame but is usually carrying fewer than twenty objects: the pieces the camera can see plus whatever is in your hand. On an idle board with no finger down, both layers are still and the app draws nothing at all. That is how the iPad stays cool for a sixty-minute session.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Non-negotiable performance rules</h3>
+      <ul style="margin:0; padding-left:20px; color:#B9C1CC; max-width:680px; display:flex; flex-direction:column; gap:8px">
+        <li>Cutting happens in a Web Worker with OffscreenCanvas. The main thread never blocks; the setup screen shows real progress.</li>
+        <li>Piece bitmaps are rendered once at <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">min(devicePixelRatio, 2)</code> and never re-rasterised while zooming. Zoom scales the bitmap; a re-raster pass runs 200ms after the pinch settles, only for on-screen pieces, only above 1.5× zoom.</li>
+        <li>Source images are downscaled to a max 2560px long edge before cutting. Nobody can see more, and it halves memory.</li>
+        <li>Hit-testing is a spatial hash over piece bounds, then point-in-path against the cached <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">Path2D</code>. Never a full scan.</li>
+        <li>Budget: 250 pieces, iPhone 12, sustained 60fps while dragging a 20-piece island. If that fails, the fix is fewer live objects, not a smaller image.</li>
+      </ul>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">04 — THE CUT</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">How a photo becomes pieces</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">You asked specifically about this, and it is the part most worth pinning down before code, because everything else — snapping, resume, sync, cut styles — inherits its shape. The whole cut is deterministic from a seed, which is the single most useful property it can have: the same puzzle id always produces the same pieces on every device, so a saved game is a few hundred bytes rather than a few megabytes, and Duo mode later gets identical boards for free.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Step 1 — Choose the grid</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Piece counts are targets. Given image aspect <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">a = W/H</code> and target <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">N</code>, start at <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">cols = round(sqrt(N·a))</code>, <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">rows = round(N/cols)</code>, then search ±2 in both directions for the pair that minimises a weighted sum of count error and piece-aspect error, rejecting anything where piece aspect falls outside 0.82–1.22. A 3:2 photo at "200" lands on 17×12 = 204. Show the real number everywhere, never the target.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Step 2 — Jitter the lattice</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Build a <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">(cols+1) × (rows+1)</code> vertex lattice. Every interior vertex gets a random offset of up to ±0.12 × piece size, drawn from a seeded PRNG (mulberry32 seeded on the puzzle id). Border vertices stay pinned so the outer frame is a clean rectangle. This one step is the difference between a puzzle that looks machine-stamped and one that looks cut — with a perfect lattice, every piece is interchangeable at a glance and the search stops being fun.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Step 3 — Draw the edges</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Each interior edge between two vertices is generated <em style="color:#EDF0F4; font-style:italic">once</em> and shared by the two pieces that meet on it — one gets it as drawn, the other as its exact reverse. This is what guarantees pieces physically interlock rather than merely appearing to. The edge is a canonical cubic-bezier chain in normalised edge space (0,0)→(1,0) with a knob at t ≈ 0.5 ± 0.06: neck width 0.20, head radius 0.14, protrusion 0.22 × edge length with ±10% jitter, polarity flipped by a seeded coin toss. Transform that unit path onto the real edge vector and you have the piece outline. Boundary edges are straight lines.</p>
+      <div style="border-left:2px solid #6FA8FF; padding:4px 0 4px 20px; color:#B9C1CC; font-size:15px; max-width:680px; text-wrap:pretty">
+        <strong style="color:#EDF0F4; font-weight:500">Cut styles are one function.</strong> The entire style system is the signature <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">edgePath(a, b, polarity, rng) → Path2D</code>. Classic ships in MVP. Ribbon, Organic, and Geometric are later implementations of that same signature and touch nothing else in the codebase. Build the interface now even though only one implementation exists.
+      </div>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Step 4 — Rasterise</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Each piece's bitmap is its cell bounds expanded by the maximum protrusion plus 2px of bleed. Draw the closed path, set <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">source-in</code>, draw the source image at the right offset. Then bake the material in the same pass: a 1px inner highlight stroked on the upper-left of the path at 8% white, a 1px inner shadow on the lower-right at 22% black. Baking it means the bevel is free at runtime and always reads correctly regardless of zoom. Store as ImageBitmap, transferred back from the worker.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Step 5 — Emit the graph</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">The output that actually matters is not the images, it is the adjacency graph: for every piece, its four neighbour ids (or null), and its exact target offset from each. Snapping never asks "am I near my correct absolute position on the board" as its first question — it asks "am I near where a graph-neighbour says I should be." That single choice is what makes free-floating islands work identically to placing on the board frame, with no special-case code.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Cost, measured</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">250 pieces from a 2560px image at 2× is roughly 250 × (190px)² × 4 bytes ≈ 36 MB of bitmaps — comfortable. Cut time in a worker: target under 1.2s on an iPhone 12, which is short enough that the setup screen's "cutting" state is a genuine beat of anticipation rather than a wait. Show pieces materialising onto the mat as they arrive from the worker; it turns loading into the first moment of delight.</p>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">05 — STATE</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">The board state machine</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Three state machines, deliberately kept separate. Session lifecycle, pointer interaction, and piece membership. Conflating them is how jigsaw apps end up with pieces stuck to fingers after a phone call comes in.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Session machine</h3>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#B9C1CC; background:#15181D; border:1px solid #2C333C; border-radius:10px; padding:20px; line-height:2; overflow-x:auto">idle → sourcing → cropping → configuring → cutting → <span style="color:#6FA8FF">playing</span> ⇄ paused<br /><span style="color:#6FA8FF">playing</span> → completing → card → (newPuzzle | library)<br /><span style="color:#8A929E">any → interrupted (backgrounded, low memory) → restoring → playing</span></div>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty"><code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">interrupted</code> is a first-class state, not an error path. On <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">visibilitychange</code> the timer stops, any held piece is released to its current position, and a snapshot is written synchronously. Coming back always lands on the board, never on a modal apologising.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Pointer machine</h3>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <sc-for list="{{ pointerStates }}" as="p" hint-placeholder-count="7">
+          <div style="display:flex; gap:24px; padding:12px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 150px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4">{{ p.name }}</div>
+            <div style="flex:1; font-size:15px; color:#B9C1CC; text-wrap:pretty">{{ p.note }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:12px 0 0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Gesture arbitration, in strict priority: two fingers always means camera (pinch-zoom, pan, and — in Rotation mode — twist to rotate the held piece if one exists, otherwise nothing). One finger on a piece means drag. One finger on empty mat means pan. There is no tap-to-select-then-tap-to-place; direct manipulation only, because the entire product promise is weight in the hand.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Piece and cluster model</h3>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#B9C1CC; background:#15181D; border:1px solid #2C333C; border-radius:10px; padding:20px; line-height:1.9; overflow-x:auto">Piece { id, col, row, targetX, targetY, neighbours[4], bitmap, path,<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;clusterId, x, y, rot }<br />Cluster { id, pieceIds[], x, y, rot, anchored:bool, kind: 'loose'|'island'|'board' }<br />Board&nbsp;&nbsp; { clusters: Map, unionFind, placedCount, edgeFrameComplete }</div>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Every piece belongs to exactly one cluster; a single loose piece is a cluster of one. Cluster 0 is the board itself — anchored, unrotatable, and the only cluster whose coordinates are absolute. Everything else floats. Merging is union-find: when a snap resolves, the smaller cluster is transformed into the larger's frame and absorbed. Merging with cluster 0 is what "placed" means, and the completion condition is simply <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">cluster0.pieceIds.length === N</code>.</p>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">This is why islands need almost no new code. An island is a cluster with <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">kind:'island'</code>, a user-visible label, and a position on the mat margin. It drags, rotates, and snaps by the same rules as a single piece. The only special behaviour is presentational: islands render with a faint containing outline and a mono label chip, and they can be collapsed to that chip to reclaim mat space.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Snap resolution, in order</h3>
+      <ol style="margin:0; padding-left:22px; color:#B9C1CC; max-width:680px; display:flex; flex-direction:column; gap:8px">
+        <li>On release, gather every piece in the dragged cluster that has a graph-neighbour outside it.</li>
+        <li>For each such pair, compute positional error between where the neighbour <em style="color:#EDF0F4; font-style:italic">is</em> and where it <em style="color:#EDF0F4; font-style:italic">should be</em> relative to the dragged piece, plus rotational error.</li>
+        <li>Discard candidates over tolerance: 0.28 × piece size for Standard (0.18 Precise, 0.40 Generous), and 12° of rotation in Rotation mode.</li>
+        <li>Of the survivors, take the lowest combined error. Ties break toward the cluster containing more pieces, then toward cluster 0 — so an ambiguous drop near the board prefers the board.</li>
+        <li>No survivor: the cluster stays exactly where it was dropped. Dull tap, no penalty, no bounce-back. Bounce-back is the single most infuriating pattern in this category — it discards the player's spatial intent.</li>
+      </ol>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">06 — TRAY</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">Filters are lenses, never sorts</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">You said the thing that worries you is players not sticking with it, and named the persistent tray layout as part of the answer. You are right, and it has a precise design consequence: <strong style="color:#EDF0F4; font-weight:500">the tray has one canonical order that never changes unless the player changes it.</strong> Filters hide and reveal within that order; they do not reflow it. Turn a filter off and every remaining piece is exactly where you left it. Muscle memory — "the dark green one is two rows down on the left" — is the main reason a 250-piece session survives a coffee break, and every competitor destroys it by re-sorting on each filter change.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Lenses</h3>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <sc-for list="{{ lenses }}" as="f" hint-placeholder-count="6">
+          <div style="display:flex; gap:24px; padding:14px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 150px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4">{{ f.name }}</div>
+            <div style="flex:1; font-size:15px; color:#B9C1CC; text-wrap:pretty">{{ f.note }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Colour clustering, done honestly</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Six bins, k-means in OKLab over each piece's mean colour, weighted so lightness contributes less than hue — otherwise a photo of a forest gives you six shades of "dark" and the filter is useless. Bins are labelled by their centroid rendered as a swatch <em style="color:#EDF0F4; font-style:italic">plus a numeral</em>, because colour must never be the only signal. Pieces whose internal colour variance is high (a piece straddling sky and roof) go into a seventh "mixed" bin rather than being forced into a lie.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Shelf and islands</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">A pinned <strong style="color:#EDF0F4; font-weight:500">shelf</strong> row sits at the top of the tray and survives every lens: drag a piece there to say "I am working on this one." Long-press enters multi-select; selected pieces show a numbered order badge; <em style="color:#EDF0F4; font-style:italic">Pull out</em> lifts them onto the mat as a labelled island, auto-arranged in a loose grid so they are immediately workable. This is the sub-assembly behaviour from the brief, and it is the feature that makes a 250-piece board feel like a table rather than a scroll list.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Form factors</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">iPad landscape: docked right, 300–380pt, resizable by dragging its inner edge, always visible. iPhone portrait: a bottom sheet at three detents — peek (one row of pieces, ~96pt), half, and full — with the lens chips pinned to the sheet header so they are reachable one-handed. Dragging a piece out of the sheet auto-collapses it to peek and re-expands on release, so the mat is never obscured mid-drag.</p>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">07 — LIGHT</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">One light system, four jobs</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Progress bloom, hint glow, group-merge seam, and completion payoff are all the same renderer feature at different intensities. Implement it once: a downsampled copy of the static layer, blurred, drawn back with <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">globalCompositeOperation:'lighter'</code>, with a per-region intensity mask. Everything below is a value fed into that mask.</p>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <sc-for list="{{ lightJobs }}" as="g" hint-placeholder-count="4">
+          <div style="display:flex; gap:24px; padding:14px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 150px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4">{{ g.name }}</div>
+            <div style="flex:1; font-size:15px; color:#B9C1CC; text-wrap:pretty">{{ g.note }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Hint tiers</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Tier 1 (Warm, free, unlimited, the default button behaviour): tap a loose piece, then the hint button — a 3×3-piece region of the board breathes for 3 seconds. Two full breaths, 1400ms each, peak intensity 0.55, edges feathered over a piece-and-a-half so no exact slot is legible. It answers "where do I look," which is the honest help.</p>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Tier 2 (Guide, costs 1): the exact slot outlines at 1px in accent, and the held or selected piece translates 6px toward it and holds, as if magnetised, with a faint light trail. If the piece is in the tray, its chip leans instead. Tier 3 (Place, costs 2): auto-place with the full snap treatment — same spring, same audio, same ripple. Never a diminished version; a player who needed help still deserves the good part.</p>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">In Zen every tier is free and the counter is simply absent — not greyed out, not showing "∞". The absence is the message.</p>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">08 — FEEDBACK LADDER</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">Audio, haptics, and what the web loses</h2>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <div style="display:flex; gap:20px; padding:12px 0; border-bottom:1px solid #2C333C; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.12em; color:#8A929E; text-transform:uppercase">
+          <div style="flex:0 0 130px">Event</div><div style="flex:1">Sound</div><div style="flex:0 0 150px">Pitch</div>
+        </div>
+        <sc-for list="{{ audio }}" as="a" hint-placeholder-count="8">
+          <div style="display:flex; gap:20px; padding:12px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 130px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4">{{ a.event }}</div>
+            <div style="flex:1; font-size:15px; color:#B9C1CC; text-wrap:pretty">{{ a.sound }}</div>
+            <div style="flex:0 0 150px; font-size:14px; color:#8A929E">{{ a.pitch }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:16px 0 0; color:#B9C1CC; max-width:680px; text-wrap:pretty">The pitch ladder walks a pentatonic scale up seven steps and holds at the top; it breaks on a wrong drop or eight idle seconds and resets to root. Pitch-shift <em style="color:#EDF0F4; font-style:italic">only</em> the transient layer via playback rate — the body and the 200ms tail stay at 1.0, or the room appears to shrink as you get faster. Four round-robin samples per layer with ±3% detune. Ladder off entirely in Zen.</p>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Unlock the AudioContext on the first deliberate tap of the first run screen, pre-decode every buffer during the cutting step, and duck the ambient bed 4dB for 300ms under each snap. A snap that arrives 80ms late is worse than no snap; latency is a design property here, not an engineering detail.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Web vs native, per interaction</h3>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <div style="display:flex; gap:20px; padding:12px 0; border-bottom:1px solid #2C333C; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.12em; color:#8A929E; text-transform:uppercase">
+          <div style="flex:0 0 150px">Interaction</div><div style="flex:1">Web (Netlify, iOS Safari)</div><div style="flex:1">Native iOS / iPadOS</div>
+        </div>
+        <sc-for list="{{ parity }}" as="p" hint-placeholder-count="8">
+          <div style="display:flex; gap:20px; padding:14px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 150px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4">{{ p.k }}</div>
+            <div style="flex:1; font-size:14px; color:#B9C1CC; text-wrap:pretty">{{ p.web }}</div>
+            <div style="flex:1; font-size:14px; color:#B9C1CC; text-wrap:pretty">{{ p.native }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:16px 0 0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Design rule that falls out of this table: <strong style="color:#EDF0F4; font-weight:500">no feedback may depend on a channel the web build lacks.</strong> Haptics are an amplifier, never the carrier. Practically, that means the visual settle and the audio transient must be tuned until the snap feels complete with the device on silent and no vibration — then haptics get layered on top for native, and native genuinely feels better without web feeling broken.</p>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">09 — MOTION</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">The two motions that matter</h2>
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:8px 0 0">The snap — frame by frame</h3>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <div style="display:flex; gap:20px; padding:12px 0; border-bottom:1px solid #2C333C; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.12em; color:#8A929E; text-transform:uppercase">
+          <div style="flex:0 0 110px">Time</div><div style="flex:1">What happens</div>
+        </div>
+        <sc-for list="{{ snapTimeline }}" as="s" hint-placeholder-count="7">
+          <div style="display:flex; gap:20px; padding:12px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 110px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#6FA8FF">{{ s.t }}</div>
+            <div style="flex:1; font-size:15px; color:#B9C1CC; text-wrap:pretty">{{ s.what }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:16px 0 0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Spring, not easing: stiffness 520, damping 26, mass 1, integrated per frame from the release velocity — so a piece flicked at the slot arrives hot and overshoots ~2px, while a piece gently placed just settles. That velocity inheritance is most of the perceived physicality, and it is exactly what a fixed cubic-bezier cannot give you. Reduced motion: skip the overshoot and the ripple, keep the light bloom and the audio, and place in 120ms linear.</p>
+
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Hint glow — frame by frame</h3>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <sc-for list="{{ hintTimeline }}" as="s" hint-placeholder-count="5">
+          <div style="display:flex; gap:20px; padding:12px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 110px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#6FA8FF">{{ s.t }}</div>
+            <div style="flex:1; font-size:15px; color:#B9C1CC; text-wrap:pretty">{{ s.what }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:16px 0 0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Group merge: both cluster outlines flash once at 40% for 120ms, then the shared seam light-bleeds outward over 260ms and the chord plays, pitched by combined cluster size. Edge-frame completion gets its own beat — the entire border traces once in accent light over 600ms, clockwise from the top-left corner.</p>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">10 — SCREENS</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">Screen and state inventory</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">MVP set only. Every row is a screen that must exist for Classic, Daily, and Zen to ship; every state listed is a distinct thing to design and to build, not a variation to improvise.</p>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <sc-for list="{{ screens }}" as="s" hint-placeholder-count="10">
+          <div style="display:flex; gap:20px; padding:16px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 40px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#8A929E">{{ s.n }}</div>
+            <div style="flex:0 0 170px; font-size:16px; color:#EDF0F4; font-weight:500">{{ s.name }}</div>
+            <div style="flex:1; font-size:14px; color:#B9C1CC; text-wrap:pretty">{{ s.states }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:16px 0 0; color:#8A929E; font-size:15px; max-width:680px; text-wrap:pretty">Deferred out of MVP, by decision: leaderboard, profile &amp; stats, achievements wall, album mode, Duo. The daily hub ships without a leaderboard tab in v1 — the streak alone carries the habit — and the tab appears the day accounts exist.</p>
+    </section>
+
+    <sc-if value="{{ showWireframes }}" hint-placeholder-val="{{ true }}">
+    <section style="display:flex; flex-direction:column; gap:32px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">11 — WIREFRAMES</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">Key screens, low fidelity</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Deliberately grey. These fix layout, hierarchy, and reach — not colour, type, or the light system, all of which are specified above and would only distract at this stage.</p>
+
+      <div style="display:flex; flex-direction:column; gap:14px">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8A929E">01 · iPad landscape — board, default</div>
+        <div style="background:#EFEDE9; border:1px solid #C9C6C0; border-radius:12px; padding:14px; aspect-ratio:16/10.4; display:flex; flex-direction:column; gap:10px; color:#5B5750; font-family:'IBM Plex Mono',monospace; font-size:10px">
+          <div style="display:flex; align-items:center; gap:10px; height:36px; flex:0 0 auto">
+            <div style="width:30px; height:30px; border:1px solid #C9C6C0; border-radius:8px; display:flex; align-items:center; justify-content:center">‹</div>
+            <div style="flex:1; display:flex; flex-direction:column; gap:3px"><div style="width:150px; height:11px; background:#D8D5CF; border-radius:2px"></div><div style="width:90px; height:8px; background:#E2DFD9; border-radius:2px"></div></div>
+            <div style="border:1px solid #C9C6C0; border-radius:8px; padding:6px 10px">14:22</div>
+            <div style="border:1px solid #C9C6C0; border-radius:8px; padding:6px 10px">hints 3</div>
+            <div style="width:30px; height:30px; border:1px solid #C9C6C0; border-radius:8px; display:flex; align-items:center; justify-content:center">‖</div>
+          </div>
+          <div style="flex:1; display:flex; gap:10px; min-height:0">
+            <div style="flex:1; border:1px solid #C9C6C0; border-radius:10px; position:relative; background:#E6E3DE; overflow:hidden">
+              <div style="position:absolute; left:8%; top:9%; width:62%; height:66%; border:1px dashed #BEBBB4; background-image:repeating-linear-gradient(90deg,transparent 0 40px,#D3D0CA 40px 41px),repeating-linear-gradient(0deg,transparent 0 40px,#D3D0CA 40px 41px)"></div>
+              <div style="position:absolute; left:8%; top:9%; width:31%; height:33%; background:#CFCBC3; background-image:repeating-linear-gradient(90deg,transparent 0 40px,#BEBBB4 40px 41px),repeating-linear-gradient(0deg,transparent 0 40px,#BEBBB4 40px 41px)"></div>
+              <div style="position:absolute; left:9%; top:78%; padding:4px 8px; background:#DCD9D3; border-radius:6px">assembled region — emits bloom</div>
+              <div style="position:absolute; right:9%; top:16%; width:56px; height:56px; border:1px solid #B3AFA8; border-radius:8px; background:#DCD9D3"></div>
+              <div style="position:absolute; right:20%; top:38%; width:56px; height:56px; border:1px solid #B3AFA8; border-radius:8px; background:#DCD9D3"></div>
+              <div style="position:absolute; right:7%; bottom:16%; width:140px; border:1px dashed #A9A59E; border-radius:8px; padding:8px; background:#E2DFD9">
+                <div style="margin-bottom:6px">island · "the roof"</div>
+                <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:3px"><div style="aspect-ratio:1; background:#CFCBC3"></div><div style="aspect-ratio:1; background:#CFCBC3"></div><div style="aspect-ratio:1; background:#CFCBC3"></div><div style="aspect-ratio:1; background:#CFCBC3"></div><div style="aspect-ratio:1; background:#CFCBC3"></div><div style="aspect-ratio:1; background:#CFCBC3"></div></div>
+              </div>
+              <div style="position:absolute; left:12px; bottom:12px; border:1px solid #C9C6C0; border-radius:14px; padding:5px 10px; background:#EFEDE9">1.4× · fit</div>
+              <div style="position:absolute; right:12px; bottom:12px; width:52px; height:52px; border-radius:50%; background:#5B5750; color:#EFEDE9; display:flex; align-items:center; justify-content:center">hint</div>
+            </div>
+            <div style="flex:0 0 210px; border:1px solid #C9C6C0; border-radius:10px; background:#E9E7E2; padding:10px; display:flex; flex-direction:column; gap:8px">
+              <div style="display:flex; justify-content:space-between"><span>tray · 168 loose</span><span>⌄</span></div>
+              <div style="display:flex; gap:4px; flex-wrap:wrap"><div style="border:1px solid #5B5750; border-radius:12px; padding:3px 8px">all</div><div style="border:1px solid #C9C6C0; border-radius:12px; padding:3px 8px">edges</div><div style="border:1px solid #C9C6C0; border-radius:12px; padding:3px 8px">colour</div><div style="border:1px solid #C9C6C0; border-radius:12px; padding:3px 8px">region</div></div>
+              <div style="border:1px dashed #C9C6C0; border-radius:8px; padding:6px">shelf · 2 pinned<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:4px; margin-top:5px"><div style="aspect-ratio:1; background:#D3D0CA"></div><div style="aspect-ratio:1; background:#D3D0CA"></div></div></div>
+              <div style="flex:1; display:grid; grid-template-columns:repeat(4,1fr); gap:4px; align-content:start; overflow:hidden"><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div></div>
+              <div style="text-align:center">long-press to multi-select</div>
+            </div>
+          </div>
+        </div>
+        <p style="margin:0; color:#8A929E; font-size:14px; max-width:680px; text-wrap:pretty">Tray docked right and resizable. Hint sits bottom-right, thumb-adjacent when the iPad is held; zoom indicator bottom-left, doubling as "fit to board". Islands live on the mat, not in the tray.</p>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:14px">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8A929E">02 · iPad landscape — hint tier 1 active</div>
+        <div style="background:#EFEDE9; border:1px solid #C9C6C0; border-radius:12px; padding:14px; aspect-ratio:16/10.4; display:flex; gap:10px; color:#5B5750; font-family:'IBM Plex Mono',monospace; font-size:10px">
+          <div style="flex:1; border:1px solid #C9C6C0; border-radius:10px; position:relative; background:#E6E3DE; overflow:hidden">
+            <div style="position:absolute; inset:0; background:#DEDBD5"></div>
+            <div style="position:absolute; left:10%; top:12%; width:60%; height:64%; border:1px dashed #BEBBB4; background-image:repeating-linear-gradient(90deg,transparent 0 42px,#D3D0CA 42px 43px),repeating-linear-gradient(0deg,transparent 0 42px,#D3D0CA 42px 43px)"></div>
+            <div style="position:absolute; left:34%; top:30%; width:132px; height:132px; border-radius:14px; background:#FFFFFF; border:2px solid #FFFFFF; box-shadow:0 0 0 14px rgba(255,255,255,0.55), 0 0 46px 26px rgba(255,255,255,0.75); display:flex; align-items:flex-end; justify-content:center; padding-bottom:6px">3×3 region breathing</div>
+            <div style="position:absolute; left:6%; bottom:6%; max-width:52%; padding:5px 9px; background:#DCD9D3; border-radius:6px">tier 1 · free · 3s · feathered, exact slot not legible</div>
+            <div style="position:absolute; right:12px; bottom:12px; width:52px; height:52px; border-radius:50%; background:#5B5750; color:#EFEDE9; display:flex; align-items:center; justify-content:center">hint</div>
+            <div style="position:absolute; right:12px; bottom:74px; padding:5px 9px; border:1px solid #C9C6C0; border-radius:14px; background:#EFEDE9">hold for tier 2 →</div>
+          </div>
+          <div style="flex:0 0 210px; border:1px solid #C9C6C0; border-radius:10px; background:#E9E7E2; padding:10px; display:flex; flex-direction:column; gap:8px">
+            <div>tray · selected piece ringed</div>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:4px; align-content:start"><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF; outline:2px solid #5B5750; outline-offset:1px"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div></div>
+            <div style="border-top:1px solid #C9C6C0; padding-top:8px">the glow is the same renderer as the progress bloom, dialled to 0.55</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:24px; flex-wrap:wrap">
+        <div style="flex:1 1 240px; display:flex; flex-direction:column; gap:14px; min-width:240px">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8A929E">03 · iPhone — board, one-handed</div>
+          <div style="background:#EFEDE9; border:1px solid #C9C6C0; border-radius:26px; padding:10px; aspect-ratio:9/19; display:flex; flex-direction:column; gap:8px; color:#5B5750; font-family:'IBM Plex Mono',monospace; font-size:9px">
+            <div style="display:flex; align-items:center; gap:6px"><div style="width:22px; height:22px; border:1px solid #C9C6C0; border-radius:6px; display:flex; align-items:center; justify-content:center">‹</div><div style="flex:1; height:8px; background:#D8D5CF; border-radius:2px"></div><div style="border:1px solid #C9C6C0; border-radius:6px; padding:3px 6px">8:04</div></div>
+            <div style="flex:1; border:1px solid #C9C6C0; border-radius:10px; background:#E6E3DE; position:relative; overflow:hidden">
+              <div style="position:absolute; left:6%; top:8%; right:6%; height:44%; border:1px dashed #BEBBB4; background-image:repeating-linear-gradient(90deg,transparent 0 26px,#D3D0CA 26px 27px),repeating-linear-gradient(0deg,transparent 0 26px,#D3D0CA 26px 27px)"></div>
+              <div style="position:absolute; left:6%; top:8%; width:38%; height:22%; background:#CFCBC3"></div>
+              <div style="position:absolute; left:8px; bottom:8px; border:1px solid #C9C6C0; border-radius:12px; padding:3px 7px; background:#EFEDE9">1.0×</div>
+            </div>
+            <div style="border:1px solid #C9C6C0; border-radius:12px; background:#E9E7E2; padding:8px; display:flex; flex-direction:column; gap:6px">
+              <div style="width:34px; height:3px; background:#C9C6C0; border-radius:2px; align-self:center"></div>
+              <div style="display:flex; gap:4px"><div style="border:1px solid #5B5750; border-radius:10px; padding:2px 6px">all</div><div style="border:1px solid #C9C6C0; border-radius:10px; padding:2px 6px">edges</div><div style="border:1px solid #C9C6C0; border-radius:10px; padding:2px 6px">colour</div></div>
+              <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:4px"><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div><div style="aspect-ratio:1; background:#D8D5CF"></div></div>
+              <div style="display:flex; gap:6px; align-items:center"><div style="flex:1; border:1px solid #C9C6C0; border-radius:10px; padding:6px; text-align:center">pause</div><div style="flex:1; background:#5B5750; color:#EFEDE9; border-radius:10px; padding:6px; text-align:center">hint</div></div>
+            </div>
+          </div>
+          <p style="margin:0; color:#8A929E; font-size:13px; text-wrap:pretty">Peek detent. Everything actionable lives in the bottom third; the top bar is information only.</p>
+        </div>
+
+        <div style="flex:1 1 240px; display:flex; flex-direction:column; gap:14px; min-width:240px">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8A929E">04 · iPhone — dragging, X-Ray focus</div>
+          <div style="background:#EFEDE9; border:1px solid #C9C6C0; border-radius:26px; padding:10px; aspect-ratio:9/19; display:flex; flex-direction:column; gap:8px; color:#5B5750; font-family:'IBM Plex Mono',monospace; font-size:9px">
+            <div style="display:flex; align-items:center; gap:6px"><div style="width:22px; height:22px; border:1px solid #E2DFD9; border-radius:6px"></div><div style="flex:1; height:8px; background:#E2DFD9; border-radius:2px"></div></div>
+            <div style="flex:1; border:1px solid #C9C6C0; border-radius:10px; background:#E6E3DE; position:relative; overflow:hidden">
+              <div style="position:absolute; left:6%; top:8%; right:6%; height:44%; border:1px dashed #E0DDD7; background-image:repeating-linear-gradient(90deg,transparent 0 26px,#E4E1DB 26px 27px),repeating-linear-gradient(0deg,transparent 0 26px,#E4E1DB 26px 27px)"></div>
+              <div style="position:absolute; left:6%; top:8%; width:38%; height:22%; background:#E4E1DB"></div>
+              <div style="position:absolute; left:40%; top:22%; width:30%; height:16%; border:1px solid #8C8880; background:#CFCBC3"></div>
+              <div style="position:absolute; left:40%; top:39%; padding:3px 6px; background:#DCD9D3; border-radius:5px">candidate sockets keep full contrast</div>
+              <div style="position:absolute; left:44%; top:56%; width:54px; height:54px; background:#B9B5AD; border:1px solid #8C8880; border-radius:6px; box-shadow:0 10px 18px rgba(0,0,0,0.22)"></div>
+              <div style="position:absolute; left:30%; top:74%; width:28px; height:28px; border-radius:50%; border:1px dashed #8C8880"></div>
+              <div style="position:absolute; left:22%; top:80%; padding:3px 6px; background:#DCD9D3; border-radius:5px">piece offset 8pt above finger</div>
+            </div>
+            <div style="border:1px solid #E2DFD9; border-radius:12px; background:#EDEBE6; padding:8px; text-align:center">tray auto-collapsed to peek</div>
+          </div>
+          <p style="margin:0; color:#8A929E; font-size:13px; text-wrap:pretty">Placed pieces without a connecting edge drop to 35% contrast for the duration of the drag. Restores over 160ms on release.</p>
+        </div>
+
+        <div style="flex:1 1 240px; display:flex; flex-direction:column; gap:14px; min-width:240px">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8A929E">05 · iPhone — completion card</div>
+          <div style="background:#EFEDE9; border:1px solid #C9C6C0; border-radius:26px; padding:10px; aspect-ratio:9/19; display:flex; flex-direction:column; gap:10px; color:#5B5750; font-family:'IBM Plex Mono',monospace; font-size:9px">
+            <div style="flex:1; border:1px solid #C9C6C0; border-radius:14px; background:#E9E7E2; padding:12px; display:flex; flex-direction:column; gap:10px">
+              <div style="aspect-ratio:4/3; background:#D3D0CA; border-radius:8px; display:flex; align-items:center; justify-content:center">the photo, fully lit</div>
+              <div style="font-family:'Instrument Serif',serif; font-size:22px; color:#3E3B36">Harbour, June</div>
+              <div style="display:flex; gap:10px; flex-wrap:wrap"><div>18:42</div><div>204 pieces</div><div>classic</div><div>clean run</div></div>
+              <div style="height:1px; background:#C9C6C0"></div>
+              <div style="display:flex; gap:6px"><div style="flex:1; border:1px solid #C9C6C0; border-radius:8px; padding:6px; text-align:center">share</div><div style="flex:1; border:1px solid #C9C6C0; border-radius:8px; padding:6px; text-align:center">save</div></div>
+              <div style="background:#5B5750; color:#EFEDE9; border-radius:8px; padding:8px; text-align:center">puzzle this again, harder</div>
+              <div style="text-align:center">new puzzle</div>
+            </div>
+          </div>
+          <p style="margin:0; color:#8A929E; font-size:13px; text-wrap:pretty">Serif earns its keep here and nowhere else on this screen. No exclamation marks, no confetti — the lit photo is the reward.</p>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:24px; flex-wrap:wrap">
+        <div style="flex:1 1 300px; display:flex; flex-direction:column; gap:14px; min-width:300px">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8A929E">06 · Library / home (iPad)</div>
+          <div style="background:#EFEDE9; border:1px solid #C9C6C0; border-radius:12px; padding:14px; aspect-ratio:4/3; display:flex; flex-direction:column; gap:10px; color:#5B5750; font-family:'IBM Plex Mono',monospace; font-size:10px">
+            <div style="display:flex; align-items:baseline; gap:10px"><div style="font-family:'Instrument Serif',serif; font-size:24px; color:#3E3B36">Your puzzles</div><div style="flex:1"></div><div style="border:1px solid #C9C6C0; border-radius:8px; padding:5px 9px">search</div><div style="background:#5B5750; color:#EFEDE9; border-radius:8px; padding:5px 9px">new puzzle</div></div>
+            <div>in progress</div>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px">
+              <div style="border:1px solid #C9C6C0; border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:5px"><div style="aspect-ratio:4/3; background:#D3D0CA; border-radius:6px; position:relative"><div style="position:absolute; right:5px; top:5px; width:18px; height:18px; border-radius:50%; border:2px solid #8C8880"></div></div><div>Harbour · 62%</div></div>
+              <div style="border:1px solid #C9C6C0; border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:5px"><div style="aspect-ratio:4/3; background:#D8D5CF; border-radius:6px"></div><div>Dog · 18%</div></div>
+              <div style="border:1px dashed #C9C6C0; border-radius:10px; display:flex; align-items:center; justify-content:center">today's puzzle</div>
+              <div style="border:1px dashed #C9C6C0; border-radius:10px; display:flex; align-items:center; justify-content:center">+ pick a photo</div>
+            </div>
+            <div style="margin-top:2px">completed · 14</div>
+            <div style="flex:1; display:grid; grid-template-columns:repeat(7,1fr); gap:6px; align-content:start"><div style="aspect-ratio:1; background:#DCD9D3; border-radius:4px"></div><div style="aspect-ratio:1; background:#DCD9D3; border-radius:4px"></div><div style="aspect-ratio:1; background:#DCD9D3; border-radius:4px"></div><div style="aspect-ratio:1; background:#DCD9D3; border-radius:4px"></div><div style="aspect-ratio:1; background:#DCD9D3; border-radius:4px"></div><div style="aspect-ratio:1; background:#DCD9D3; border-radius:4px"></div><div style="aspect-ratio:1; background:#DCD9D3; border-radius:4px"></div></div>
+            <div>thumbnails show the actual current board, not the source photo</div>
+          </div>
+        </div>
+
+        <div style="flex:1 1 300px; display:flex; flex-direction:column; gap:14px; min-width:300px">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8A929E">07 · Puzzle setup — piece ladder with real preview</div>
+          <div style="background:#EFEDE9; border:1px solid #C9C6C0; border-radius:12px; padding:14px; aspect-ratio:4/3; display:flex; flex-direction:column; gap:10px; color:#5B5750; font-family:'IBM Plex Mono',monospace; font-size:10px">
+            <div style="display:flex; gap:12px; flex:1; min-height:0">
+              <div style="flex:1.2; background:#D8D5CF; border-radius:8px; position:relative; overflow:hidden"><div style="position:absolute; inset:0; background-image:repeating-linear-gradient(90deg,transparent 0 30px,rgba(0,0,0,0.14) 30px 31px),repeating-linear-gradient(0deg,transparent 0 30px,rgba(0,0,0,0.14) 30px 31px)"></div><div style="position:absolute; left:8px; bottom:8px; background:#EFEDE9; border-radius:5px; padding:3px 7px">17 × 12 = 204 real pieces</div></div>
+              <div style="flex:1; display:flex; flex-direction:column; gap:8px">
+                <div>piece count</div>
+                <div style="display:flex; gap:5px; flex-wrap:wrap"><div style="border:1px solid #C9C6C0; border-radius:8px; padding:4px 8px">50</div><div style="border:1px solid #C9C6C0; border-radius:8px; padding:4px 8px">100</div><div style="border:1px solid #C9C6C0; border-radius:8px; padding:4px 8px">150</div><div style="border:1px solid #5B5750; background:#5B5750; color:#EFEDE9; border-radius:8px; padding:4px 8px">200</div><div style="border:1px solid #C9C6C0; border-radius:8px; padding:4px 8px">250</div></div>
+                <div style="border:1px solid #C9C6C0; border-radius:8px; padding:8px; display:flex; align-items:center; gap:8px"><div style="width:38px; height:38px; background:#CFCBC3; border-radius:5px"></div><div>actual size on this device</div></div>
+                <div>mode</div>
+                <div style="display:flex; gap:5px"><div style="border:1px solid #5B5750; border-radius:8px; padding:4px 8px">classic</div><div style="border:1px solid #C9C6C0; border-radius:8px; padding:4px 8px">zen</div></div>
+                <div style="display:flex; justify-content:space-between; border-top:1px solid #C9C6C0; padding-top:6px"><span>rotation</span><span>◯—</span></div>
+                <div style="display:flex; justify-content:space-between"><span>ghost underlay</span><span>—◯—— 12%</span></div>
+                <div style="display:flex; justify-content:space-between"><span>snap tolerance</span><span>standard</span></div>
+                <div style="flex:1"></div>
+                <div style="background:#5B5750; color:#EFEDE9; border-radius:8px; padding:8px; text-align:center">start</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:24px; flex-wrap:wrap">
+        <div style="flex:1 1 300px; display:flex; flex-direction:column; gap:14px; min-width:300px">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8A929E">08 · Daily hub</div>
+          <div style="background:#EFEDE9; border:1px solid #C9C6C0; border-radius:12px; padding:14px; aspect-ratio:4/3; display:flex; flex-direction:column; gap:10px; color:#5B5750; font-family:'IBM Plex Mono',monospace; font-size:10px">
+            <div style="display:flex; gap:12px"><div style="flex:1.3; background:#D3D0CA; border-radius:8px; aspect-ratio:4/3; display:flex; align-items:flex-end; padding:8px">today · 150 pieces</div>
+              <div style="flex:1; display:flex; flex-direction:column; gap:8px"><div style="font-family:'Instrument Serif',serif; font-size:34px; color:#3E3B36">23</div><div>day streak · 2 freezes</div><div style="display:grid; grid-template-columns:repeat(7,1fr); gap:3px"><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div><div style="aspect-ratio:1; background:#E2DFD9; border-radius:2px"></div><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div><div style="aspect-ratio:1; background:#BEBBB4; border-radius:2px"></div></div><div style="background:#5B5750; color:#EFEDE9; border-radius:8px; padding:7px; text-align:center">start today's</div></div>
+            </div>
+            <div style="border-top:1px solid #C9C6C0; padding-top:8px">leaderboard tab appears only once an account exists — v1 ships streak-only</div>
+          </div>
+        </div>
+
+        <div style="flex:1 1 300px; display:flex; flex-direction:column; gap:14px; min-width:300px">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8A929E">09 · Pause sheet + reference</div>
+          <div style="background:#EFEDE9; border:1px solid #C9C6C0; border-radius:12px; padding:14px; aspect-ratio:4/3; display:flex; gap:12px; color:#5B5750; font-family:'IBM Plex Mono',monospace; font-size:10px">
+            <div style="flex:1; border:1px solid #C9C6C0; border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:7px; background:#E9E7E2">
+              <div style="width:34px; height:3px; background:#C9C6C0; border-radius:2px; align-self:center"></div>
+              <div style="font-family:'Instrument Serif',serif; font-size:18px; color:#3E3B36">Paused</div>
+              <div style="display:flex; gap:10px"><span>14:22</span><span>82 / 204</span><span>2 hints</span></div>
+              <div style="aspect-ratio:4/3; background:#D3D0CA; border-radius:6px; display:flex; align-items:center; justify-content:center">reference · tap for full-bleed</div>
+              <div style="background:#5B5750; color:#EFEDE9; border-radius:8px; padding:7px; text-align:center">resume</div>
+              <div style="display:flex; gap:6px"><div style="flex:1; border:1px solid #C9C6C0; border-radius:8px; padding:6px; text-align:center">settings</div><div style="flex:1; border:1px solid #C9C6C0; border-radius:8px; padding:6px; text-align:center">leave</div></div>
+              <div style="text-align:center; color:#8C8880">restart puzzle</div>
+            </div>
+            <div style="flex:1; border:1px solid #C9C6C0; border-radius:10px; background:#3E3B36; color:#EFEDE9; display:flex; align-items:center; justify-content:center; text-align:center; padding:10px">full-bleed reference<br />tap anywhere to dismiss</div>
+          </div>
+        </div>
+      </div>
+    </section>
+    </sc-if>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">12 — COMPONENTS</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">Component inventory</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Chrome components are DOM and belong in a shared library. Board components are canvas draw routines and belong in the renderer — listed here because they still need designing, even though they will never be a React component.</p>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <div style="display:flex; gap:20px; padding:12px 0; border-bottom:1px solid #2C333C; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.12em; color:#8A929E; text-transform:uppercase">
+          <div style="flex:0 0 150px">Component</div><div style="flex:0 0 60px">Layer</div><div style="flex:1">Variants and states</div>
+        </div>
+        <sc-for list="{{ components }}" as="c" hint-placeholder-count="14">
+          <div style="display:flex; gap:20px; padding:13px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 150px; font-size:15px; color:#EDF0F4; font-weight:500">{{ c.name }}</div>
+            <div style="flex:0 0 60px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8A929E">{{ c.layer }}</div>
+            <div style="flex:1; font-size:14px; color:#B9C1CC; text-wrap:pretty">{{ c.variants }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">13 — TOKENS</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">Token sheet</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Ship exactly this as <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">:root</code> custom properties. Mat finishes override only the four surface tokens; the accent group is written at runtime by the extractor. Note the extractor clamp — it is the difference between a bloom and a stain.</p>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <sc-for list="{{ tokens }}" as="t" hint-placeholder-count="20">
+          <div style="display:flex; gap:16px; padding:9px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 210px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4">{{ t.name }}</div>
+            <div style="flex:0 0 190px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6FA8FF">{{ t.val }}</div>
+            <div style="flex:1; font-size:14px; color:#8A929E; text-wrap:pretty">{{ t.use }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="border-left:2px solid #6FA8FF; padding:4px 0 4px 20px; margin-top:16px; color:#B9C1CC; font-size:15px; max-width:680px; text-wrap:pretty">
+        <strong style="color:#EDF0F4; font-weight:500">Extractor clamp:</strong> take the three dominant colours in OKLab, then force L into 0.62–0.78 and C into 0.09–0.16 before use. A muddy photo yields a muddy hex, and a muddy hex on a near-black mat reads as dirt, not light. Also enforce a minimum 25° hue separation between accent and bloom, or the two roles become indistinguishable.
+      </div>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">14 — PERSISTENCE</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">Local first, account only when earned</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Everything works signed out, forever. Supabase enters only when the player touches something that inherently needs identity — a streak they want to keep across devices, or a leaderboard. The prompt at that moment says what it buys, not what it demands.</p>
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:16px 0 0">Save format (full-fidelity resume)</h3>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#B9C1CC; background:#15181D; border:1px solid #2C333C; border-radius:10px; padding:20px; line-height:1.9; overflow-x:auto">SessionSnapshot {<br />&nbsp;&nbsp;puzzleId, seed, cols, rows, mode, assists, version,<br />&nbsp;&nbsp;pieces: Float32Array [x, y, rot, clusterId] × N,&nbsp;&nbsp;<span style="color:#8A929E">// packed, base64</span><br />&nbsp;&nbsp;clusters: [{ id, kind, label, x, y, rot, collapsed }],<br />&nbsp;&nbsp;camera: { x, y, zoom },<br />&nbsp;&nbsp;tray: { order[], pinned[], lens, lensArg, scroll },<br />&nbsp;&nbsp;timer: { elapsedMs, running:false }, hintsUsed, cleanRun<br />}</div>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Roughly 6 KB for a 250-piece board — small enough to write on every placement without thinking about it. Because the cut is seeded, no geometry and no images are stored; the snapshot restores a board bit-for-bit on any device. Write to IndexedDB debounced at 800ms, plus a synchronous write on <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">visibilitychange</code>. Source photos live in IndexedDB as blobs, and only upload to Supabase Storage if the player signs in and opts into sync.</p>
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Supabase surface, when it arrives</h3>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <sc-for list="{{ tables }}" as="t" hint-placeholder-count="6">
+          <div style="display:flex; gap:20px; padding:12px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 170px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4">{{ t.name }}</div>
+            <div style="flex:1; font-size:14px; color:#B9C1CC; text-wrap:pretty">{{ t.note }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:12px 0 0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Conflict rule for multi-device resume: last-write-wins on <code style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EDF0F4; background:#1E232A; padding:1px 5px; border-radius:4px">updated_at</code>, except that the snapshot with more placed pieces always wins. Losing progress is unforgivable; losing three loose-piece positions is not.</p>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">15 — RETENTION</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">Your actual worry: why they stick with it</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">You said the risk is players tiring of the mechanic. That is the right thing to be afraid of, because the mechanic genuinely does not change — you place pieces. Jigsaw fatigue almost never comes from boredom with placing; it comes from three specific failures, and each has a design answer.</p>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <sc-for list="{{ retention }}" as="r" hint-placeholder-count="4">
+          <div style="display:flex; gap:24px; padding:18px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 190px; font-size:16px; color:#EDF0F4; font-weight:500; text-wrap:pretty">{{ r.fail }}</div>
+            <div style="flex:1; font-size:15px; color:#B9C1CC; text-wrap:pretty">{{ r.fix }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">The starter library — 50 photos, curated not dumped</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Your fifty open-source landscape, geography, and animal photos are a design asset, not a content dump. Three rules. <strong style="color:#EDF0F4; font-weight:500">First, curate for cuttability</strong>: reject any photo with more than ~25% near-uniform area (open sky, flat snow) at counts above 150, or tag it "hard" and let it be a badge of honour rather than a bad surprise. <strong style="color:#EDF0F4; font-weight:500">Second, browse by feeling, not folder</strong>: shelves like "wide and calm", "dense and busy", "one animal, close" beat "Landscape / Geography / Animals", because the player is choosing a mood for the next forty minutes. <strong style="color:#EDF0F4; font-weight:500">Third, pre-compute everything</strong> — dominant colours, difficulty rating, recommended piece counts — at build time, so a curated photo opens instantly while an uploaded one takes a second.</p>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Each entry needs licence and attribution stored alongside it, surfaced quietly on the completion card. Source from Unsplash, Pexels, and public-domain museum collections; verify per-image licence rather than trusting the platform default.</p>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">One more lever worth building early because it is nearly free: <strong style="color:#EDF0F4; font-weight:500">"puzzle this again, harder."</strong> A photo they loved at 100 pieces is a genuinely different puzzle at 250, and re-cutting an existing photo skips every friction point in the funnel — no picking, no cropping, no configuring. It is the cheapest repeat session in the product.</p>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">16 — FIRST RUN</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">The guided twelve</h2>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">You chose a taught first puzzle over pure discovery. Done wrong that is a tutorial wall; done right it is the best sixty seconds in the product, because a 12-piece board with a beautiful photo is <em style="color:#EDF0F4; font-style:italic">already the whole game</em> and finishing it feels good rather than instructional.</p>
+      <ol style="margin:0; padding-left:22px; color:#B9C1CC; max-width:680px; display:flex; flex-direction:column; gap:10px">
+        <li>Open on a curated 12-piece photo already scattered, no copy but "Drag a piece where you think it goes." No account, no menu, no mode picker.</li>
+        <li>First correct snap: full juice. Nothing is explained; the sound and the light explain it.</li>
+        <li>At four placed, the tray slides in on its own carrying the remaining pieces, with one line: "Pieces live here. Filter them." The lens chips pulse once.</li>
+        <li>At eight placed, if 20 seconds pass with no placement, the hint button glows and fires tier 1 unprompted, once. The player learns the hint exists by being rescued by it, not by reading about it.</li>
+        <li>On completion: the card, then "Now use your own photo" as primary and "Today's puzzle" as secondary.</li>
+      </ol>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">Skippable from a small "skip" at all times, never modal, and it counts as a real completion on the collection wall. A tutorial the player is allowed to be proud of is not a tutorial.</p>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:24px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; color:#8A929E">17 — RISKS</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:40px; line-height:1.1; margin:0">What I would still worry about</h2>
+      <div style="display:flex; flex-direction:column; margin-top:4px">
+        <sc-for list="{{ risks }}" as="r" hint-placeholder-count="6">
+          <div style="display:flex; gap:24px; padding:16px 0; border-bottom:1px solid #1E232A; align-items:baseline">
+            <div style="flex:0 0 190px; font-size:16px; color:#EDF0F4; font-weight:500; text-wrap:pretty">{{ r.k }}</div>
+            <div style="flex:1; font-size:15px; color:#B9C1CC; text-wrap:pretty">{{ r.v }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <h3 style="font-family:'Inter Tight',sans-serif; font-weight:500; font-size:20px; margin:24px 0 0">Build order I would argue for</h3>
+      <p style="margin:0; color:#B9C1CC; max-width:680px; text-wrap:pretty">One: the cutter and the renderer, with a hardcoded photo and no UI at all. Two: drag, snap, spring, audio — and stop there for a week and tune it until it is the best snap anyone has felt, because if that fails nothing downstream saves it. Three: tray and lenses. Four: hints and light. Five: setup, library, resume. Six: daily and streak. Everything else is after launch.</p>
+    </section>
+
+    <footer style="border-top:1px solid #2C333C; padding-top:32px; color:#8A929E; font-size:14px; display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.12em">TESSERA · DESIGN DOCUMENT · V1</div>
+      <div style="max-width:680px; text-wrap:pretty">Next natural step: a working prototype of the board — cut, drag, snap, spring, audio — at 100 pieces, on a real iPad, before any other screen gets designed in high fidelity.</div>
+    </footer>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100},&quot;showWireframes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Document&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      showWireframes: this.props.showWireframes ?? true,
+
+      decisions: [
+        { k: 'Deliverable', v: 'Written design doc plus low-fidelity wireframes of the key screens. No product code yet.' },
+        { k: 'Scope', v: 'MVP only — Classic, Daily, Zen, plus Rotation as a modifier. Later modes shaped into the state model but not specified.' },
+        { k: 'Engine', v: 'Canvas 2D board on two layers with a DOM chrome shell. Recommendation and reasoning in §03.' },
+        { k: 'Piece ceiling', v: '250 pieces must be genuinely playable on an iPhone. That is the hard performance target everything is measured against.' },
+        { k: 'Tray', v: 'Always visible. Docked right on iPad, three-detent bottom sheet on iPhone. One canonical order; filters are lenses over it.' },
+        { k: 'Resume', v: 'Full fidelity — every loose piece position, camera, tray lens, scroll, and timer restored exactly.' },
+        { k: 'Accounts', v: 'Fully local until the player touches a streak or leaderboard, then an offer, never a gate.' },
+        { k: 'Rotation', v: 'In MVP. Piece and cluster state carries rotation from day one; twist and dial gestures specified.' },
+        { k: 'First run', v: 'A guided 12-piece puzzle that teaches snap, tray, and hint by letting the player do them.' },
+        { k: 'Platform', v: 'Every interaction specified twice — web behaviour and native behaviour — so the App Store build is a port, not a rewrite.' }
+      ],
+
+      names: [
+        { name: 'Tessera', note: 'Recommended. Concrete, ownable, means the single tile of a mosaic. Costs you a pronunciation beat on first contact and reads a little scholarly.' },
+        { name: 'Bloom', note: 'The strongest alternative. Names the light thesis directly, trivially spellable, warm. Crowded namespace — needs a hard trademark check.' },
+        { name: 'Facet', note: 'Sharp, single-syllable, suggests both a fragment and a face. Slightly cold; skews toward puzzle-as-craft rather than puzzle-as-memory.' },
+        { name: 'Loose Piece', note: 'Two words, plain-spoken, sits perfectly with the copy voice. Weaker as a logo and harder to search for.' },
+        { name: 'Nightlamp', note: 'Owns the wind-down evening context entirely. Too narrow if the daily and habit players become the growth engine.' }
+      ],
+
+      layers: [
+        { name: 'Mat', rate: 'on resize', note: 'Finish texture and vignette. Static bitmap, redrawn only when the finish setting or viewport changes.' },
+        { name: 'Static board', rate: 'on placement', note: 'Placed pieces plus the baked bloom mask. The expensive layer, but it only changes when a piece lands.' },
+        { name: 'Dynamic', rate: '60fps while active', note: 'Loose pieces and islands in view, the held cluster, hint glow, ripples. Usually under twenty objects.' },
+        { name: 'Overlay', rate: '60fps while active', note: 'X-Ray dimming pass, drag shadow, selection rings, the second cursor Duo will need later.' },
+        { name: 'Chrome', rate: 'React', note: 'Top bar, tray, sheets, buttons, toasts. Plain DOM, fully accessible, never inside the canvas.' }
+      ],
+
+      pointerStates: [
+        { name: 'idle', note: 'Nothing held. No frames drawn. Board is completely still and the device is cool.' },
+        { name: 'pressing', note: 'Pointer down on a piece, under the 6px movement threshold and the 120ms long-press timer. Piece shows a 1px focus ring only.' },
+        { name: 'dragging', note: 'Cluster lifted: scale 1.06, shadow spread, offset 8pt above the finger, X-Ray dimming on, tray collapsed to peek on iPhone.' },
+        { name: 'rotating', note: 'Rotation mode only. Two-finger twist while holding, or long-press to summon a dial. Snaps to 15° visually, resolves to 90° on release.' },
+        { name: 'camera', note: 'Two fingers on empty mat, or one finger on empty mat for pan. Momentum with rubber-band bounds at 0.5× to 4× zoom.' },
+        { name: 'settling', note: 'Post-release spring integration, ~90ms. Input is accepted during it — you can grab the next piece before this one lands.' },
+        { name: 'multiselect', note: 'Tray only, entered by long-press. Selected chips carry an order badge; the action bar offers "pull out as island" or "pin to shelf".' }
+      ],
+
+      lenses: [
+        { name: 'All', note: 'The canonical order. Default, and always one tap away from any other lens.' },
+        { name: 'Edges', note: 'Straight-sided pieces. Tinted in the tray and marked with a corner notch glyph, because colour is never the only signal.' },
+        { name: 'Corners', note: 'Four pieces. Trivial to implement, disproportionately loved, and the natural first move for most players.' },
+        { name: 'Colour', note: 'Six OKLab k-means bins plus a "mixed" bin, each labelled with a swatch and a numeral.' },
+        { name: 'Region', note: 'The superpower. Only offered above 1.5× zoom: shows pieces whose destination lies inside the current viewport. This is what makes 250 pieces tractable on a phone.' },
+        { name: 'Recent', note: 'The last twenty pieces you touched but did not place. Quietly fixes the "I had it a second ago" moment.' }
+      ],
+
+      lightJobs: [
+        { name: 'Progress bloom', note: 'Intensity scales with completion, 0 to 0.9, spilling roughly one piece-width beyond the assembled boundary. Grows continuously, so the room brightens as you work.' },
+        { name: 'Hint glow', note: 'A localised region mask at 0.55, breathing on a 1400ms cycle for two breaths. Same renderer, same hue, higher local value.' },
+        { name: 'Merge seam', note: 'A thin, short-lived mask along the newly joined edge, 260ms, peak 0.7, feathered to nothing.' },
+        { name: 'Completion', note: 'Global mask ramps to 1.0 over 1200ms, holds three seconds, settles to 0.85 as the card composes over it.' }
+      ],
+
+      audio: [
+        { event: 'pickup', sound: 'Soft peel, 60ms, low velocity. Barely there — it confirms the grab without commenting on it.', pitch: 'fixed' },
+        { event: 'snap', sound: 'Three layers: 8ms ceramic transient, felt body for weight, 200ms small-room tail.', pitch: 'ladder, transient only' },
+        { event: 'invalid drop', sound: 'Dull muted tap. Neutral, quiet, never a buzzer. It is information, not judgement.', pitch: 'fixed, resets ladder' },
+        { event: 'group merge', sound: 'A chord instead of a note, voiced wider as the merged cluster grows.', pitch: 'by cluster size' },
+        { event: 'edge frame done', sound: 'Distinct "frame lock" — a longer, lower resonance that marks a structural milestone.', pitch: 'fixed' },
+        { event: 'hint fired', sound: 'A soft rising swell that peaks with the glow. Never a chime, or it reads as a penalty.', pitch: 'fixed' },
+        { event: 'completion', sound: 'Sustained chord resolving to the tonic, then a shutter click as the card composes.', pitch: 'tonic' },
+        { event: 'ambient', sound: 'Low bed per mat finish, ducked 4dB under every snap. Off in Classic, on in Zen.', pitch: 'n/a' }
+      ],
+
+      parity: [
+        { k: 'Snap feedback', web: 'Spring visual plus three-layer audio. Must feel complete on a silent device.', native: 'Same, plus medium impact haptic fired on the frame the piece contacts.' },
+        { k: 'Pickup', web: 'Lift, scale, shadow spread only.', native: 'Light impact haptic added.' },
+        { k: 'Completion', web: 'Full bloom, chord, shutter.', native: 'Heavy impact then success notification haptic layered under the chord.' },
+        { k: 'Photo picking', web: 'File input plus drag-and-drop. No album browsing, no Live Photos.', native: 'PHPicker: albums, search, Live Photo stills, no library permission prompt.' },
+        { k: 'Sharing', web: 'Web Share API where present, otherwise download the card PNG.', native: 'Native share sheet, save to Photos, AirDrop, Messages sticker-sized variant.' },
+        { k: 'Audio', web: 'Web Audio, unlocked on first tap, muted by the hardware silent switch on iOS.', native: 'AVAudioEngine with a playback category, so audio survives the silent switch if the player opts in.' },
+        { k: 'Resume', web: 'IndexedDB snapshot; iOS Safari may evict storage after ~7 days of no visits.', native: 'On-device store plus iCloud key-value backup. Never evicted.' },
+        { k: 'Offline', web: 'Service worker caches shell, curated photos, and audio. Fully playable offline after first visit.', native: 'Everything bundled; offline is the default state.' },
+        { k: 'Multitasking', web: 'Resize handled; Stage Manager works but Split View gestures can steal a drag near edges.', native: 'Proper scene support, drag-and-drop a photo in from Files or Photos.' }
+      ],
+
+      snapTimeline: [
+        { t: '0ms', what: 'Release. Candidate resolution runs (sub-millisecond, it is a graph lookup, not a search).' },
+        { t: '0–90ms', what: 'Spring integration to the target, inheriting release velocity. Overshoot roughly 2px past the slot.' },
+        { t: '~8ms in', what: 'Transient plays. Audio must lead the visual settle slightly — the ear is what sells contact.' },
+        { t: '90–140ms', what: 'Settle back. Scale returns 1.06 → 1.00. Shadow collapses from spread to a 1px contact edge.' },
+        { t: '100ms', what: 'Neighbouring placed pieces ripple 1px outward, staggered 20ms per ring from the contact point, two rings max.' },
+        { t: '100–360ms', what: 'Static layer recomposites. Bloom mask grows by the new piece area, eased over 260ms so light arrives after the click.' },
+        { t: '140ms', what: 'Ready for the next piece. Total perceived latency from release to "done" is under a fifth of a second.' }
+      ],
+
+      hintTimeline: [
+        { t: '0ms', what: 'Tap registers. Hint counter decrements only at tier 2 or above, and animates so the cost is never a surprise.' },
+        { t: '0–160ms', what: 'Camera eases toward the region if it is off-screen. Never a hard cut — the player must keep their bearings.' },
+        { t: '160–860ms', what: 'Glow rises to 0.55 on the 3×3 region mask, feathered a piece-and-a-half at the edges.' },
+        { t: '860–2260ms', what: 'Two breaths at 1400ms each, sine-eased between 0.35 and 0.55. Breathing, not pulsing — pulsing reads as an alarm.' },
+        { t: '2260–3000ms', what: 'Decay to zero. If the player places the piece mid-hint, the glow converts into the snap bloom rather than being cut off.' }
+      ],
+
+      screens: [
+        { n: '01', name: 'First run', states: 'Cold open on the guided 12-piece board · tray reveal beat · hint rescue beat · completion handoff · skipped' },
+        { n: '02', name: 'Library / home', states: 'Empty (invitation, not apology) · one or two items · 30+ with search · in-progress card with live board thumbnail and % ring · long-press card actions' },
+        { n: '03', name: 'Photo source', states: 'Device photos · camera · curated shelves · loading · unreadable file error · too-large file' },
+        { n: '04', name: 'Crop & frame', states: 'Default fit · aspect selector · rotated · live piece-grid overlay · low-resolution warning' },
+        { n: '05', name: 'Puzzle setup', states: 'Count ladder with real piece-size preview · mode select · rotation toggle · assists · cutting progress' },
+        { n: '06', name: 'Board — play', states: 'Default · zoomed region · dragging with X-Ray · tray peek / half / full · lens active · island present · iPad landscape docked · iPhone one-handed · reduced motion' },
+        { n: '07', name: 'Board — hint', states: 'Tier 1 region breathing · tier 2 slot outlined with piece leaning · tier 3 auto-place · hints exhausted · Zen (counter absent)' },
+        { n: '08', name: 'Board — merge', states: 'Two loose clusters joining · cluster joining the board frame · edge frame completed' },
+        { n: '09', name: 'Pause sheet', states: 'Default · reference image full-bleed · settings pushed · restart confirm · leave confirm' },
+        { n: '10', name: 'Completion → card', states: 'Bloom sequence · card composing · clean-run badge · share · save · again-harder · Daily variant with streak increment' },
+        { n: '11', name: 'Daily hub', states: 'Not started · in progress · done today · streak with freezes · streak broken with repair offer · month calendar' },
+        { n: '12', name: 'Settings', states: 'Audio buses · haptics (native only, hidden on web) · assists · accessibility · mat finish · account offer' }
+      ],
+
+      components: [
+        { name: 'Button', layer: 'DOM', variants: 'Primary (filled accent) · secondary (hairline) · quiet (text) · destructive · icon-only 44pt minimum. States: rest, press, disabled, loading.' },
+        { name: 'Sheet', layer: 'DOM', variants: 'Bottom sheet with peek / half / full detents on iPhone; side panel on iPad. Drag handle, backdrop dim, swipe dismiss, safe-area aware.' },
+        { name: 'Piece chip', layer: 'DOM', variants: 'Tray cell. States: rest, pressed, selected-with-order-badge, pinned, edge-marked, hinted, being dragged out (ghost left behind).' },
+        { name: 'Lens chip', layer: 'DOM', variants: 'Filter pill: rest, active, with count, with colour swatch and numeral, disabled (region lens below 1.5× zoom).' },
+        { name: 'Progress ring', layer: 'DOM', variants: 'Sizes 20 / 32 / 64. Shows percent placed; the arc is drawn in the session accent, so library cards inherit each photo\'s colour.' },
+        { name: 'Slider', layer: 'DOM', variants: 'Audio buses, ghost opacity. Tabular mono value readout, 44pt touch target, no width shift as the number changes.' },
+        { name: 'Toggle', layer: 'DOM', variants: 'Standard, plus a three-position segmented variant for snap tolerance.' },
+        { name: 'Streak flame', layer: 'DOM', variants: 'Count, freeze pips, at-risk state (day not yet played), broken with repair offer. Never scolds.' },
+        { name: 'Toast', layer: 'DOM', variants: 'Bottom-anchored, 2.4s, one line, one optional undo. Never stacks — a second toast replaces the first.' },
+        { name: 'Empty state', layer: 'DOM', variants: 'Library, search, completed wall. Copy is an invitation; illustration is the sample puzzle assembling itself.' },
+        { name: 'Skeleton', layer: 'DOM', variants: 'Library card, tray grid, cutting progress. Shimmer disabled under reduced motion.' },
+        { name: 'Piece', layer: 'Canvas', variants: 'Loose, held, placed, hinted, ghosted, rotating, X-Ray dimmed. Bevel baked into the bitmap at cut time.' },
+        { name: 'Island', layer: 'Canvas', variants: 'Expanded with hairline containing outline and mono label chip · collapsed to chip · being dragged · merging.' },
+        { name: 'Light mask', layer: 'Canvas', variants: 'The one renderer feature behind progress bloom, hint glow, merge seam, and completion. Per-region intensity, additive composite.' }
+      ],
+
+      tokens: [
+        { name: '--mat-void', val: '#0B0D10', use: 'Deepest ground, behind everything' },
+        { name: '--mat-felt', val: '#15181D', use: 'The puzzle mat surface' },
+        { name: '--mat-raised', val: '#1E232A', use: 'Tray, sheets, cards' },
+        { name: '--edge-hair', val: '#2C333C', use: '1px separations, empty slot outlines' },
+        { name: '--ink-primary', val: '#EDF0F4', use: 'Text' },
+        { name: '--ink-muted', val: '#8A929E', use: 'Secondary text, counts' },
+        { name: '--accent', val: 'runtime, clamped', use: 'Extracted dominant 1. Primary buttons, focus ring, progress arc' },
+        { name: '--accent-bloom', val: 'runtime, clamped', use: 'Extracted dominant 2. All light: bloom, hint, merge seam' },
+        { name: '--accent-tray', val: 'runtime, clamped', use: 'Extracted dominant 3. Tray highlight, lens active state' },
+        { name: '--accent-fallback', val: '#6FA8FF', use: 'Extraction failed, empty library, first run' },
+        { name: '--radius-sm / md / lg', val: '8 / 14 / 22px', use: 'Chips · cards and buttons · sheets' },
+        { name: '--space-1…7', val: '4 8 12 16 24 40 64', use: 'Spacing scale. Nothing off-scale ships' },
+        { name: '--type-display', val: 'Instrument Serif 400', use: 'Puzzle titles, completion card, streak number. Never in chrome' },
+        { name: '--type-ui', val: 'Inter Tight 400/500/600', use: 'All interface text, sentence case' },
+        { name: '--type-data', val: 'IBM Plex Mono, tnum', use: 'Timers, counts, times. Must not shift width as it ticks' },
+        { name: '--type-scale', val: '12 14 16 20 28 40 64', use: 'Seven sizes only' },
+        { name: '--ease-standard', val: 'cubic-bezier(.32,.72,0,1)', use: 'All UI motion' },
+        { name: '--dur-fast / base / slow', val: '120 / 200 / 320ms', use: 'Chrome transitions' },
+        { name: '--spring-snap', val: 'k 520, d 26, m 1', use: 'Piece placement only. Never used on chrome' },
+        { name: '--snap-tol', val: '0.18 / 0.28 / 0.40', use: 'Precise / Standard / Generous, as a fraction of piece size' },
+        { name: '--lift-scale', val: '1.06', use: 'Held piece or cluster' },
+        { name: '--lift-offset', val: '8pt', use: 'Held piece sits above the finger, never under it' },
+        { name: '--bloom-max', val: '0.90', use: 'Progress bloom ceiling before completion' },
+        { name: '--hint-peak', val: '0.55', use: 'Tier 1 region glow peak intensity' },
+        { name: '--xray-dim', val: '0.35', use: 'Contrast of non-adjacent placed pieces while dragging' },
+        { name: '--touch-min', val: '44pt', use: 'Absolute floor for every interactive target' }
+      ],
+
+      tables: [
+        { name: 'profiles', note: 'Created only on sign-in. Display name, avatar, preferences. Never required to play.' },
+        { name: 'puzzles', note: 'Photo reference, seed, cols, rows, cut style, dominant colours, licence and attribution for curated images.' },
+        { name: 'sessions', note: 'One per attempt: puzzle, mode, assists, elapsed, hints used, clean-run flag, completed_at.' },
+        { name: 'session_state', note: 'The snapshot jsonb plus a format version. One row per active session, upserted on sync.' },
+        { name: 'daily_puzzles', note: 'Date-keyed curated photo and piece count. Pre-seeded months ahead; a missing day must never break the hub.' },
+        { name: 'scores', note: 'Daily leaderboard rows. Hints used is a visible column, not a disqualifier. Exists but stays unexposed until v1.1.' }
+      ],
+
+      retention: [
+        { fail: 'The photo stopped mattering', fix: 'Fatigue is almost always with the image, not the mechanic. Fixes: the extractor making every session look like a different app, the curated fifty organised by feeling rather than category, and aggressive prompting toward the player\'s own photos — a wedding at 250 pieces never gets boring. The Album mode later turns one holiday into a series.' },
+        { fail: 'The difficulty stopped moving', fix: 'Piece count is a weak difficulty dial past 250 — it adds time, not challenge. Rotation is the real jump, which is exactly why it belongs in MVP. After that, cut styles and Fog change the puzzle rather than lengthening it. Suggest the next step on the completion card, in the moment of confidence.' },
+        { fail: 'There was nothing to come back for', fix: 'The daily plus a generous streak (a freeze per 7 days, one manual repair a month) and the collection wall. The wall is the strongest of the three: a growing mosaic of everything you have finished is a possession, and people do not abandon possessions.' },
+        { fail: 'It got tedious, not hard', fix: 'This is a tray failure, always. If a player is scrolling instead of searching, the lenses have failed. The region lens is the specific answer, and I would treat "median seconds between placements at 250 pieces" as the health metric that predicts churn before retention numbers do.' }
+      ],
+
+      risks: [
+        { k: 'The snap can fail', v: 'The entire product thesis rests on one 140ms interaction. Prototype it first, alone, and be willing to spend a week on tuning that looks like nothing on a burndown chart.' },
+        { k: 'iOS Safari storage eviction', v: 'A player who loses a 250-piece board in progress will not return. Warn at 7 days idle, and make "add to home screen" a real prompt after the second completion — installed PWAs are evicted far less aggressively.' },
+        { k: 'Rotation raises the floor', v: 'It is right for MVP but it must default OFF, be introduced by suggestion after a clean run, and never appear in the guided first puzzle.' },
+        { k: 'Memory at 250 on old phones', v: 'Bitmaps plus two canvases plus the source blob can push an iPhone 11 into a tab reload. Cap the source at 2560px, release the decoded source after cutting, and test on the worst device you can find, not the newest.' },
+        { k: 'Colour extraction embarrassment', v: 'Roughly one photo in twenty produces an accent that looks broken. The clamp handles most of it; keep a manual "use neutral accent" escape in settings and never let extraction block the start of play.' },
+        { k: 'Curated photo licensing', v: 'Fifty images sourced quickly is fifty licence obligations. Verify per-image, store attribution as data, and display it on the completion card. Getting this wrong is an App Store review problem, not just an ethics one.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
