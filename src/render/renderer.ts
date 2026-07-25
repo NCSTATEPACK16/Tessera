@@ -204,13 +204,17 @@ export class Renderer {
     if (this.scene.held.length === 0) return;
 
     this.applyCamera(ctx);
-    // The held cluster's lift. Scale and offset arrive with step 2's pointer
-    // machine; the shadow is here so the layer has a real job from day one.
+
+    // The lift (§05): 8pt above the finger, never under it, and 1.06 larger.
+    // Both are screen-space quantities converted here, so the piece in hand
+    // reads the same at every zoom.
+    const { offsetPx, scale } = this.scene.heldLift;
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.5)';
     ctx.shadowBlur = 18 / this.camera.zoom;
     ctx.shadowOffsetY = 6 / this.camera.zoom;
-    this.drawPieces(ctx, this.scene.held);
+    ctx.translate(0, -offsetPx / this.camera.zoom);
+    this.drawPieces(ctx, this.scene.held, scale);
     ctx.restore();
   }
 
@@ -238,7 +242,11 @@ export class Renderer {
    * Culling is what keeps the dynamic layer "usually under twenty objects" even
    * when 250 pieces exist. The bitmap is scaled, never re-rasterised (§03).
    */
-  private drawPieces(ctx: CanvasRenderingContext2D, pieces: readonly ScenePiece[]): number {
+  private drawPieces(
+    ctx: CanvasRenderingContext2D,
+    pieces: readonly ScenePiece[],
+    scale = 1,
+  ): number {
     const view = visibleWorldBounds(this.camera, this.viewport);
     const minX = view.x - CULL_MARGIN;
     const minY = view.y - CULL_MARGIN;
@@ -256,13 +264,17 @@ export class Renderer {
         continue;
       }
 
-      if (piece.rot === 0) {
+      if (piece.rot === 0 && scale === 1) {
         ctx.drawImage(piece.bitmap, piece.x, piece.y, piece.w, piece.h);
       } else {
+        // Rotation and the lift's scale both act about the piece's own centre,
+        // which is the convention `PlaySession` computes positions against.
+        const w = piece.w * scale;
+        const h = piece.h * scale;
         ctx.save();
         ctx.translate(piece.x + piece.w / 2, piece.y + piece.h / 2);
         ctx.rotate(piece.rot);
-        ctx.drawImage(piece.bitmap, -piece.w / 2, -piece.h / 2, piece.w, piece.h);
+        ctx.drawImage(piece.bitmap, -w / 2, -h / 2, w, h);
         ctx.restore();
       }
       drawn++;

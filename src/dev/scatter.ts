@@ -7,8 +7,7 @@
  */
 
 import { rngFor } from '@/core/rng';
-import type { CutPiece } from '@/cut/types';
-import type { ScenePiece } from '@/render/scene';
+import type { CutPiece, PieceId } from '@/cut/types';
 
 export interface ScatterOptions {
   seed: number;
@@ -16,17 +15,30 @@ export interface ScatterOptions {
   boardH: number;
   /** Mat margin around the board, in world units. */
   margin?: number;
-  /** Pixels per world unit the bitmaps were rasterised at. */
-  bitmapScale: number;
+}
+
+export interface ScatterPosition {
+  id: PieceId;
+  /** Bitmap origin in world units. */
+  x: number;
+  y: number;
 }
 
 /**
  * Place pieces in a ring around the board, biased away from the board itself so
  * the assembled area stays readable from the first second.
  */
-export function scatterPieces(pieces: readonly CutPiece[], options: ScatterOptions): ScenePiece[] {
-  const { seed, boardW, boardH, bitmapScale } = options;
-  const margin = options.margin ?? Math.max(boardW, boardH) * 0.45;
+export function scatterPieces(
+  pieces: readonly CutPiece[],
+  options: ScatterOptions,
+): ScatterPosition[] {
+  const { seed, boardW, boardH } = options;
+  /**
+   * Kept tight enough that the whole scatter still fits inside the 0.5× zoom
+   * floor. A wider ring looks generous and means the opening view is a zoom the
+   * player can never get back to once they have zoomed in.
+   */
+  const margin = options.margin ?? Math.max(boardW, boardH) * 0.25;
 
   return pieces.map((piece) => {
     const rng = rngFor(seed, 'scatter', piece.id);
@@ -57,31 +69,6 @@ export function scatterPieces(pieces: readonly CutPiece[], options: ScatterOptio
         break;
     }
 
-    return {
-      id: piece.id,
-      x,
-      y,
-      w: piece.worldW,
-      h: piece.worldH,
-      rot: 0,
-      bitmap: piece.bitmap,
-      path: piece.path,
-      bitmapScale,
-    };
+    return { id: piece.id, x, y };
   });
-}
-
-/** The piece at its solved position — what "placed" looks like. */
-export function solvedPiece(piece: CutPiece, bitmapScale: number): ScenePiece {
-  return {
-    id: piece.id,
-    x: piece.targetX,
-    y: piece.targetY,
-    w: piece.worldW,
-    h: piece.worldH,
-    rot: 0,
-    bitmap: piece.bitmap,
-    path: piece.path,
-    bitmapScale,
-  };
 }

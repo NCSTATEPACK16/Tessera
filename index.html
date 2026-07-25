@@ -127,6 +127,35 @@
         font-family: 'Inter Tight', system-ui, sans-serif;
         font-size: 14px;
       }
+
+      /* 44pt touch target floor, everywhere — including the tuning switches. */
+      .toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 44px;
+        padding: 0 12px;
+        border: 1px solid var(--edge-hair);
+        border-radius: 14px;
+        font-size: 13px;
+        color: var(--ink-muted);
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .toggle input {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--accent-fallback);
+      }
+
+      @media (max-width: 720px) {
+        #controls {
+          flex-wrap: wrap;
+          justify-content: center;
+          max-width: calc(100vw - 24px);
+        }
+      }
     </style>
   </head>
   <body>
@@ -141,6 +170,7 @@
       <div class="row"><span>drawn</span><b id="drawn">—</b></div>
       <div class="row"><span>frames</span><b id="frames">—</b></div>
       <div class="row"><span>scheduled</span><b id="sched">—</b></div>
+      <div class="row"><span>placed</span><b id="placed">—</b></div>
     </div>
 
     <div id="controls">
@@ -151,8 +181,18 @@
         <option value="200" selected>200</option>
         <option value="250">250</option>
       </select>
+      <select id="tolerance" aria-label="snap tolerance">
+        <option value="precise">Precise</option>
+        <option value="standard" selected>Standard</option>
+        <option value="generous">Generous</option>
+      </select>
+      <!-- Rotation defaults OFF (§01), and reduced motion mirrors the OS
+           setting rather than replacing it — this is a tuning switch. -->
+      <label class="toggle"><input id="rotation" type="checkbox" />rotate</label>
+      <label class="toggle"><input id="reduced" type="checkbox" />reduced</label>
+      <label class="toggle"><input id="sound" type="checkbox" checked />sound</label>
       <button id="recut" type="button">Re-cut</button>
-      <button id="toggle" type="button">Solve</button>
+      <button id="solve" type="button">Solve</button>
       <button id="fit" type="button">Fit</button>
     </div>
 

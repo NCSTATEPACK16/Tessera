@@ -11,8 +11,10 @@ import type { CubicPath } from '@/core/geom';
 import {
   cubicAt,
   joinPaths,
+  normaliseAngle,
   pathBounds,
   reverseCubicPath,
+  rotateVector,
   samplePath,
   translatePath,
 } from '@/core/geom';
@@ -194,5 +196,59 @@ describe('joinPaths', () => {
 
   it('rejects an empty list rather than returning something meaningless', () => {
     expect(() => joinPaths([])).toThrow();
+  });
+});
+
+describe('rotateVector', () => {
+  it('leaves a vector alone at zero', () => {
+    const v = rotateVector({ x: 3, y: -4 }, 0);
+    expect(v.x).toBeCloseTo(3, 12);
+    expect(v.y).toBeCloseTo(-4, 12);
+  });
+
+  it('turns +x into +y at a quarter turn — screen axes, y down', () => {
+    const v = rotateVector({ x: 1, y: 0 }, Math.PI / 2);
+    expect(v.x).toBeCloseTo(0, 12);
+    expect(v.y).toBeCloseTo(1, 12);
+  });
+
+  it('preserves length, or clusters would grow as they are turned', () => {
+    const v = rotateVector({ x: 3, y: 4 }, 0.7);
+    expect(Math.hypot(v.x, v.y)).toBeCloseTo(5, 12);
+  });
+
+  it('inverts exactly, so localising and worldising round-trip', () => {
+    const original = { x: 1.25, y: -0.75 };
+    const there = rotateVector(original, 1.1);
+    const back = rotateVector(there, -1.1);
+    expect(back.x).toBeCloseTo(original.x, 12);
+    expect(back.y).toBeCloseTo(original.y, 12);
+  });
+});
+
+describe('normaliseAngle', () => {
+  it('leaves small angles alone', () => {
+    expect(normaliseAngle(0.3)).toBeCloseTo(0.3, 12);
+  });
+
+  it('folds a near-full turn to a small negative one', () => {
+    // Rotation error compares two cluster angles; without this a piece one
+    // degree short of a full turn would read as 359° of error and never snap.
+    expect(normaliseAngle(2 * Math.PI - 0.05)).toBeCloseTo(-0.05, 12);
+  });
+
+  it('folds a negative near-full turn the other way', () => {
+    expect(normaliseAngle(-2 * Math.PI + 0.05)).toBeCloseTo(0.05, 12);
+  });
+
+  it('lands in (-pi, pi] for many turns in both directions', () => {
+    for (let k = -5; k <= 5; k++) {
+      for (const base of [0, 0.9, -0.9, 3.0, -3.0]) {
+        const a = normaliseAngle(base + k * 2 * Math.PI);
+        expect(a).toBeGreaterThan(-Math.PI - 1e-9);
+        expect(a).toBeLessThanOrEqual(Math.PI + 1e-9);
+        expect(Math.abs(normaliseAngle(a - base))).toBeLessThan(1e-9);
+      }
+    }
   });
 });

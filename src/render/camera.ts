@@ -5,14 +5,27 @@
  * having to remember to convert, so zoom never changes difficulty (§05).
  */
 
-import type { Point, Size } from '@/core/geom';
+import type { Point, Rect, Size } from '@/core/geom';
 
-/** Zoom bounds from §05. Rubber-band beyond these, never a hard stop. */
+/**
+ * Zoom bounds from §05 — **relative to the fitted board, not to a world unit.**
+ *
+ * `camera.zoom` is screen pixels per world unit, and a world unit is one piece
+ * width. Applying these numbers to it directly makes "4×" mean *pieces are four
+ * pixels across*, which collapses the whole board to a stamp in the middle of an
+ * empty screen and, worse, presents as "I cannot zoom in any further".
+ *
+ * So 1× is the board fitted to the viewport, and everything that clamps takes
+ * the fit scale as its reference. Double-tap to fit resolves to exactly 1×.
+ */
 export const MIN_ZOOM = 0.5;
 export const MAX_ZOOM = 4;
 
 /** Above this, the region lens unlocks and re-rasterisation becomes worthwhile. */
 export const REGION_LENS_ZOOM = 1.5;
+
+/** Fallback pixels per world unit before a board exists. */
+const NO_BOARD_SCALE = 64;
 
 export interface Camera {
   /** World point at the viewport centre. */
@@ -40,17 +53,52 @@ export function screenToWorld(camera: Camera, viewport: Size, p: Point): Point {
   };
 }
 
-export function clampZoom(zoom: number): number {
-  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+/**
+ * Screen pixels per world unit at which the board exactly fits — the 1× the
+ * zoom range is measured against.
+ */
+export function fitScale(viewport: Size, boardW: number, boardH: number, margin = 0.9): number {
+  if (boardW <= 0 || boardH <= 0) return NO_BOARD_SCALE;
+  return Math.min(viewport.w / boardW, viewport.h / boardH) * margin;
+}
+
+/** Clamp to 0.5×–4× of the fitted board. */
+export function clampZoom(zoom: number, fit: number): number {
+  const base = fit > 0 ? fit : NO_BOARD_SCALE;
+  return Math.min(MAX_ZOOM * base, Math.max(MIN_ZOOM * base, zoom));
+}
+
+/** Zoom as the player understands it: 1× is the whole board on screen. */
+export function relativeZoom(zoom: number, fit: number): number {
+  return fit > 0 ? zoom / fit : 1;
 }
 
 /**
  * Fit a board into the viewport with margin. Double-tap resolves to this.
+ *
+ * Never clamped: this *is* 1×, so clamping it against a range expressed in
+ * multiples of itself is circular — and getting that wrong is what pinned every
+ * board to four pixels a piece.
  */
 export function fitCamera(viewport: Size, boardW: number, boardH: number, margin = 0.9): Camera {
   if (boardW <= 0 || boardH <= 0) return createCamera();
-  const zoom = Math.min(viewport.w / boardW, viewport.h / boardH) * margin;
-  return { x: boardW / 2, y: boardH / 2, zoom: clampZoom(zoom) };
+  return { x: boardW / 2, y: boardH / 2, zoom: fitScale(viewport, boardW, boardH, margin) };
+}
+
+/**
+ * Frame an arbitrary world rectangle.
+ *
+ * The opening view uses this rather than `fitCamera`, because on a fresh board
+ * everything the player owns is *outside* the board — fitting the board alone
+ * would open on an empty frame with the pieces off-screen.
+ */
+export function fitCameraToBounds(viewport: Size, bounds: Rect, margin = 0.9): Camera {
+  if (bounds.w <= 0 || bounds.h <= 0) return createCamera();
+  return {
+    x: bounds.x + bounds.w / 2,
+    y: bounds.y + bounds.h / 2,
+    zoom: Math.min(viewport.w / bounds.w, viewport.h / bounds.h) * margin,
+  };
 }
 
 /** Visible world rectangle, used to cull everything off-screen. */
@@ -64,9 +112,15 @@ export function visibleWorldBounds(
 }
 
 /** Zoom about a fixed screen point, so pinch keeps the pinched spot still. */
-export function zoomAbout(camera: Camera, viewport: Size, screenPoint: Point, nextZoom: number): Camera {
+export function zoomAbout(
+  camera: Camera,
+  viewport: Size,
+  screenPoint: Point,
+  nextZoom: number,
+  fit: number,
+): Camera {
   const before = screenToWorld(camera, viewport, screenPoint);
-  const zoom = clampZoom(nextZoom);
+  const zoom = clampZoom(nextZoom, fit);
   const after = screenToWorld({ ...camera, zoom }, viewport, screenPoint);
   return {
     x: camera.x + (before.x - after.x),

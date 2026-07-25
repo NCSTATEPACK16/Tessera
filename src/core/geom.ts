@@ -55,6 +55,35 @@ export function reversePoint(p: Point): Point {
 }
 
 /**
+ * Rotate a vector clockwise on screen axes (y down) by `angle` radians.
+ *
+ * The one rotation in the codebase, shared by cluster transforms, hit-testing,
+ * and snap resolution — because a sign disagreement between any two of them
+ * looks like a snap-tolerance bug rather than what it is.
+ */
+export function rotateVector(v: Point, angle: number): Point {
+  if (angle === 0) return { x: v.x, y: v.y };
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return { x: v.x * cos - v.y * sin, y: v.x * sin + v.y * cos };
+}
+
+/**
+ * Fold an angle into (-π, π].
+ *
+ * Rotational snap error is the difference of two cluster angles. Without this, a
+ * piece one degree short of a full turn reads as 359° of error and never snaps,
+ * which presents as "rotation mode is broken" rather than as an arithmetic bug.
+ */
+export function normaliseAngle(angle: number): number {
+  const turn = Math.PI * 2;
+  let a = angle % turn;
+  if (a > Math.PI) a -= turn;
+  if (a <= -Math.PI) a += turn;
+  return a;
+}
+
+/**
  * Reverse a cubic path exactly.
  *
  * This is what guarantees interlock. An interior edge is generated once in a

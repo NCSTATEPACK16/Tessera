@@ -9,17 +9,29 @@
  * camera, one finger on a piece means drag, one finger on empty mat means pan.
  */
 
-import type { Point, Size } from '@/core/geom';
+import type { Point, Rect, Size } from '@/core/geom';
 import type { Camera } from './camera';
-import { clampZoom, fitCamera, zoomAbout } from './camera';
+import { clampZoom, fitCamera, fitCameraToBounds, fitScale, zoomAbout } from './camera';
 
 export interface CameraControlsOptions {
   element: HTMLElement;
   getViewport: () => Size;
   getCamera: () => Camera;
   setCamera: (camera: Camera) => void;
-  /** Board extent, for double-tap-to-fit. */
+  /** Board extent. The reference 1× is measured against. */
   getBoard: () => { w: number; h: number };
+  /**
+   * What double-tap-to-fit should frame, when that is more than the board —
+   * the board plus everything scattered around it. Falls back to the board.
+   */
+  getFitBounds?: () => Rect;
+  /**
+   * Listen to the element directly. Set false when something upstream — the
+   * pointer machine — owns arbitration and forwards only the camera gestures.
+   * The events must still all be forwarded, or a pinch that begins mid-drag
+   * starts from a baseline of one finger and the board jumps.
+   */
+  attach?: boolean;
 }
 
 const DOUBLE_TAP_MS = 300;
@@ -32,7 +44,12 @@ export class CameraControls {
   private lastTapAt = 0;
   private lastTapPoint: Point = { x: 0, y: 0 };
 
+  private readonly attached: boolean;
+
   constructor(private readonly options: CameraControlsOptions) {
+    this.attached = options.attach ?? true;
+    if (!this.attached) return;
+
     const el = options.element;
     el.addEventListener('pointerdown', this.onPointerDown);
     el.addEventListener('pointermove', this.onPointerMove);
@@ -42,18 +59,47 @@ export class CameraControls {
   }
 
   destroy(): void {
-    const el = this.options.element;
-    el.removeEventListener('pointerdown', this.onPointerDown);
-    el.removeEventListener('pointermove', this.onPointerMove);
-    el.removeEventListener('pointerup', this.onPointerUp);
-    el.removeEventListener('pointercancel', this.onPointerUp);
-    el.removeEventListener('wheel', this.onWheel);
+    if (this.attached) {
+      const el = this.options.element;
+      el.removeEventListener('pointerdown', this.onPointerDown);
+      el.removeEventListener('pointermove', this.onPointerMove);
+      el.removeEventListener('pointerup', this.onPointerUp);
+      el.removeEventListener('pointercancel', this.onPointerUp);
+      el.removeEventListener('wheel', this.onWheel);
+    }
     this.pointers.clear();
   }
 
+  /** Forwarding entry points, for when arbitration lives upstream. */
+  readonly feedDown = (event: PointerEvent): void => this.onPointerDown(event);
+  readonly feedMove = (event: PointerEvent): void => this.onPointerMove(event);
+  readonly feedUp = (event: PointerEvent): void => this.onPointerUp(event);
+  readonly feedWheel = (event: WheelEvent): void => this.onWheel(event);
+
+  /**
+   * Frame everything, clamped to the zoom range.
+   *
+   * The clamp matters: a very wide scatter would otherwise fit at a zoom the
+   * player is not allowed to return to once they have zoomed in, which reads as
+   * the camera fighting them.
+   */
   fit(): void {
+    const viewport = this.options.getViewport();
+    const bounds = this.options.getFitBounds?.();
+    if (!bounds || bounds.w <= 0 || bounds.h <= 0) {
+      const board = this.options.getBoard();
+      this.options.setCamera(fitCamera(viewport, board.w, board.h));
+      return;
+    }
+
+    const framed = fitCameraToBounds(viewport, bounds);
+    this.options.setCamera({ ...framed, zoom: clampZoom(framed.zoom, this.fitScale()) });
+  }
+
+  /** Pixels per world unit at 1×. The reference every clamp here measures against. */
+  private fitScale(): number {
     const board = this.options.getBoard();
-    this.options.setCamera(fitCamera(this.options.getViewport(), board.w, board.h));
+    return fitScale(this.options.getViewport(), board.w, board.h);
   }
 
   private local(event: PointerEvent): Point {
@@ -100,7 +146,13 @@ export class CameraControls {
 
     // Pinch: zoom about the centroid so the pinched spot stays put.
     if (this.pointers.size >= 2 && this.lastSpread > 0 && spread > 0) {
-      next = zoomAbout(next, viewport, centroid, next.zoom * (spread / this.lastSpread));
+      next = zoomAbout(
+        next,
+        viewport,
+        centroid,
+        next.zoom * (spread / this.lastSpread),
+        this.fitScale(),
+      );
     }
 
     this.options.setCamera(next);
@@ -118,9 +170,16 @@ export class CameraControls {
     const rect = this.options.element.getBoundingClientRect();
     const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     const camera = this.options.getCamera();
+    const fit = this.fitScale();
     const factor = Math.exp(-event.deltaY * 0.0015);
     this.options.setCamera(
-      zoomAbout(camera, this.options.getViewport(), point, clampZoom(camera.zoom * factor)),
+      zoomAbout(
+        camera,
+        this.options.getViewport(),
+        point,
+        clampZoom(camera.zoom * factor, fit),
+        fit,
+      ),
     );
   };
 

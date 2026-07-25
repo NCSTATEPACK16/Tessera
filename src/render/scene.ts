@@ -39,6 +39,15 @@ export interface Scene {
   loose: ScenePiece[];
   /** The cluster currently in hand, drawn above everything with its lift. */
   held: ScenePiece[];
+  /**
+   * The lift applied to `held` (§05): 8pt above the finger, never under it, and
+   * 1.06 larger.
+   *
+   * Stated in *screen* pixels and divided by zoom at draw time, deliberately.
+   * Baked into world units it would grow as the player zoomed in, and the lift
+   * is a property of the hand rather than of the mat.
+   */
+  heldLift: { offsetPx: number; scale: number };
 
   /** 0–1. Drives the progress bloom (§07). */
   completion: number;
@@ -52,6 +61,7 @@ export function emptyScene(finish: MatFinish = 'felt'): Scene {
     placed: [],
     loose: [],
     held: [],
+    heldLift: { offsetPx: 8, scale: 1.06 },
     completion: 0,
   };
 }

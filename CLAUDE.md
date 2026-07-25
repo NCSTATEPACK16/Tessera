@@ -27,6 +27,10 @@ Break any of these and something downstream breaks in a way that looks like a di
   derived summary state — progress %, combo, hints left, timer.
 - **Snap resolution asks a graph neighbour, never an absolute board position.** This is what makes
   free-floating islands work identically to placing on the board frame, with no special-case code.
+  The single exception is the board frame itself, because cluster 0 starts empty and a piece with no
+  placed neighbour would otherwise be unplaceable: a piece may also resolve against **its own slot**,
+  and only that. It loses every tie to a real neighbour, and it is the only absolute-position test in
+  the codebase — `SnapOptions.boardFrame`.
 - **Every piece placement goes through the union-find.** Merging with cluster 0 is what "placed"
   means; completion is `cluster0.pieceIds.length === N` and nothing else.
 - **Snap tolerance is always world-space**, so zoom never changes difficulty.
@@ -68,6 +72,15 @@ src/
             cutter.ts                 orchestrator, thread-agnostic
             cutter.worker.ts          transport shell only
             cut-client.ts             main-thread front door
+  board/    board.ts                  clusters, union-find, cluster 0
+            snap.ts                   resolution over graph neighbours
+            settle.ts                 the spring, and reduced motion
+            hit-test.ts               spatial hash + point-in-outline
+  input/    pointer.ts                the pointer machine, DOM-free
+            board-controls.ts         listener shell, arbitration only
+  audio/    ladder.ts voices.ts       pitch ladder, three-layer voicing
+            bank.ts engine.ts         synthesised samples, Web Audio buses
+  play/     session.ts                board + snap + settle + scene
   render/   renderer.ts               draw(scene, camera) — the whole surface
             frame-scheduler.ts        invalidation; "idle draws nothing"
             camera.ts camera-controls.ts scene.ts mat.ts
@@ -76,7 +89,15 @@ test/                                 mirrors src/
 docs/                                 design documents — gitignored, local only
 ```
 
-All cutting logic lives in `cutter.ts`, not the worker, so it stays testable off-thread.
+All cutting logic lives in `cutter.ts`, not the worker, so it stays testable off-thread. The same
+split runs through step 2: everything with a decision in it is DOM-free and tested, and the files
+that touch the DOM or Web Audio (`board-controls.ts`, `engine.ts`) are thin enough to judge by hand —
+which is the only way snap feel can be judged anyway.
+
+**The model is truth; the settle is presentation.** A snapped cluster merges into the board on the
+same tick as the release, and what springs over the next ~120ms is where the renderer *draws* it. The
+alternative — merging when the animation ends — lets a dropped frame or a backgrounded tab leave the
+board disagreeing with itself.
 
 ## Hard numbers
 
@@ -93,7 +114,7 @@ Do not drift from these without changing the design doc first.
 | Snap tolerance | 0.18 / 0.28 / 0.40 × piece size (Precise / Standard / Generous), 12° in Rotation |
 | Snap spring | stiffness 520, damping 26, mass 1, integrated from release velocity |
 | Lift | scale 1.06, 8pt above the finger, never under it |
-| Zoom | 0.5× to 4×, rubber-banded; region lens unlocks above 1.5× |
+| Zoom | 0.5× to 4×, rubber-banded; region lens unlocks above 1.5×. **Relative to the fitted board — 1× is the board filling the viewport.** `camera.zoom` itself is screen px per world unit, so clamping it to these numbers directly means "pieces are four pixels across" |
 | Bloom / hint / X-Ray | 0.90 max / 0.55 peak / 0.35 dim |
 | Save | IndexedDB, debounced 800ms + synchronous write on `visibilitychange` |
 | Touch target | 44pt floor, everywhere |
