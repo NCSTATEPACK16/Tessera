@@ -1,0 +1,114 @@
+@import 'tailwindcss';
+
+/*
+ * The §13 token set, stated once.
+ *
+ * Both forms are here deliberately. `@theme` generates Tailwind utilities for
+ * the chrome; the plain custom properties under `:root` are what the canvas
+ * reads — `src/render/mat.ts` and the piece drawing have no idea Tailwind
+ * exists and must never acquire one, because the renderer is the seam a WebGL
+ * backend slots into (§03). Tailwind's `@theme` emits the same variables at
+ * `:root`, so this is one source of truth with two consumers, not two sets.
+ *
+ * "Seven sizes only. Nothing off-scale ships."
+ */
+
+@theme {
+  --color-mat-void: #0b0d10;
+  --color-mat-felt: #15181d;
+  --color-mat-raised: #1e232a;
+  --color-edge-hair: #2c333c;
+  --color-ink-primary: #edf0f4;
+  --color-ink-muted: #8a929e;
+
+  /* Extraction lands at step 4 (§13). Until then everything runs on the
+     fallback, which is also what an empty library and a first run get. */
+  --color-accent: #6fa8ff;
+  --color-accent-bloom: #6fa8ff;
+  --color-accent-tray: #6fa8ff;
+  --color-accent-fallback: #6fa8ff;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 24px;
+  --spacing-6: 40px;
+  --spacing-7: 64px;
+
+  --text-1: 12px;
+  --text-2: 14px;
+  --text-3: 16px;
+  --text-4: 20px;
+  --text-5: 28px;
+  --text-6: 40px;
+  --text-7: 64px;
+
+  --font-ui: 'Inter Tight', system-ui, sans-serif;
+  --font-data: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-display: 'Instrument Serif', Georgia, serif;
+
+  --ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+}
+
+:root {
+  /* Consumed by the canvas, which predates Tailwind and stays independent of it. */
+  --mat-void: #0b0d10;
+  --mat-felt: #15181d;
+  --mat-raised: #1e232a;
+  --edge-hair: #2c333c;
+  --ink-primary: #edf0f4;
+  --ink-muted: #8a929e;
+  --accent: #6fa8ff;
+  --accent-fallback: #6fa8ff;
+
+  /* §13: 44pt floor, everywhere. */
+  --touch-min: 44px;
+
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--mat-void);
+  color: var(--ink-primary);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every interactive element clears the touch floor without being asked. */
+button,
+[role='button'] {
+  min-height: var(--touch-min);
+  font-family: inherit;
+  touch-action: manipulation;
+}
+
+/*
+ * Reduced motion is honoured by the OS setting, not by a switch in here.
+ * §09 keeps the light bloom and the audio and drops only the movement — this
+ * rule covers the chrome; the board's half lives in `settle.ts`.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

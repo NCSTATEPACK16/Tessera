@@ -104,6 +104,35 @@ export class PointerMachine {
     return this.phase_ === 'dragging' ? this.pressedCluster : null;
   }
 
+  /**
+   * Take over a drag that began somewhere this machine was not listening — the
+   * tray (§06).
+   *
+   * A chip is DOM and the mat is canvas, but pulling a piece out of the tray is
+   * one continuous movement of one finger, and the player must never feel the
+   * seam. So the tray runs its own press threshold on the chip, decides the
+   * gesture is a drag, moves the piece onto the mat, and hands the *live*
+   * pointer here. From this call on it is an ordinary drag: the same
+   * arbitration, the same velocity window, the same release into the spring.
+   *
+   * Everything after adoption is deliberately unchanged, including that a second
+   * finger still wins for camera and drops the piece where it is.
+   */
+  adopt(sample: PointerSample, clusterId: number): boolean {
+    // A pointer already in play means the tray promoted during a two-finger
+    // gesture. Camera outranks a drag unconditionally (§05), so decline.
+    if (this.pointers.size > 0) return false;
+
+    this.pointers.set(sample.id, { x: sample.x, y: sample.y, t: sample.t });
+    this.activeId = sample.id;
+    this.pressedCluster = clusterId;
+    this.pressedAt = { x: sample.x, y: sample.y, t: sample.t };
+    this.history.length = 0;
+    this.history.push({ x: sample.x, y: sample.y, t: sample.t });
+    this.beginDrag();
+    return this.phase_ === 'dragging';
+  }
+
   down(sample: PointerSample): void {
     const existing = this.pointers.size;
     this.pointers.set(sample.id, { x: sample.x, y: sample.y, t: sample.t });

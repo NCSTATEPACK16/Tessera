@@ -2,8 +2,11 @@
 // accept the `test` block below.
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -16,6 +19,18 @@ export default defineConfig({
     // Real-hardware testing is a gate at every step, so the dev server must be
     // reachable from an iPad or iPhone on the same network.
     host: true,
+  },
+  build: {
+    rollupOptions: {
+      // Two pages, deliberately. `index.html` is the product; `dev.html` is the
+      // step-1/2 harness with every snap-tuning dial on it, and §17 budgets a
+      // week of tuning that must not be thrown away the moment chrome exists.
+      // The harness goes at step 5, not at step 3.
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        dev: fileURLToPath(new URL('./dev.html', import.meta.url)),
+      },
+    },
   },
   test: {
     environment: 'node',

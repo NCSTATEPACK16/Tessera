@@ -66,6 +66,8 @@ function session(onEvent?: (event: PlayEvent) => void): PlaySession {
     boardW: COLS,
     boardH: ROWS,
     pathScale: SCALE,
+    // These tests are about the mat. The tray has its own file.
+    startInTray: false,
     ...(onEvent ? { onEvent } : {}),
   });
   // Scatter, so only the adjacency a test sets up is ever in range.
