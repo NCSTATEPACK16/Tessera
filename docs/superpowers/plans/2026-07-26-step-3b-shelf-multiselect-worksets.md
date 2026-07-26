@@ -38,6 +38,8 @@ Every task's requirements implicitly include this section.
 | `src/tray/selection.ts` | `TraySelection` — the ordered selection set. DOM-free |
 | `src/play/workset.ts` | `WorksetStore`, `worksetBounds`, `escapedBounds`. DOM-free |
 | `src/play/layout.ts` | `gridLayout` — pull-out arrangement. DOM-free, pure |
+| `src/render/group-chip.ts` | `groupChipRect` — the chip's geometry, once, for both consumers |
+| `test/render/group-chip.test.ts` | |
 | `src/ui/Shelf.tsx` | The pinned row |
 | `src/ui/SelectionBar.tsx` | Select-mode action bar |
 | `test/tray/selection.test.ts` | |
@@ -1565,7 +1567,125 @@ And in `emptyScene`, add `groups: [],` after `loose: [],`.
 Run: `npm run typecheck`
 Expected: FAIL, listing each `Scene` literal missing `groups`. Fix each by adding `groups: []` (or the real value, in `PlaySession.scene`).
 
-- [ ] **Step 3: Draw them**
+- [ ] **Step 3: One source of chip geometry**
+
+The chip is drawn by the renderer and hit-tested by the runtime. Canvas keeps no retained scene graph to ask, so without a shared function the two compute the same rect independently — and independently is how the drawn chip and its tap target drift apart. Extract it now, before either consumer exists.
+
+Create `test/render/group-chip.test.ts`:
+
+```ts
+/**
+ * The group chip's geometry, in one place.
+ *
+ * Two consumers — `Renderer.drawGroupChips` draws it, `PlayRuntime.groupChipAt`
+ * hit-tests it — and canvas has no retained scene graph for the second to ask
+ * the first. Two independent copies of this arithmetic drift, and the symptom is
+ * a tap target that does not match the thing under the finger.
+ *
+ * Pure, and the text measurer is injected, so it is testable without a canvas.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { GROUP_CHIP, groupChipRect, groupChipText } from '@/render/group-chip';
+
+/** A stub measurer: every glyph is 7px wide. */
+const measure = (text: string): number => text.length * 7;
+
+describe('groupChipText', () => {
+  it('marks a collapsed group, because the chip is then the whole group', () => {
+    expect(groupChipText('the roof', false)).toBe('the roof');
+    expect(groupChipText('the roof', true)).toBe('the roof ⌄');
+  });
+});
+
+describe('groupChipRect', () => {
+  it('sits above its anchor, clear of the outline', () => {
+    const rect = groupChipRect('Set 1', false, { x: 100, y: 200 }, measure);
+
+    expect(rect.x).toBe(100);
+    expect(rect.y).toBe(200 - GROUP_CHIP.height - GROUP_CHIP.gap);
+    expect(rect.h).toBe(GROUP_CHIP.height);
+  });
+
+  it('is as wide as its text plus padding on both sides', () => {
+    const rect = groupChipRect('Set 1', false, { x: 0, y: 0 }, measure);
+
+    expect(rect.w).toBe(measure('Set 1') + GROUP_CHIP.padX * 2);
+  });
+
+  it('grows for the collapsed glyph — the tap target must not lag the chip', () => {
+    const open = groupChipRect('Set 1', false, { x: 0, y: 0 }, measure);
+    const shut = groupChipRect('Set 1', true, { x: 0, y: 0 }, measure);
+
+    expect(shut.w).toBeGreaterThan(open.w);
+  });
+});
+```
+
+Run: `npx vitest run test/render/group-chip.test.ts` → FAIL, cannot resolve `@/render/group-chip`.
+
+Create `src/render/group-chip.ts`:
+
+```ts
+/**
+ * The group chip's geometry — §05's "mono label chip".
+ *
+ * Lives alone because it has two consumers that cannot ask each other:
+ * `Renderer.drawGroupChips` draws the chip, and `PlayRuntime.groupChipAt`
+ * hit-tests it. Canvas retains no scene graph, so the second cannot query the
+ * first, and two independent copies of this arithmetic drift — the symptom being
+ * a tap target that no longer matches the thing under the finger, which is
+ * invisible until someone changes the padding.
+ *
+ * The text measurer is injected rather than imported: the renderer passes its
+ * live `ctx.measureText`, the runtime passes a cached one, and the tests pass a
+ * stub — which is what keeps this file testable in a node environment.
+ *
+ * Screen pixels throughout. A chip that scaled with zoom would be unreadable at
+ * 0.5× and absurd at 4×; it is chrome *about* the group, not a thing lying on
+ * the mat.
+ */
+
+import type { Point, Rect } from '@/core/geom';
+
+export const GROUP_CHIP = {
+  height: 22,
+  padX: 8,
+  /** Clearance between the chip's underside and the group's outline. */
+  gap: 4,
+  radius: 6,
+  /**
+   * Canvas `ctx.font` does not resolve CSS custom properties — a `var()` here
+   * falls back to the default font silently, with no error. So the mono stack is
+   * named directly, and §13's token rule does not reach into the canvas.
+   */
+  font: '11px ui-monospace, monospace',
+} as const;
+
+/** What the chip reads. A collapsed group is *only* its chip, so it says so. */
+export function groupChipText(label: string, collapsed: boolean): string {
+  return collapsed ? `${label} ⌄` : label;
+}
+
+/** The chip's screen rect, anchored to the top-left of the group's bounds. */
+export function groupChipRect(
+  label: string,
+  collapsed: boolean,
+  anchor: Point,
+  measure: (text: string) => number,
+): Rect {
+  return {
+    x: anchor.x,
+    y: anchor.y - GROUP_CHIP.height - GROUP_CHIP.gap,
+    w: measure(groupChipText(label, collapsed)) + GROUP_CHIP.padX * 2,
+    h: GROUP_CHIP.height,
+  };
+}
+```
+
+Run: `npx vitest run test/render/group-chip.test.ts` → PASS (4 tests).
+
+- [ ] **Step 4: Draw them**
 
 In `src/render/renderer.ts`, extend `paintDynamic` so outlines go **under** the loose pieces and chips **over** them — one layer, correct z-order, no feature split across two canvases.
 
@@ -1631,7 +1751,7 @@ Add the two methods next to `drawBoardOutline`:
     if (groups.length === 0) return;
 
     ctx.save();
-    ctx.font = '11px ui-monospace, monospace';
+    ctx.font = GROUP_CHIP.font;
     ctx.textBaseline = 'middle';
 
     for (const group of groups) {
@@ -1639,22 +1759,21 @@ Add the two methods next to `drawBoardOutline`:
         x: group.bounds.x,
         y: group.bounds.y,
       });
-      const text = group.collapsed ? `${group.label} ⌄` : group.label;
-      const w = ctx.measureText(text).width + 16;
-      const h = 22;
-      const x = at.x;
-      const y = at.y - h - 4;
+      const text = groupChipText(group.label, group.collapsed);
+      // The same function `PlayRuntime.groupChipAt` calls, so the tap target
+      // cannot drift from the thing under the finger.
+      const rect = groupChipRect(group.label, group.collapsed, at, (t) => ctx.measureText(t).width);
 
       ctx.fillStyle = 'rgba(20, 20, 22, 0.86)';
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(x, y, w, h, 6);
+      ctx.roundRect(rect.x, rect.y, rect.w, rect.h, GROUP_CHIP.radius);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = 'rgba(255, 255, 255, 0.82)';
-      ctx.fillText(text, x + 8, y + h / 2);
+      ctx.fillText(text, rect.x + GROUP_CHIP.padX, rect.y + rect.h / 2);
     }
     ctx.restore();
   }
@@ -1664,12 +1783,12 @@ Verified against the current file: `this.scene` (line 58), `this.camera` (line 5
 
 The chip font is plain `ui-monospace` rather than `var(--font-data)`: canvas `ctx.font` does not resolve CSS custom properties, and a `var()` there silently falls back to the default font with no error — exactly the kind of quiet wrongness §13's token rule is otherwise good at preventing.
 
-- [ ] **Step 4: Verify**
+- [ ] **Step 5: Verify**
 
 Run: `npm test && npm run typecheck`
 Expected: PASS, no type errors.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/render/scene.ts src/render/renderer.ts src/play/session.ts
@@ -1778,13 +1897,35 @@ Add the group-chip hit test. It mirrors `drawGroupChips` exactly — **if you ch
 
 ```ts
   /**
+   * A 2D context kept only to measure text.
+   *
+   * Built once and never drawn to. `groupChipRect` takes an injected measurer so
+   * it stays pure and testable; this is what the runtime injects, and the
+   * renderer injects its own live context instead.
+   */
+  private measurer: CanvasRenderingContext2D | null = null;
+
+  private measureChipText(text: string): number {
+    if (!this.measurer) {
+      const ctx = document.createElement('canvas').getContext('2d');
+      if (!ctx) return text.length * 7;
+      ctx.font = GROUP_CHIP.font;
+      this.measurer = ctx;
+    }
+    return this.measurer.measureText(text).width;
+  }
+
+  /**
    * The group chip under a screen point, or null.
    *
-   * The first non-piece hit target in the app. Its geometry is a copy of
-   * `Renderer.drawGroupChips` — canvas has no retained scene graph to ask, so the
-   * two must be changed together. A DOM chip would avoid the duplication and
-   * re-render the tray sixty times a second during a drag, which is precisely
-   * what keeping the board out of React was for.
+   * The first non-piece hit target in the app. Geometry comes from
+   * `groupChipRect`, the same function the renderer draws with — canvas retains
+   * no scene graph to ask, so a shared function is what keeps the tap target and
+   * the drawn chip from drifting apart.
+   *
+   * A DOM chip would avoid the question entirely and re-render the tray sixty
+   * times a second during a drag, which is precisely what keeping the board out
+   * of React was for.
    */
   groupChipAt(screen: Point): number | null {
     const session = this.session;
@@ -1795,11 +1936,15 @@ Add the group-chip hit test. It mirrors `drawGroupChips` exactly — **if you ch
         x: group.bounds.x,
         y: group.bounds.y,
       });
-      const w = group.label.length * 7 + 24;
-      const h = 22;
-      const x = at.x;
-      const y = at.y - h - 4;
-      if (screen.x >= x && screen.x <= x + w && screen.y >= y && screen.y <= y + h) {
+      const rect = groupChipRect(group.label, group.collapsed, at, (t) =>
+        this.measureChipText(t),
+      );
+      if (
+        screen.x >= rect.x &&
+        screen.x <= rect.x + rect.w &&
+        screen.y >= rect.y &&
+        screen.y <= rect.y + rect.h
+      ) {
         return group.id;
       }
     }
@@ -1816,7 +1961,7 @@ Add the group-chip hit test. It mirrors `drawGroupChips` exactly — **if you ch
   }
 ```
 
-> The width here is an approximation of `measureText`. That is acceptable for a hit target and not for drawing — note it in the comment so nobody "fixes" the renderer to match.
+> Both consumers now go through `groupChipRect`, so there is no approximation and no second copy of the padding to keep in step.
 
 Finally, in the runtime's release handling, add the shelf test. Find where 3a decides "released over the tray → return it" and narrow it:
 
