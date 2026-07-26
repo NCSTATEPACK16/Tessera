@@ -567,6 +567,9 @@ export class PlaySession {
       boardH: this.options.boardH,
       placed,
       loose,
+      // Real groups (worksets + islands) land in Task 8, which builds them from
+      // `this.worksets`. This task only carries the field through the contract.
+      groups: [],
       held,
       heldLift: { offsetPx: LIFT_PX, scale: LIFT_SCALE },
       completion: this.summary.completion,
