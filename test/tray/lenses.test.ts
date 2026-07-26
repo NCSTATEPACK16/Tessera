@@ -47,6 +47,7 @@ const ORDER = [13, 2, 19, 7, 0, 11, 4, 16, 9, 1, 18, 5, 12, 3, 17, 8, 14, 6, 10,
 const view = (overrides: Partial<LensView> = {}): LensView => ({
   region: null,
   recent: new Set<number>(),
+  pinned: new Set<number>(),
   ...overrides,
 });
 
@@ -157,5 +158,25 @@ describe('the Recent lens', () => {
     // 2 sits before 19 in ORDER; touching 19 last must not float it to the top.
     const shown = visible(ORDER, pieces, 'recent', null, view({ recent: new Set([19, 2]) }));
     expect(shown).toEqual([2, 19]);
+  });
+});
+
+describe('the shelf (pinned)', () => {
+  it('a pinned piece leaves every lens — the shelf is where it lives now', () => {
+    const pieces = build();
+    const v = view({ recent: new Set([13]), pinned: new Set([13]) });
+
+    for (const lens of LENSES) {
+      expect(visible(ORDER, pieces, lens, null, v), `${lens} showed a pinned piece`).not.toContain(
+        13,
+      );
+    }
+  });
+
+  it('pinning is still a filter, so the subsequence property holds', () => {
+    const pieces = build();
+    const out = visible(ORDER, pieces, 'all', null, view({ pinned: new Set([2, 7, 11]) }));
+
+    expect(isSubsequence(out, ORDER)).toBe(true);
   });
 });

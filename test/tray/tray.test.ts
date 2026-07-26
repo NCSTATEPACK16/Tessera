@@ -118,6 +118,46 @@ describe('TrayModel', () => {
       [...before].sort((a, b) => a - b),
     );
   });
+
+  it('the shelf is in canonical order, not pin order', () => {
+    const tray = model();
+    const first = tray.order[3]!;
+    const second = tray.order[1]!;
+
+    tray.pin(first);
+    tray.pin(second);
+
+    // Canonical, so the later-pinned piece comes first — the muscle memory §06
+    // protects does not stop applying because there are two chips instead of 200.
+    expect(tray.pinned).toEqual([second, first]);
+  });
+
+  it('a pinned piece is on the shelf and out of the grid', () => {
+    const tray = model();
+    const id = tray.order[0]!;
+    tray.pin(id);
+
+    expect(tray.pinned).toContain(id);
+    expect(tray.visible('all', null, null)).not.toContain(id);
+
+    tray.unpin(id);
+    expect(tray.visible('all', null, null)).toContain(id);
+  });
+
+  it('a piece that leaves the tray leaves the shelf, and does not come back pinned', () => {
+    const locations = new Map<number, PieceLocation>();
+    const tray = model(locations);
+    const id = tray.order[0]!;
+
+    tray.pin(id);
+    locations.set(id, 'mat');
+    tray.unpin(id);
+
+    expect(tray.pinned).not.toContain(id);
+
+    locations.set(id, 'tray');
+    expect(tray.pinned).not.toContain(id);
+  });
 });
 
 describe('RecentPieces', () => {

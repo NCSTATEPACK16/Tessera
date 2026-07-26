@@ -57,6 +57,17 @@ export interface LensView {
   region: Rect | null;
   /** Membership only. Recency is not an order here — see `recent.ts`. */
   recent: ReadonlySet<PieceId>;
+  /**
+   * Pinned to the shelf (§06), and therefore out of every lens.
+   *
+   * The shelf "survives every lens", which means the shelf is a region rather
+   * than a filter — so a pinned chip is lifted out of the grid and rendered once,
+   * above it. Two copies of one chip would raise a question the player should
+   * never have to answer: which one am I dragging?
+   *
+   * This is still a filter and not a sort, so the subsequence property is intact.
+   */
+  pinned: ReadonlySet<PieceId>;
 }
 
 /**
@@ -85,6 +96,10 @@ export function visible(
 }
 
 function keeps(piece: LensPiece, lens: Lens, arg: number | null, view: LensView): boolean {
+  // Before everything, including Recent: the shelf is a region of the tray, and
+  // a piece cannot be in two regions at once.
+  if (view.pinned.has(piece.id)) return false;
+
   // Recent is the one lens that reaches onto the mat — finding a piece you put
   // down and lost is the entire reason it exists.
   if (lens === 'recent') return view.recent.has(piece.id);
