@@ -169,7 +169,72 @@ describe('returnToTray', () => {
 
     events.length = 0;
     play.returnToTray(clusterId);
-    expect(events).toEqual([{ type: 'return', pieceId }]);
+    expect(events).toEqual([{ type: 'return', pieceId, pinned: false }]);
+  });
+});
+
+describe('worksets', () => {
+  /** Three ids that are not graph neighbours of each other, laid out apart. */
+  const pulled = () => [id(0, 0), id(2, 0), id(1, 1)];
+  const spread = [
+    { x: 20, y: 20 },
+    { x: 24, y: 20 },
+    { x: 28, y: 20 },
+  ];
+
+  it('pull-out groups pieces without merging them', () => {
+    const play = session();
+    const group = play.pullOut(pulled(), spread);
+
+    expect(group).toBeGreaterThan(0);
+    // Three separate clusters, not one. A merge here is the silent bug this
+    // whole file exists to catch.
+    const [a, b] = pulled();
+    expect(play.board.clusterIdOf(a!)).not.toBe(play.board.clusterIdOf(b!));
+    expect(play.locationOf(a!)).toBe('mat');
+    expect(play.worksets.get(group)?.pieceIds).toHaveLength(3);
+  });
+
+  it('a piece merged into the board leaves its workset', () => {
+    const play = session();
+    const group = play.pullOut(pulled(), spread);
+    const [a] = pulled();
+
+    // Drop it exactly on its own slot: the board frame bootstraps cluster 0, so
+    // this places it.
+    const piece = play.board.piece(a!);
+    const cluster = play.board.clusterIdOf(a!);
+    play.grab(cluster);
+    play.board.moveCluster(cluster, piece.targetX, piece.targetY);
+    play.release(cluster, { x: 0, y: 0 });
+
+    expect(play.board.isPlaced(a!)).toBe(true);
+    expect(play.worksets.worksetOf(a!)).toBeUndefined();
+    expect(play.worksets.get(group)?.pieceIds).not.toContain(a);
+  });
+
+  it('a collapsed workset draws nothing and cannot be picked up', () => {
+    const play = session();
+    const group = play.pullOut(pulled(), spread);
+    play.setWorksetCollapsed(group, true);
+
+    const [a] = pulled();
+    expect(play.scene().loose.map((p) => p.id)).not.toContain(a);
+    expect(play.pickCluster({ x: 20.5, y: 20.5 })).toBeNull();
+  });
+
+  it('a pinned return puts the piece back in the tray, flagged', () => {
+    const seen: string[] = [];
+    const play = session((event) => {
+      if (event.type === 'return') seen.push(`${event.pieceId}:${event.pinned}`);
+    });
+
+    const a = id(0, 0);
+    const cluster = play.deploy(a, { x: 20, y: 20 })!;
+    play.returnToTray(cluster, true);
+
+    expect(play.locationOf(a)).toBe('tray');
+    expect(seen).toEqual([`${a}:true`]);
   });
 });
 

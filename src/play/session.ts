@@ -27,6 +27,7 @@ import type { SnapDifficulty } from '@/board/snap';
 import { createSettle } from '@/board/settle';
 import type { Pose, Settle } from '@/board/settle';
 import type { MatFinish, Scene, ScenePiece } from '@/render/scene';
+import { WORKSET_DROP_TOLERANCE, WorksetStore, escapedBounds, worksetBounds } from './workset';
 
 /** §05: the held cluster rides 8pt above the finger, never under it. */
 export const LIFT_PX = 8;
@@ -65,8 +66,10 @@ export type PlayEvent =
   | { type: 'complete' }
   /** A piece left the tray for the mat. */
   | { type: 'deploy'; pieceId: PieceId; clusterId: number }
-  /** …and went back. */
-  | { type: 'return'; pieceId: PieceId };
+  /** …and went back. `pinned` when it landed on the shelf rather than the grid. */
+  | { type: 'return'; pieceId: PieceId; pinned: boolean }
+  /** Membership or collapse changed; the chrome needs a repaint. */
+  | { type: 'worksetChanged' };
 
 export interface PlaySessionOptions {
   pieces: readonly SessionPiece[];
@@ -132,8 +135,20 @@ export class PlaySession {
    * into `scene().loose` and the piece draws itself into its own slot, so the
    * puzzle appears to solve itself. `rebuild`, `scene`, and `contentBounds` all
    * consult this set, and a test asserts a full tray renders nothing.
+   *
+   * Two predicates gate the mat: `inTray` and `worksets.isHidden`. Both are
+   * consulted in `rebuild`, `scene`, and `contentBounds`, and honouring one
+   * without the other is how the board comes to disagree with itself.
    */
   private readonly inTray = new Set<PieceId>();
+
+  /**
+   * §06's pull-out groups. Deliberately *not* clusters — see `workset.ts`.
+   *
+   * `board.ts` and `snap.ts` know nothing about this. It is consulted here, in
+   * `scene()` and `rebuild()`, and nowhere else in the model.
+   */
+  readonly worksets = new WorksetStore();
 
   private held: number | null = null;
   private pickSequence = 1;
@@ -234,6 +249,7 @@ export class PlaySession {
       // nothing — but it would also make a *full* tray read as "the board is the
       // content", which is right by accident rather than by decision.
       if (this.inTray.has(piece.id)) continue;
+      if (this.worksets.isHidden(piece.id)) continue;
       const origin = this.board.worldOf(piece.id);
       if (origin.x < minX) minX = origin.x;
       if (origin.y < minY) minY = origin.y;
@@ -253,6 +269,9 @@ export class PlaySession {
       if (this.board.isPlaced(piece.id)) continue;
       // Tray pieces likewise — they are not on the mat to be touched.
       if (this.inTray.has(piece.id)) continue;
+      // A collapsed group's members are not drawn, so they must not be pickable
+      // either — index one without drawing it and the player grabs thin air.
+      if (this.worksets.isHidden(piece.id)) continue;
       targets.push(this.hitPiece(piece.id));
     }
     this.index.rebuild(targets);
@@ -296,13 +315,92 @@ export class PlaySession {
   }
 
   /**
+   * Deploy several pieces at once, each onto its own origin.
+   *
+   * Returns the ids that actually left the tray — a piece already on the mat is
+   * skipped rather than moved, which keeps a double-fired pull-out harmless.
+   */
+  deployMany(pieceIds: readonly PieceId[], origins: readonly Point[]): PieceId[] {
+    const taken: PieceId[] = [];
+
+    pieceIds.forEach((pieceId, index) => {
+      const origin = origins[index];
+      if (!origin) return;
+      if (!this.inTray.delete(pieceId)) return;
+
+      const clusterId = this.board.clusterIdOf(pieceId);
+      this.board.moveCluster(clusterId, origin.x, origin.y);
+      taken.push(pieceId);
+      this.emit({ type: 'deploy', pieceId, clusterId });
+    });
+
+    if (taken.length > 0) this.rebuild();
+    return taken;
+  }
+
+  /**
+   * §06's pull-out: deploy the selection and group it under one label.
+   *
+   * Returns the workset id, or -1 when fewer than two pieces made it out. It
+   * **never merges** — the pieces are laid out in a grid, so their relative
+   * offsets are wrong by construction and a union-find merge would hand
+   * `resolveSnap` geometry that quietly resolves against nothing real.
+   */
+  pullOut(pieceIds: readonly PieceId[], origins: readonly Point[]): number {
+    const taken = this.deployMany(pieceIds, origins);
+    const id = this.worksets.create(taken);
+    if (id !== -1) this.emit({ type: 'worksetChanged' });
+    return id;
+  }
+
+  setWorksetCollapsed(worksetId: number, collapsed: boolean): void {
+    this.worksets.setCollapsed(worksetId, collapsed);
+    this.rebuild();
+    this.emit({ type: 'worksetChanged' });
+  }
+
+  /** A piece's world box — what the group outline is built from. */
+  boxOf(pieceId: PieceId): Rect | null {
+    if (this.inTray.has(pieceId)) return null;
+    const origin = this.board.worldOf(pieceId);
+    const piece = this.board.piece(pieceId);
+    return { x: origin.x, y: origin.y, w: piece.w, h: piece.h };
+  }
+
+  groupBounds(worksetId: number): Rect | null {
+    const group = this.worksets.get(worksetId);
+    if (!group) return null;
+    return worksetBounds(group.pieceIds, (id) => this.boxOf(id));
+  }
+
+  /**
+   * Drag a whole group by its label chip.
+   *
+   * A loop over members and nothing else, because a Workset stores no position
+   * of its own. There is no group frame to keep in step.
+   */
+  moveWorksetBy(worksetId: number, dx: number, dy: number): void {
+    const group = this.worksets.get(worksetId);
+    if (!group) return;
+
+    const moved = new Set<number>();
+    for (const pieceId of group.pieceIds) {
+      const clusterId = this.board.clusterIdOf(pieceId);
+      if (moved.has(clusterId)) continue;
+      moved.add(clusterId);
+      this.board.moveClusterBy(clusterId, dx, dy);
+      this.syncCluster(clusterId);
+    }
+  }
+
+  /**
    * Put a single piece back in the tray.
    *
    * Only ever a cluster of one. An island dropped on the tray is refused and
    * stays exactly where it was dropped (§05) — the tray is a list of pieces, and
    * §06 is explicit that islands live on the mat, not in it.
    */
-  returnToTray(clusterId: number): boolean {
+  returnToTray(clusterId: number, pin = false): boolean {
     if (clusterId === BOARD_CLUSTER) return false;
     const cluster = this.board.cluster(clusterId);
     if (cluster.pieceIds.length !== 1) return false;
@@ -311,9 +409,11 @@ export class PlaySession {
     if (this.held === clusterId) this.held = null;
     this.cancelSettlesFor(clusterId);
     this.inTray.add(pieceId);
+    // Back in the tray is out of the group. One of the three exits in §06.
+    this.worksets.remove(pieceId);
     this.rebuild();
 
-    this.emit({ type: 'return', pieceId });
+    this.emit({ type: 'return', pieceId, pinned: pin });
     return true;
   }
 
@@ -367,11 +467,32 @@ export class PlaySession {
         this.startSettle(pieceIds, local, from, { ...from, y: cluster.y }, { x: 0, y: 0 });
       }
       this.syncCluster(clusterId);
+
+      // §06's third exit: released clear of its group's box, the piece leaves it.
+      // World-space, so zooming in has not changed what counts as leaving.
+      for (const pieceId of pieceIds) {
+        const group = this.worksets.worksetOf(pieceId);
+        if (!group) continue;
+        const others = group.pieceIds.filter((id) => id !== pieceId);
+        const bounds = worksetBounds(others, (id) => this.boxOf(id));
+        const box = this.boxOf(pieceId);
+        if (!bounds || !box) continue;
+        if (escapedBounds(box, bounds, WORKSET_DROP_TOLERANCE)) {
+          this.worksets.remove(pieceId);
+          this.emit({ type: 'worksetChanged' });
+        }
+      }
+
       this.emit({ type: 'miss' });
       return;
     }
 
     const result = applySnap(this.board, clusterId, candidate, this.snapOptions());
+
+    // Merged is out of the group (§06). Done here rather than in `board.ts`,
+    // which must stay unaware that Worksets exist at all.
+    for (const pieceId of pieceIds) this.worksets.remove(pieceId);
+    this.emit({ type: 'worksetChanged' });
 
     // Where that frame ended up. Read back from a piece rather than re-derived,
     // so the spring lands on whatever the union-find actually decided.
@@ -425,6 +546,8 @@ export class PlaySession {
       // The tray is not the mat. A piece here would draw itself sitting in its
       // own slot, and the board would look solved before it was touched.
       if (this.inTray.has(piece.id)) continue;
+      // Collapsed to the chip, to reclaim mat space (§05).
+      if (this.worksets.isHidden(piece.id)) continue;
 
       const scenePiece = posed.get(piece.id) ?? this.scenePiece(piece.id);
       if (this.held !== null && this.board.clusterIdOf(piece.id) === this.held) {
