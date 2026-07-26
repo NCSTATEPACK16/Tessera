@@ -26,7 +26,7 @@ import { SNAP_TOLERANCE, applySnap, resolveSnap } from '@/board/snap';
 import type { SnapDifficulty } from '@/board/snap';
 import { createSettle } from '@/board/settle';
 import type { Pose, Settle } from '@/board/settle';
-import type { MatFinish, Scene, ScenePiece } from '@/render/scene';
+import type { MatFinish, Scene, SceneGroup, ScenePiece } from '@/render/scene';
 import { WORKSET_DROP_TOLERANCE, WorksetStore, escapedBounds, worksetBounds } from './workset';
 
 /** §05: the held cluster rides 8pt above the finger, never under it. */
@@ -540,6 +540,21 @@ export class PlaySession {
     const loose: ScenePiece[] = [];
     const held: ScenePiece[] = [];
 
+    const groups: SceneGroup[] = [];
+    for (const group of this.worksets.all()) {
+      const bounds = worksetBounds(group.pieceIds, (id) => this.boxOf(id));
+      if (!bounds) continue;
+      groups.push({
+        id: group.id,
+        label: group.label,
+        collapsed: group.collapsed,
+        // A collapsed group has no drawn members, so its box is the chip's
+        // anchor and nothing more — the outline shrinks to the label.
+        bounds: group.collapsed ? { ...bounds, w: 0, h: 0 } : bounds,
+        kind: 'workset',
+      });
+    }
+
     const posed = this.settlingPoses();
 
     for (const piece of this.board.pieces) {
@@ -567,9 +582,7 @@ export class PlaySession {
       boardH: this.options.boardH,
       placed,
       loose,
-      // Real groups (worksets + islands) land in Task 8, which builds them from
-      // `this.worksets`. This task only carries the field through the contract.
-      groups: [],
+      groups,
       held,
       heldLift: { offsetPx: LIFT_PX, scale: LIFT_SCALE },
       completion: this.summary.completion,

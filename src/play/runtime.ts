@@ -18,6 +18,7 @@ import type { CutPiece, PieceId } from '@/cut/types';
 import type { SnapDifficulty } from '@/board/snap';
 import { AudioEngine } from '@/audio/engine';
 import { BoardControls } from '@/input/board-controls';
+import { gridLayout } from '@/play/layout';
 import { PlaySession } from '@/play/session';
 import type { PlayEvent } from '@/play/session';
 import { TrayModel } from '@/tray/tray';
@@ -30,8 +31,10 @@ import {
   relativeZoom,
   screenToWorld,
   visibleWorldBounds,
+  worldToScreen,
 } from '@/render/camera';
 import type { Camera } from '@/render/camera';
+import { GROUP_CHIP, groupChipRect } from '@/render/group-chip';
 import { Renderer } from '@/render/renderer';
 import { emptyScene } from '@/render/scene';
 import type { Scene, ScenePiece } from '@/render/scene';
@@ -68,6 +71,13 @@ export interface PlayRuntimeOptions {
   sound?: boolean;
   /** Viewport coordinates over the tray, so a drop there goes back into it. */
   isOverTray?: (client: Point) => boolean;
+  /**
+   * Viewport coordinates over the shelf (§06), so a drop there pins rather than
+   * just returning. A predicate, like `isOverTray`, because only React knows
+   * where its own elements are — the board's release path stays unaware a shelf
+   * exists, and `board-controls.ts` gains nothing.
+   */
+  isOverShelf?: (client: Point) => boolean;
   /** The tray collapses to peek while a piece is out of it (§06). */
   onDragStateChange?: (dragging: boolean) => void;
   notify: (summary: RuntimeSummary) => void;
@@ -94,6 +104,25 @@ export class PlayRuntime {
   private lastFrameMs = 0;
   private regionTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
+
+  /**
+   * How much of the canvas the chrome is sitting on top of, in CSS pixels.
+   *
+   * The docked tray is a flex sibling and takes its width out of the canvas, so
+   * it contributes nothing here. The iPhone sheet is a fixed overlay *across* the
+   * canvas, so it contributes its height — and getting this wrong deals every
+   * pulled-out piece behind the sheet, where a drop returns it to the tray.
+   */
+  private insets = { left: 0, right: 0, top: 0, bottom: 0 };
+
+  /**
+   * A 2D context kept only to measure text.
+   *
+   * Built once and never drawn to. `groupChipRect` takes an injected measurer so
+   * it stays pure and testable; this is what the runtime injects, and the
+   * renderer injects its own live context instead.
+   */
+  private measurer: CanvasRenderingContext2D | null = null;
 
   private readonly summary: RuntimeSummary = {
     status: 'cutting',
@@ -218,6 +247,10 @@ export class PlayRuntime {
     }
 
     this.tray?.touch(pieceId);
+    // Pin is a tray-only attribute and is cleared on deploy (spec §3). A piece
+    // dragged to the mat is simply on the mat, and returning it does not
+    // restore the pin — one less piece of state to keep coherent.
+    this.tray?.unpin(pieceId);
     this.options.onDragStateChange?.(true);
     this.bumpTray();
     this.wake();
@@ -236,10 +269,115 @@ export class PlayRuntime {
     this.scheduleRegion();
   }
 
+  setTrayInsets(insets: { left: number; right: number; top: number; bottom: number }): void {
+    this.insets = insets;
+  }
+
+  /** The part of the mat the player can actually see and reach, in world units. */
+  safeWorldRect(): Rect {
+    const size = this.viewport;
+    const topLeft = screenToWorld(this.camera, size, {
+      x: this.insets.left,
+      y: this.insets.top,
+    });
+    const bottomRight = screenToWorld(this.camera, size, {
+      x: size.w - this.insets.right,
+      y: size.h - this.insets.bottom,
+    });
+    return {
+      x: topLeft.x,
+      y: topLeft.y,
+      w: bottomRight.x - topLeft.x,
+      h: bottomRight.y - topLeft.y,
+    };
+  }
+
+  /**
+   * §06's pull-out. Lays the selection out on the safe rect and groups it.
+   *
+   * Not a drag: this is a button press, so no pointer is adopted and nothing is
+   * handed to `BoardControls`. The pieces simply arrive, already workable.
+   */
+  pullOut(pieceIds: readonly PieceId[]): number {
+    const session = this.session;
+    if (!session || pieceIds.length < 2) return -1;
+
+    const first = pieceIds[0]!;
+    const piece = session.board.piece(first);
+    const origins = gridLayout(pieceIds.length, piece.w, piece.h, this.safeWorldRect());
+
+    const id = session.pullOut(pieceIds, origins);
+    for (const pieceId of pieceIds) {
+      this.tray?.touch(pieceId);
+      // Pin is a tray-only attribute and is cleared on deploy (spec §3). A piece
+      // dragged to the mat is simply on the mat, and returning it does not
+      // restore the pin — one less piece of state to keep coherent.
+      this.tray?.unpin(pieceId);
+    }
+    this.bumpTray();
+    this.wake();
+    return id;
+  }
+
+  /**
+   * The group chip under a screen point, or null.
+   *
+   * The first non-piece hit target in the app. Geometry comes from
+   * `groupChipRect`, the same function the renderer draws with — canvas retains
+   * no scene graph to ask, so a shared function is what keeps the tap target and
+   * the drawn chip from drifting apart.
+   *
+   * A DOM chip would avoid the question entirely and re-render the tray sixty
+   * times a second during a drag, which is precisely what keeping the board out
+   * of React was for.
+   */
+  groupChipAt(screen: Point): number | null {
+    const session = this.session;
+    if (!session) return null;
+
+    for (const group of session.scene().groups) {
+      const at = worldToScreen(this.camera, this.viewport, {
+        x: group.bounds.x,
+        y: group.bounds.y,
+      });
+      const rect = groupChipRect(group.label, group.collapsed, at, (t) =>
+        this.measureChipText(t),
+      );
+      if (
+        screen.x >= rect.x &&
+        screen.x <= rect.x + rect.w &&
+        screen.y >= rect.y &&
+        screen.y <= rect.y + rect.h
+      ) {
+        return group.id;
+      }
+    }
+    return null;
+  }
+
+  toggleGroupCollapsed(id: number): void {
+    const session = this.session;
+    const group = session?.worksets.get(id);
+    if (!session || !group) return;
+    session.setWorksetCollapsed(id, !group.collapsed);
+    this.bumpTray();
+    this.wake();
+  }
+
   // -------------------------------------------------------------------------
 
   private get viewport(): Size {
     return this.renderer.size;
+  }
+
+  private measureChipText(text: string): number {
+    if (!this.measurer) {
+      const ctx = document.createElement('canvas').getContext('2d');
+      if (!ctx) return text.length * 7;
+      ctx.font = GROUP_CHIP.font;
+      this.measurer = ctx;
+    }
+    return this.measurer.measureText(text).width;
   }
 
   private build(cut: CutPiece[]): void {
@@ -282,7 +420,11 @@ export class PlayRuntime {
         if (!this.options.isOverTray?.(client)) return false;
         // Aimed at the tray, so it goes back in. This is not bounce-back — the
         // player chose a destination and the piece went there.
-        const returned = session.returnToTray(clusterId);
+        // Pinning is that same test, one region smaller (§06). The board's
+        // release path stays unaware a shelf exists; `board-controls.ts` gains
+        // nothing.
+        const pin = this.options.isOverShelf?.(client) ?? false;
+        const returned = session.returnToTray(clusterId, pin);
         if (returned) this.bumpTray();
         return returned;
       },
