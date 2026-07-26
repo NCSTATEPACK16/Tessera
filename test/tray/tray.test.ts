@@ -144,18 +144,37 @@ describe('TrayModel', () => {
     expect(tray.visible('all', null, null)).toContain(id);
   });
 
-  it('a piece that leaves the tray leaves the shelf, and does not come back pinned', () => {
+  it('a piece that leaves the tray leaves the shelf, without calling unpin', () => {
     const locations = new Map<number, PieceLocation>();
     const tray = model(locations);
     const id = tray.order[0]!;
 
     tray.pin(id);
     locations.set(id, 'mat');
-    tray.unpin(id);
 
+    // No unpin call: the getter's own live-location filter must be what hides
+    // it, not a prior unpin. This is the assertion that catches deleting the
+    // `&& this.options.locationOf(id) === 'tray'` clause from the getter.
     expect(tray.pinned).not.toContain(id);
 
+    // Moving it back to 'tray' makes it reappear, because `pinned_` still holds
+    // the id — nothing here has cleared it. That is correct for this class in
+    // isolation: clearing the pin on deploy is Task 8's job, in
+    // `PlayRuntime.onPlayEvent`, not this getter's. Asserting the opposite would
+    // require TrayModel to duplicate that responsibility.
     locations.set(id, 'tray');
+    expect(tray.pinned).toContain(id);
+  });
+
+  it('pin() silently rejects a piece that is not in the tray', () => {
+    const locations = new Map<number, PieceLocation>();
+    const tray = model(locations);
+    const id = tray.order[0]!;
+
+    locations.set(id, 'mat');
+    tray.pin(id);
+
+    expect(tray.isPinned(id)).toBe(false);
     expect(tray.pinned).not.toContain(id);
   });
 });
