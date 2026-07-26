@@ -31,6 +31,14 @@ Break any of these and something downstream breaks in a way that looks like a di
   placed neighbour would otherwise be unplaceable: a piece may also resolve against **its own slot**,
   and only that. It loses every tie to a real neighbour, and it is the only absolute-position test in
   the codebase — `SnapOptions.boardFrame`.
+- **Only clusters on the mat may be snapped to** — `SnapOptions.eligible`. A piece waiting in the
+  tray has never been moved, so it is still parked on its own solved slot, which makes it the *best*
+  neighbour for anything dropped near where it belongs. Without this the first placement of every
+  puzzle merges with a tray piece instead of the board: no error, nothing drawn differently, and the
+  tray and the board silently disagree about who owns that piece.
+- **The tray is home; the mat is where you work.** A piece is in exactly one of `tray`, `mat`, or
+  placed. `Board` knows nothing about the first two — to the union-find a tray piece is an ordinary
+  loose cluster of one, which is why adding the tray changed `board.ts` not at all.
 - **Every piece placement goes through the union-find.** Merging with cluster 0 is what "placed"
   means; completion is `cluster0.pieceIds.length === N` and nothing else.
 - **Snap tolerance is always world-space**, so zoom never changes difficulty.
@@ -41,7 +49,9 @@ Break any of these and something downstream breaks in a way that looks like a di
   pieces drawing the same edge.
 - **Cutting happens in a worker.** The main thread never blocks.
 - **Piece bitmaps are rasterised once** at `min(dpr, 2)` and never re-rasterised while zooming.
-- **Tray filters are lenses, never sorts.** The canonical order never reflows.
+- **Tray filters are lenses, never sorts.** The canonical order never reflows. Machine-checkable
+  form: **every lens's output is a subsequence of the canonical order**, asserted for all six in
+  `test/tray/lenses.test.ts`. There is no comparator in `lenses.ts` and there must never be one.
 - **No `localStorage` for session state** — IndexedDB only.
 - **No feedback may depend on a channel the web build lacks.** Haptics are an amplifier, never the
   carrier. The snap must feel complete on a silent device with no vibration.
@@ -78,21 +88,38 @@ src/
             hit-test.ts               spatial hash + point-in-outline
   input/    pointer.ts                the pointer machine, DOM-free
             board-controls.ts         listener shell, arbitration only
+            tray-drag.ts              the chip's press threshold, DOM-free
   audio/    ladder.ts voices.ts       pitch ladder, three-layer voicing
             bank.ts engine.ts         synthesised samples, Web Audio buses
-  play/     session.ts                board + snap + settle + scene
+  tray/     order.ts                  canonical order — seeded, never reflows
+            lenses.ts                 the lens filter; the invariant lives here
+            colour.ts                 OKLab, weighted k-means, six bins + mixed
+            recent.ts tray.ts         the twenty-ring, and the model over it
+  play/     session.ts                board + snap + settle + scene + tray/mat
+            runtime.ts                the whole board, mounted and pumped
   render/   renderer.ts               draw(scene, camera) — the whole surface
             frame-scheduler.ts        invalidation; "idle draws nothing"
             camera.ts camera-controls.ts scene.ts mat.ts
-  dev/      harness.ts                step 1-2 only, deleted at step 5
-test/                                 mirrors src/
+  ui/       App.tsx store.ts          React chrome; board never renders through it
+            Tray Sheet PieceGrid PieceChip LensChips TopBar ProgressRing
+            theme.css                 §13 tokens, once, for both consumers
+  main.tsx                            the product entry — index.html
+  dev/      harness.ts                steps 1-2 — dev.html, deleted at step 5
+test/                                 mirrors src/ — vitest, *.test.ts
+  browser/  *.spec.ts board-page.ts   playwright, the app in a real browser
 docs/                                 design documents — gitignored, local only
 ```
 
+Two pages. `index.html` is the product; `dev.html` keeps the step-2 harness with every snap-tuning
+dial on it, because §17 budgets a week on that tuning and chrome existing is no reason to throw it
+away. It goes at step 5.
+
 All cutting logic lives in `cutter.ts`, not the worker, so it stays testable off-thread. The same
-split runs through step 2: everything with a decision in it is DOM-free and tested, and the files
-that touch the DOM or Web Audio (`board-controls.ts`, `engine.ts`) are thin enough to judge by hand —
-which is the only way snap feel can be judged anyway.
+split runs through steps 2 and 3: everything with a decision in it is DOM-free and tested, and the
+files that touch the DOM, React, or Web Audio (`board-controls.ts`, `ui/`, `engine.ts`) are thin
+enough to judge by hand — which is the only way snap feel can be judged anyway. `vitest` runs in a
+node environment, so **DOM-free is the same word as tested**; anything with a real decision in it
+belongs on the tested side of that line.
 
 **The model is truth; the settle is presentation.** A snapped cluster merges into the board on the
 same tick as the release, and what springs over the next ~120ms is where the renderer *draws* it. The
@@ -122,8 +149,11 @@ Do not drift from these without changing the design doc first.
 ## Commands
 
 ```
-npm run dev        # dev harness, host-exposed for real-device testing
-npm test           # vitest
+npm run dev          # host-exposed for real-device testing
+                     #   /          the product — board and tray
+                     #   /dev.html  the step-2 harness and its tuning dials
+npm test             # vitest — pure functions, node environment
+npm run test:browser # playwright — the app, in a browser, dock and phone
 npm run typecheck
 npm run build
 ```
@@ -134,8 +164,40 @@ The cut is deterministic, so it is genuinely testable and the tests are worth tr
 identical geometry, tabs exactly reverse their sockets, piece aspect in band, graph symmetric,
 border unjittered. `test/cut/interlock.test.ts` is the load-bearing one.
 
-Snap *feel* is not testable. It is judged by hand on an iPad, and that is a real gate, not a
-formality — §17 budgets a week on it and says to spend it.
+The tray's lens engine is the same kind of testable, and `test/tray/lenses.test.ts` is its
+`interlock.test.ts`. Two others earn their keep: `test/play/tray-deploy.test.ts` catches the tray
+leaking into the scene, which would render a puzzle solved on the first frame with no error
+anywhere; and the forest case in `test/tray/colour.test.ts` is the one that told us a bare
+lightness weight cannot work — it passed at every setting until the axes were normalised.
+**A test that passes at both extremes of the constant it is guarding is not testing that constant.**
 
-Test on real hardware every step. The iPad Safari behaviours in the plan are not reproducible in
-Chrome devtools.
+### `npm run test:browser` is a gate, not an optional extra
+
+**Run it on every change, and without exception at the end of every step, before the PR.** A green
+`npm test` is not evidence the app works — it is 300-odd assertions about pure functions, and it
+stays green while the app fails to boot.
+
+Two things in this codebase are *only* observable in a browser, and both are top-line invariants:
+
+- **The board never re-renders through React.** `test/browser/invariants.spec.ts` counts DOM
+  mutations inside the tray during a camera gesture and a 60-frame drag. A re-render of the chip
+  grid is hundreds of mutations, so the answer is unambiguous rather than a matter of opinion.
+- **An idle board draws nothing at all.** Asserted against the harness's own `scheduled` readout.
+
+`@playwright/test` boots vite itself and runs `test/browser/*.spec.ts` over a dock viewport and a
+phone viewport. Vitest owns `*.test.ts`, Playwright owns `*.spec.ts`, and neither ever collects the
+other's files. **The Playwright version is pinned** because each release ties to one Chromium build;
+bump it deliberately and run `npx playwright install chromium` when you do.
+
+Writing browser tests here has one recurring trap, and it has caught every bad assertion so far:
+**the tray is virtualised and the sheet overlays the board.** Only ~70 of 250 chips are ever
+mounted, so counting chips measures the viewport; and on a phone the centre of the board canvas is
+underneath the sheet, so dropping there returns the piece to the tray. `BoardPage` in
+`test/browser/board-page.ts` exists to make both facts unavoidable — use `remaining()` and
+`matPoint()` rather than reaching past it.
+
+Snap *feel* is not testable, by Playwright or anything else. It is judged by hand on an iPad, and
+that is a real gate, not a formality — §17 budgets a week on it and says to spend it.
+
+Test on real hardware every step. Chromium on a desk is not iPad Safari, and the behaviours in the
+plan are not reproducible in Chrome devtools.

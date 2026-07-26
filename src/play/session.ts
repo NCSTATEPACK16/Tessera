@@ -46,12 +46,27 @@ export interface SessionPiece {
   bitmap: ImageBitmap;
 }
 
+/**
+ * Where a piece is (§06).
+ *
+ * `placed` is cluster 0 and nothing else — the board owns that and this file
+ * does not second-guess it. The tray/mat distinction is the one thing the board
+ * has no opinion about: to the union-find a tray piece is an ordinary loose
+ * cluster of one, which is exactly why adding the tray needed no change to
+ * `board.ts` at all.
+ */
+export type PieceLocation = 'tray' | 'mat' | 'placed';
+
 export type PlayEvent =
   | { type: 'grab'; clusterId: number }
   | { type: 'snap'; placed: boolean; mergedSize: number; mergedClusters: number }
   | { type: 'miss' }
   | { type: 'edgeFrame' }
-  | { type: 'complete' };
+  | { type: 'complete' }
+  /** A piece left the tray for the mat. */
+  | { type: 'deploy'; pieceId: PieceId; clusterId: number }
+  /** …and went back. */
+  | { type: 'return'; pieceId: PieceId };
 
 export interface PlaySessionOptions {
   pieces: readonly SessionPiece[];
@@ -68,6 +83,14 @@ export interface PlaySessionOptions {
   /** The Rotation modifier. Defaults OFF (§01). */
   rotation?: boolean;
   reducedMotion?: boolean;
+  /**
+   * Start every piece in the tray (§06). Defaults true — the tray is home.
+   *
+   * The dev harness sets it false: steps 1–2 scatter across the mat because
+   * judging the snap needs pieces to be *on* something, and that harness
+   * predates the tray by two steps.
+   */
+  startInTray?: boolean;
   onEvent?: (event: PlayEvent) => void;
 }
 
@@ -100,6 +123,17 @@ export class PlaySession {
   private readonly pickOrder = new Map<number, number>();
   private readonly settling: Settling[] = [];
   private readonly moving = new Set<PieceId>();
+  /**
+   * Pieces in the tray rather than on the mat.
+   *
+   * A tray piece's cluster still sits at `targetX/targetY` — its *solved*
+   * position — because nothing has moved it yet. That is harmless while the
+   * tray is honoured everywhere and catastrophic the moment it is not: one leak
+   * into `scene().loose` and the piece draws itself into its own slot, so the
+   * puzzle appears to solve itself. `rebuild`, `scene`, and `contentBounds` all
+   * consult this set, and a test asserts a full tray renders nothing.
+   */
+  private readonly inTray = new Set<PieceId>();
 
   private held: number | null = null;
   private pickSequence = 1;
@@ -121,6 +155,7 @@ export class PlaySession {
     for (const piece of options.pieces) {
       this.source.set(piece.id, piece);
       this.polygons.set(piece.id, polygonFromPath(piece.path, options.pathScale));
+      if (options.startInTray !== false) this.inTray.add(piece.id);
     }
     this.assertPathScale();
     this.rebuild();
@@ -195,6 +230,10 @@ export class PlaySession {
     let maxY = this.options.boardH;
 
     for (const piece of this.board.pieces) {
+      // A tray piece's cluster is parked on its own slot, so it would widen
+      // nothing — but it would also make a *full* tray read as "the board is the
+      // content", which is right by accident rather than by decision.
+      if (this.inTray.has(piece.id)) continue;
       const origin = this.board.worldOf(piece.id);
       if (origin.x < minX) minX = origin.x;
       if (origin.y < minY) minY = origin.y;
@@ -212,6 +251,8 @@ export class PlaySession {
       // Placed pieces are deliberately absent: the board is anchored, so one
       // finger on it must fall through to a camera pan rather than a dead drag.
       if (this.board.isPlaced(piece.id)) continue;
+      // Tray pieces likewise — they are not on the mat to be touched.
+      if (this.inTray.has(piece.id)) continue;
       targets.push(this.hitPiece(piece.id));
     }
     this.index.rebuild(targets);
@@ -220,6 +261,60 @@ export class PlaySession {
   pickCluster(world: Point): number | null {
     const hit = this.index.pick(world);
     return hit ? this.board.clusterIdOf(hit.id) : null;
+  }
+
+  // -------------------------------------------------------------------------
+  // The tray boundary (§06). The tray is home; the mat is where you work.
+
+  locationOf(pieceId: PieceId): PieceLocation {
+    if (this.board.isPlaced(pieceId)) return 'placed';
+    return this.inTray.has(pieceId) ? 'tray' : 'mat';
+  }
+
+  get trayCount(): number {
+    return this.inTray.size;
+  }
+
+  /**
+   * Take a piece out of the tray and put it on the mat, centred on `world`.
+   *
+   * Returns the cluster id so the caller can hand the live pointer straight to
+   * the board's drag — the whole gesture is one continuous movement of the
+   * finger and must not have a seam in it. Returns null if the piece is not in
+   * the tray, which is the honest answer to a double-fired pointer event.
+   */
+  deploy(pieceId: PieceId, world: Point): number | null {
+    if (!this.inTray.delete(pieceId)) return null;
+
+    const clusterId = this.board.clusterIdOf(pieceId);
+    const piece = this.board.piece(pieceId);
+    this.board.moveCluster(clusterId, world.x - piece.w / 2, world.y - piece.h / 2);
+    this.rebuild();
+
+    this.emit({ type: 'deploy', pieceId, clusterId });
+    return clusterId;
+  }
+
+  /**
+   * Put a single piece back in the tray.
+   *
+   * Only ever a cluster of one. An island dropped on the tray is refused and
+   * stays exactly where it was dropped (§05) — the tray is a list of pieces, and
+   * §06 is explicit that islands live on the mat, not in it.
+   */
+  returnToTray(clusterId: number): boolean {
+    if (clusterId === BOARD_CLUSTER) return false;
+    const cluster = this.board.cluster(clusterId);
+    if (cluster.pieceIds.length !== 1) return false;
+
+    const pieceId = cluster.pieceIds[0]!;
+    if (this.held === clusterId) this.held = null;
+    this.cancelSettlesFor(clusterId);
+    this.inTray.add(pieceId);
+    this.rebuild();
+
+    this.emit({ type: 'return', pieceId });
+    return true;
   }
 
   grab(clusterId: number): void {
@@ -327,6 +422,10 @@ export class PlaySession {
     const posed = this.settlingPoses();
 
     for (const piece of this.board.pieces) {
+      // The tray is not the mat. A piece here would draw itself sitting in its
+      // own slot, and the board would look solved before it was touched.
+      if (this.inTray.has(piece.id)) continue;
+
       const scenePiece = posed.get(piece.id) ?? this.scenePiece(piece.id);
       if (this.held !== null && this.board.clusterIdOf(piece.id) === this.held) {
         held.push(scenePiece);
@@ -357,8 +456,19 @@ export class PlaySession {
     return {
       tolerance: SNAP_TOLERANCE[this.options.difficulty ?? 'standard'],
       rotation: this.options.rotation ?? false,
+      // Tray pieces are parked on their own slots and would otherwise be the
+      // best neighbour on the board. See `SnapOptions.eligible`.
+      eligible: this.onMat,
     };
   }
+
+  /** Bound once: it is handed to snap resolution on every release. */
+  private readonly onMat = (clusterId: number): boolean => {
+    if (clusterId === BOARD_CLUSTER) return true;
+    const cluster = this.board.clusters.get(clusterId);
+    if (!cluster) return false;
+    return !cluster.pieceIds.some((id) => this.inTray.has(id));
+  };
 
   private startSettle(
     pieceIds: PieceId[],
@@ -453,7 +563,7 @@ export class PlaySession {
   private syncCluster(clusterId: number): void {
     if (!this.board.clusters.has(clusterId)) return;
     for (const id of this.board.cluster(clusterId).pieceIds) {
-      if (this.board.isPlaced(id)) continue;
+      if (this.board.isPlaced(id) || this.inTray.has(id)) continue;
       this.index.update(this.hitPiece(id));
     }
   }

@@ -105,6 +105,21 @@ export interface SnapOptions {
    * the mat — the two are deliberately not the same code path.
    */
   boardFrame?: boolean;
+  /**
+   * Which clusters are on the mat and may therefore be snapped to.
+   *
+   * Defaults to "all of them", which is what steps 1–2 meant. The tray at §06
+   * makes it necessary: a piece waiting in the tray has never been moved, so its
+   * cluster is still parked on its own solved slot — which makes it a *perfect*
+   * snap neighbour for anything dropped near where it belongs. Without this, the
+   * first piece placed on a fresh board silently merges with a tray piece and
+   * drags it into an island that the tray still lists and the renderer never
+   * draws. There is no error and no visible symptom until the counts disagree.
+   *
+   * Deliberately a predicate on cluster rather than a location enum: `snap.ts`
+   * has no business knowing what a tray is.
+   */
+  eligible?: (clusterId: number) => boolean;
 }
 
 /**
@@ -173,6 +188,8 @@ export function resolveSnap(
       if (options.targetClusterId !== undefined && neighbourCluster !== options.targetClusterId) {
         continue;
       }
+      // Not on the mat, not snappable. See `eligible` above.
+      if (options.eligible && !options.eligible(neighbourCluster)) continue;
 
       const target = board.cluster(neighbourCluster);
       const drot = rotation ? normaliseAngle(target.rot - dragged.rot) : 0;
@@ -337,6 +354,11 @@ function cascadeCandidate(
       const other = board.clusterIdOf(link.id);
       if (other === survivorId || seen.has(other)) continue;
       seen.add(other);
+      // The cascade drags the *neighbour* to the survivor, so an ineligible
+      // cluster has to be excluded here as a source as well as above as a
+      // target — otherwise a tray piece gets pulled onto the board by a
+      // placement it was never part of.
+      if (options.eligible && !options.eligible(other)) continue;
 
       const candidate = resolveSnap(board, other, { ...options, targetClusterId: survivorId });
       if (candidate && (best === null || candidate.error < best.candidate.error)) {

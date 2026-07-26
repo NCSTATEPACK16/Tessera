@@ -167,6 +167,10 @@ function buildSession(pieces: CutPiece[], boardW: number, boardH: number): PlayS
     boardW,
     boardH,
     pathScale,
+    // Steps 1–2 scatter everything across the mat, because judging the snap
+    // needs pieces to be *on* something. The tray (§06) is the product's model
+    // and lives in the shell at `/`; this page predates it by two steps.
+    startInTray: false,
     difficulty: difficulty(),
     rotation: ui.rotation.checked,
     reducedMotion: ui.reduced.checked,

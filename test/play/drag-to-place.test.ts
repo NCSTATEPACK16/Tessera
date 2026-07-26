@@ -66,6 +66,8 @@ function table() {
     boardW: COLS,
     boardH: ROWS,
     pathScale: SCALE,
+    // This file is about the mat gesture. The tray's half is in `tray-deploy`.
+    startInTray: false,
   });
 
   // Scatter well clear of the board, as a real session opens.

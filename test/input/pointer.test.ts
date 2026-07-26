@@ -248,3 +248,71 @@ describe('settling', () => {
     expect(log.grabs).toHaveLength(2);
   });
 });
+
+describe('adoption — a drag that began in the tray (§06)', () => {
+  it('enters dragging directly, without asking what is under the finger', () => {
+    // `pickCluster` would answer null here: the piece was placed on the mat a
+    // moment ago and the hit index may not have caught up within the frame.
+    // Adoption is told the cluster, which is the whole point of it.
+    const { machine, log } = harness({ pick: () => null });
+
+    expect(machine.adopt(at(1, 400, 300, 0), 12)).toBe(true);
+    expect(machine.phase).toBe('dragging');
+    expect(machine.heldCluster).toBe(12);
+    expect(log.grabs).toEqual([{ clusterId: 12, world: { x: 400, y: 300 } }]);
+  });
+
+  it('drags and releases exactly like a gesture that started on the mat', () => {
+    const { machine, log } = harness({ pick: () => null });
+    machine.adopt(at(1, 100, 100, 0), 12);
+    machine.move(at(1, 140, 130, 16));
+    machine.up(at(1, 160, 130, 32));
+
+    expect(log.drags).toEqual([{ clusterId: 12, dx: 40, dy: 30 }]);
+    expect(log.releases).toHaveLength(1);
+    expect(log.releases[0]!.clusterId).toBe(12);
+    expect(machine.phase).toBe('idle');
+  });
+
+  it('inherits release velocity, so a flicked piece still arrives hot', () => {
+    const { machine, log } = harness({ pick: () => null });
+    machine.adopt(at(1, 0, 0, 0), 3);
+    machine.move(at(1, 30, 0, 16));
+    machine.up(at(1, 60, 0, 32));
+
+    expect(log.releases[0]!.velocity.x).toBeGreaterThan(0);
+  });
+
+  it('declines while a finger is already down — camera outranks a drag', () => {
+    const { machine, log } = harness();
+    machine.down(at(1, 500, 500, 0));
+
+    expect(machine.adopt(at(2, 100, 100, 8), 12)).toBe(false);
+    expect(machine.heldCluster).toBeNull();
+    expect(log.grabs).toHaveLength(0);
+  });
+
+  it('lets a second finger take the piece off it, mid-adoption', () => {
+    const { machine, log } = harness({ pick: () => null });
+    machine.adopt(at(1, 100, 100, 0), 12);
+    machine.move(at(1, 140, 100, 16));
+
+    machine.down(at(2, 300, 300, 24));
+
+    expect(machine.phase).toBe('camera');
+    expect(machine.heldCluster).toBeNull();
+    // Let go where it was, never returned and never kept attached.
+    expect(log.releases).toHaveLength(1);
+    expect(log.camera).toEqual(['begin']);
+  });
+
+  it('lets go on an interrupt, like any other drag (§05)', () => {
+    const { machine, log } = harness({ pick: () => null });
+    machine.adopt(at(1, 100, 100, 0), 12);
+    machine.interrupt();
+
+    expect(machine.phase).toBe('idle');
+    expect(log.releases).toHaveLength(1);
+    expect(log.releases[0]!.velocity).toEqual({ x: 0, y: 0 });
+  });
+});

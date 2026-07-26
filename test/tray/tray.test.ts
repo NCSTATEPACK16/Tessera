@@ -1,0 +1,144 @@
+/**
+ * The tray model (§06).
+ *
+ * `a lens change never reflows the order` is the one that matters: it is §06's
+ * promise stated as a test, at the level a player would actually notice it —
+ * turn a filter on, turn it off, and everything is where you left it.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { TrayModel } from '@/tray/tray';
+import type { TrayPiece } from '@/tray/tray';
+import type { PieceLocation } from '@/tray/lenses';
+import { RECENT_LIMIT, RecentPieces } from '@/tray/recent';
+
+const COLS = 5;
+const ROWS = 4;
+const N = COLS * ROWS;
+
+function pieces(): TrayPiece[] {
+  return Array.from({ length: N }, (_, id) => {
+    const col = id % COLS;
+    const row = Math.floor(id / COLS);
+    return {
+      id,
+      isEdge: col === 0 || row === 0 || col === COLS - 1 || row === ROWS - 1,
+      isCorner: (col === 0 || col === COLS - 1) && (row === 0 || row === ROWS - 1),
+      meanColor: [20 + col * 40, 200 - row * 30, 60 + ((col + row) % 4) * 45] as [
+        number,
+        number,
+        number,
+      ],
+      colorVariance: 0.05,
+      targetX: col,
+      targetY: row,
+      worldW: 1,
+      worldH: 1,
+    };
+  });
+}
+
+function model(locations = new Map<number, PieceLocation>()): TrayModel {
+  return new TrayModel({
+    pieces: pieces(),
+    seed: 42,
+    locationOf: (id) => locations.get(id) ?? 'tray',
+  });
+}
+
+describe('TrayModel', () => {
+  it('a lens change never reflows the order', () => {
+    const tray = model();
+    const all = tray.visible('all', null, null);
+
+    const edges = tray.visible('edges', null, null);
+    tray.visible('corners', null, null);
+
+    expect(tray.visible('all', null, null)).toEqual(all);
+    // And the filtered view was drawn from the same order, in the same places.
+    expect(edges).toEqual(all.filter((id) => edges.includes(id)));
+  });
+
+  it('hides a piece the moment it goes to the mat and again when it is placed', () => {
+    const locations = new Map<number, PieceLocation>();
+    const tray = model(locations);
+
+    expect(tray.visible('all', null, null)).toHaveLength(N);
+    locations.set(7, 'mat');
+    expect(tray.visible('all', null, null)).toHaveLength(N - 1);
+    locations.set(7, 'placed');
+    expect(tray.visible('all', null, null)).toHaveLength(N - 1);
+  });
+
+  it('counts every lens for the chip row, and marks region locked', () => {
+    const counts = model().lensCounts(null);
+    const byLens = new Map(counts.map((entry) => [entry.lens, entry]));
+
+    expect(byLens.get('all')?.count).toBe(N);
+    expect(byLens.get('corners')?.count).toBe(4);
+    expect(byLens.get('region')?.enabled).toBe(false);
+    expect(byLens.get('edges')?.enabled).toBe(true);
+  });
+
+  it('unlocks region counts once a view rectangle exists', () => {
+    const counts = model().lensCounts({ x: 0, y: 0, w: 2, h: 2 });
+    const region = counts.find((entry) => entry.lens === 'region')!;
+    expect(region.enabled).toBe(true);
+    expect(region.count).toBe(4);
+  });
+
+  it('holds no selection of its own — the chrome store owns the lens', () => {
+    const tray = model() as unknown as Record<string, unknown>;
+    // Two homes for "which lens is active" means one of them is stale, and the
+    // stale one is always the one being rendered from.
+    expect(tray['lens']).toBeUndefined();
+    expect(tray['setLens']).toBeUndefined();
+  });
+
+  it('remembers what was touched and forgets what was placed', () => {
+    const locations = new Map<number, PieceLocation>();
+    const tray = model(locations);
+
+    tray.touch(3);
+    locations.set(3, 'mat');
+    expect(tray.visible('recent', null, null)).toEqual([3]);
+
+    tray.place(3);
+    expect(tray.visible('recent', null, null)).toEqual([]);
+  });
+
+  it('reorders only when the player asks', () => {
+    const tray = model();
+    const before = [...tray.order];
+    const moved = before[5]!;
+
+    tray.moveInOrder(moved, before[1]!);
+    expect(tray.order[1]).toBe(moved);
+    expect([...tray.order].sort((a, b) => a - b)).toEqual(
+      [...before].sort((a, b) => a - b),
+    );
+  });
+});
+
+describe('RecentPieces', () => {
+  it('holds twenty and evicts the oldest', () => {
+    const ring = new RecentPieces();
+    for (let i = 0; i < RECENT_LIMIT + 5; i++) ring.touch(i);
+
+    expect(ring.size).toBe(RECENT_LIMIT);
+    expect(ring.has(0)).toBe(false);
+    expect(ring.has(RECENT_LIMIT + 4)).toBe(true);
+  });
+
+  it('re-touching refreshes rather than duplicating', () => {
+    const ring = new RecentPieces();
+    for (let i = 0; i < RECENT_LIMIT; i++) ring.touch(i);
+
+    ring.touch(0);
+    ring.touch(999);
+
+    expect(ring.size).toBe(RECENT_LIMIT);
+    expect(ring.has(0)).toBe(true);
+    expect(ring.has(1)).toBe(false);
+  });
+});

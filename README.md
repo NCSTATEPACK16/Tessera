@@ -12,18 +12,23 @@ Web-first, built for iPad and iPhone touch from day one.
 
 ## Status
 
-**Step 2 of 9 — drag, snap, spring, audio.** The board is playable: pick a piece up, drop it near
-where it belongs, and it snaps. Still no product UI — that arrives with the tray at step 3.
+**Step 3a of 9 — the tray and its lenses.** There is a product now: a board with a tray beside it,
+docked on a tablet and a three-detent sheet on a phone. Pieces start in the tray, you drag them out
+onto the mat, and they snap with the step-2 spring and audio intact.
 
-Step 2 is not *finished* until it has been tuned by hand on an iPad, which the design doc budgets a
-week for and treats as a real gate: **the snap must feel complete with the device on silent and no
-vibration.** The code is in place and the dials are on screen; the judging has not happened yet.
+Step 2 is still not *finished* until it has been tuned by hand on an iPad, which the design doc
+budgets a week for and treats as a real gate: **the snap must feel complete with the device on
+silent and no vibration.** The code is in place and the dials are on screen at `/dev.html`; the
+judging has not happened yet.
 
 - [x] **Step 1** — the cut (grid, jittered lattice, interlocking edges, baked bevel, adjacency
       graph) in a worker, and the Canvas 2D layer stack behind `draw(scene, camera)`
 - [x] **Step 2** — clusters and union-find, snap resolution over graph neighbours, the release
       spring, the pointer machine, and the three-layer snap audio *(tuning still owed)*
 - [ ] **Step 3** — tray and lenses
+      - [x] **3a** — the React chrome, the tray, all six lenses, OKLab colour bins, drag-out,
+            both form factors, virtualised chips
+      - [ ] **3b** — pinned shelf, multi-select, pull out as island
 - [ ] **Step 4** — hints and light
 - [ ] **Step 5** — setup, library, resume
 - [ ] **Step 6** — daily and streak
@@ -43,27 +48,47 @@ npm run dev
 The dev server is host-exposed, so the printed network URL works from an iPad or iPhone on the same
 network. Real-hardware testing is a gate at every step.
 
-The harness cuts a synthetic validation target — numbered cells, a hue sweep across x, a value sweep
-down y, and a 1px hairline grid — chosen because a photo hides exactly the bugs these steps can
-produce. A misplaced piece or a misaligned tab is obvious against it and invisible against foliage.
+Two pages:
 
-**Playing it:** drag a piece onto the board. One finger on a piece drags it, one finger on the mat
-or on the placed board pans, and two fingers always mean camera. There is no tap-to-select — direct
-manipulation only. A piece dropped anywhere else stays exactly where you dropped it.
+| | |
+|---|---|
+| `/` | the product — board and tray |
+| `/dev.html` | the step-2 harness, with every snap-tuning dial and the frame-scheduler HUD |
 
-The tuning dials are along the bottom, and switching any of them re-cuts: snap tolerance
-(Precise / Standard / Generous), rotation, reduced motion, and sound. **Solve** drops every
-remaining piece into its slot so the seams can be inspected; **Re-cut** reseeds.
+Both cut a synthetic validation target — numbered cells, a hue sweep across x, a value sweep down y,
+and a 1px hairline grid — chosen because a photo hides exactly the bugs these steps can produce. A
+misplaced piece or a misaligned tab is obvious against it and invisible against foliage. The hue and
+value sweeps also give the Colour lens something real to bin. The real photo picker arrives at
+step 5.
 
-The HUD reports the real grid, the cut time against the 1.2s budget, how many pieces are placed, and
-whether the renderer currently has a frame scheduled — with no finger down and nothing springing, an
-idle board must read `scheduled: no`.
+**Playing it.** Pieces live in the tray; drag one out onto the board. One finger on a piece drags
+it, one finger on the mat or on the placed board pans, and two fingers always mean camera. There is
+no tap-to-select — direct manipulation only. A piece dropped anywhere stays exactly where you
+dropped it; drop one back over the tray and it goes home.
+
+**The lenses.** All, Edges, Corners, Colour, Region, Recent. They *hide and reveal* within one
+canonical order — they never re-sort it, so turning a filter off leaves every remaining piece
+exactly where you left it. Region unlocks past 1.5× zoom and shows the pieces belonging in what you
+are looking at. Recent finds the ones you pulled out and did not place.
+
+**The harness** (`/dev.html`) keeps the step-2 dials: snap tolerance (Precise / Standard /
+Generous), rotation, reduced motion, and sound, each re-cutting on change. **Solve** drops every
+remaining piece into its slot so the seams can be inspected; **Re-cut** reseeds. Its HUD reports the
+real grid, the cut time against the 1.2s budget, and whether the renderer has a frame scheduled —
+with no finger down and nothing springing, an idle board must read `scheduled: no`.
 
 ```bash
-npm test          # 235 tests
+npm test             # 319 unit tests, node environment
+npm run test:browser # 29 Playwright checks, dock and phone viewports
 npm run typecheck
 npm run build
 ```
+
+`npm run test:browser` boots the dev server itself and drives the real app. It is a gate at the end
+of every step, not an optional extra: a green unit suite says nothing about whether the app boots,
+and the two invariants that matter most here — **the board never re-renders through React**, and
+**an idle board draws nothing at all** — are only observable in a browser. Both are measured rather
+than asserted.
 
 ## Design documents
 
@@ -83,5 +108,9 @@ loop across pre-rendered bitmaps, and it costs shader authoring, iOS context-los
 making text your problem. The renderer sits behind a thin `draw(scene, camera)` interface so a
 WebGL backend can slot in the day 1000-piece boards ship.
 
-React 19 + Tailwind v4 + Zustand arrive at step 3, when the tray needs real chrome. Steps 1 and 2
-have no UI by design.
+React 19 + Tailwind v4 + Zustand carry the chrome, arriving at step 3 with the tray. **The board
+never re-renders through React**: piece positions update at 60fps outside it, and React reads only
+summary state that changes at human speed. Everything with a decision in it — the lens filter, the
+colour binning, the pointer machines — is DOM-free and unit-tested; the files that touch the DOM,
+React, or Web Audio stay thin enough to judge by hand, which is the only way snap feel can be judged
+anyway.

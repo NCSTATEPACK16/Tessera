@@ -10,6 +10,12 @@ dist-ssr/
 coverage/
 *.local
 
+# Playwright output. The specs are committed; traces and screenshots are not.
+/test-results/
+/playwright-report/
+/blob-report/
+/.playwright/
+
 .DS_Store
 .vite/
 *.tsbuildinfo
