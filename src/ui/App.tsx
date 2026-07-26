@@ -15,13 +15,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createSyntheticImage } from '@/dev/synthetic-image';
 import type { PieceId } from '@/cut/types';
+import { MOVE_THRESHOLD_PX } from '@/input/pointer';
 import { PlayRuntime } from '@/play/runtime';
 import type { RuntimeSummary } from '@/play/runtime';
 import type { Lens } from '@/tray/lenses';
 import { DOCK_QUERY, useMediaQuery } from './useMediaQuery';
 import { useChrome } from './store';
 import { Tray } from './Tray';
-import { useTrayDrag } from './useTrayDrag';
 import { TopBar } from './TopBar';
 
 /** Step 5 brings the real photo picker; until then the cut needs *a* photo. */
@@ -31,7 +31,14 @@ const TARGET_COUNT = 200;
 export function App(): React.ReactElement {
   const boardRef = useRef<HTMLDivElement>(null);
   const trayRef = useRef<HTMLDivElement>(null);
+  const shelfRef = useRef<HTMLDivElement>(null);
   const runtime = useRef<PlayRuntime | null>(null);
+
+  // Human-speed, not per-frame: flips once when a chip leaves or returns to the
+  // tray, never during the drag itself. Drives the shelf's dashed placeholder.
+  const [dragging, setDragging] = useState(false);
+  // The group chip under a tap, mid-rename. `null` is "no rename open".
+  const [renaming, setRenaming] = useState<number | null>(null);
 
   const [summary, setSummary] = useState<RuntimeSummary>({
     status: 'cutting',
@@ -60,6 +67,22 @@ export function App(): React.ReactElement {
     );
   };
 
+  // Same test, one region smaller (§06) — a release over the shelf row pins
+  // rather than just returning. The shelf renders only while a drag is in
+  // flight or it is non-empty, so `shelfRef.current` is null exactly when there
+  // is nothing to pin onto, and this correctly answers "no".
+  const overShelf = useRef<(client: { x: number; y: number }) => boolean>(() => false);
+  overShelf.current = (client) => {
+    const rect = shelfRef.current?.getBoundingClientRect();
+    if (!rect) return false;
+    return (
+      client.x >= rect.left &&
+      client.x <= rect.right &&
+      client.y >= rect.top &&
+      client.y <= rect.bottom
+    );
+  };
+
   // -- the runtime, mounted once ---------------------------------------------
 
   useEffect(() => {
@@ -79,12 +102,14 @@ export function App(): React.ReactElement {
         seed: SEED,
         targetCount: TARGET_COUNT,
         isOverTray: (client) => overTray.current(client),
-        onDragStateChange: (dragging) => {
+        isOverShelf: (client) => overShelf.current(client),
+        onDragStateChange: (isDragging) => {
           // §06: dragging a piece out auto-collapses the sheet to peek and
           // re-expands on release, so the mat is never obscured mid-drag.
           const store = useChrome.getState();
-          if (dragging) store.collapseForDrag();
+          if (isDragging) store.collapseForDrag();
           else store.restoreAfterDrag();
+          setDragging(isDragging);
         },
         notify: setSummary,
       });
@@ -103,14 +128,36 @@ export function App(): React.ReactElement {
   // The dock's inner edge changes the board's viewport, and a window resize
   // event never fires for it. Without this the camera silently stops matching
   // the canvas and every hit test lands in the wrong place.
+  //
+  // The same observer also drives `setTrayInsets`, watching the tray's own root
+  // alongside the board: the docked tray is a flex sibling and its width is
+  // already out of the board container, so it contributes nothing; the iPhone
+  // sheet is a fixed overlay whose *height* changes with every detent drag, and
+  // that never touches the board container's size at all. Left at the default
+  // zero, `safeWorldRect()` would deal every pulled-out piece behind the sheet,
+  // where a drop returns it straight to the tray.
   useEffect(() => {
     const container = boardRef.current;
     if (!container) return;
 
-    const observer = new ResizeObserver(() => runtime.current?.resize());
+    const updateInsets = (): void => {
+      const rect = trayRef.current?.getBoundingClientRect();
+      if (docked || !rect) {
+        runtime.current?.setTrayInsets({ left: 0, right: 0, top: 0, bottom: 0 });
+      } else {
+        runtime.current?.setTrayInsets({ left: 0, right: 0, top: 0, bottom: rect.height });
+      }
+    };
+
+    const observer = new ResizeObserver(() => {
+      runtime.current?.resize();
+      updateInsets();
+    });
     observer.observe(container);
+    if (trayRef.current) observer.observe(trayRef.current);
+    updateInsets();
     return () => observer.disconnect();
-  }, []);
+  }, [docked]);
 
   // §08: unlock the audio context on the first deliberate tap, and never before
   // — iOS leaves it suspended otherwise and the first snap of the session is
@@ -139,6 +186,9 @@ export function App(): React.ReactElement {
     useChrome.getState().setCut(summary.cut);
     useChrome.getState().setProgress(summary.placed, summary.total);
     useChrome.getState().setRegionUnlocked(summary.regionUnlocked);
+    // `pinned` lives on `TrayModel`, not on `summary` — `trayRevision` is what
+    // says "read it again", the same signal the tray view below already keys on.
+    useChrome.getState().setShelf(runtime.current?.tray?.pinned ?? []);
   }, [summary]);
 
   // -- the tray --------------------------------------------------------------
@@ -166,15 +216,43 @@ export function App(): React.ReactElement {
     [tray, summary.trayRevision, summary.regionRevision],
   );
 
-  const { onChipPointerDown } = useTrayDrag({
-    onPullOut: (pieceId, event) => runtime.current?.pullFromTray(pieceId, event) ?? false,
-  });
+  // A tap on a group's label chip opens the rename form. The chip lives on
+  // canvas — `groupChipAt` is the first non-piece hit target in the app — so a
+  // tap has to be told apart from the start of a drag or a camera pan by hand,
+  // with the same 6px threshold `PointerMachine` and `TrayDrag` both use.
+  // Checked only on `pointerup`, a discrete event: `groupChipAt` rebuilds the
+  // scene, and calling it from `pointermove` would double that cost against the
+  // 250-piece/60fps budget every frame of every gesture on the board.
+  const groupTapOrigin = useRef<{ x: number; y: number } | null>(null);
 
   return (
     <div className="flex h-full w-full bg-[var(--mat-void)]">
       <div className="relative min-w-0 flex-1">
         {/* The canvas layers live in here and React never touches them again. */}
-        <div ref={boardRef} className="absolute inset-0" style={{ touchAction: 'none' }} />
+        <div
+          ref={boardRef}
+          className="absolute inset-0"
+          style={{ touchAction: 'none' }}
+          onPointerDown={(event) => {
+            groupTapOrigin.current = { x: event.clientX, y: event.clientY };
+          }}
+          onPointerUp={(event) => {
+            const origin = groupTapOrigin.current;
+            groupTapOrigin.current = null;
+            if (!origin) return;
+            const dx = event.clientX - origin.x;
+            const dy = event.clientY - origin.y;
+            if (Math.hypot(dx, dy) >= MOVE_THRESHOLD_PX) return;
+
+            const rect = boardRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            const id = runtime.current?.groupChipAt({
+              x: event.clientX - rect.left,
+              y: event.clientY - rect.top,
+            });
+            if (id !== null && id !== undefined) setRenaming(id);
+          }}
+        />
 
         <TopBar
           status={summary.status}
@@ -183,10 +261,39 @@ export function App(): React.ReactElement {
           cut={summary.cut}
           onFit={() => runtime.current?.fit()}
         />
+
+        {renaming !== null && (
+          <form
+            className="absolute left-1/2 top-[64px] flex -translate-x-1/2 gap-[8px] rounded-[8px] border border-[var(--edge-hair)] bg-[var(--mat-felt)] p-[8px]"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const value = new FormData(event.currentTarget).get('label');
+              if (typeof value === 'string' && value.trim()) {
+                runtime.current?.renameGroup(renaming, value.trim());
+              }
+              setRenaming(null);
+            }}
+          >
+            <input
+              name="label"
+              autoFocus
+              aria-label="Group name"
+              defaultValue={runtime.current?.groupLabel(renaming) ?? ''}
+              className="min-h-[44px] rounded-[6px] bg-transparent px-[8px] font-[var(--font-data)] text-[14px]"
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setRenaming(null);
+              }}
+            />
+            <button type="submit" className="min-h-[44px] px-[12px] text-[14px]">
+              Rename
+            </button>
+          </form>
+        )}
       </div>
 
       <Tray
         rootRef={trayRef}
+        shelfRef={shelfRef}
         docked={docked}
         width={chrome.trayWidth}
         detent={chrome.detent}
@@ -203,8 +310,12 @@ export function App(): React.ReactElement {
         bitmapOf={(id) => runtime.current?.bitmapOf(id) ?? null}
         isEdge={(id) => tray?.isEdge(id) ?? false}
         isOnMat={(id) => session?.locationOf(id) === 'mat'}
-        onChipPointerDown={onChipPointerDown}
+        onPullOut={(pieceId, event) => runtime.current?.pullFromTray(pieceId, event) ?? false}
         onLocate={(id) => runtime.current?.locate(id)}
+        dragging={dragging}
+        onPullSelection={(pieceIds) => {
+          runtime.current?.pullOut(pieceIds);
+        }}
       />
     </div>
   );

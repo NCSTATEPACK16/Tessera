@@ -351,6 +351,16 @@ export class PlayRuntime {
     this.wake();
   }
 
+  /** Tap-to-rename (§06). A relabel, not a structural change — no tray bump. */
+  renameGroup(id: number, label: string): void {
+    this.session?.worksets.rename(id, label);
+    this.wake();
+  }
+
+  groupLabel(id: number): string | null {
+    return this.session?.worksets.get(id)?.label ?? null;
+  }
+
   // -------------------------------------------------------------------------
 
   private get viewport(): Size {

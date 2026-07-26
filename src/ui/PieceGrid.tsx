@@ -30,6 +30,12 @@ export interface PieceGridProps {
   isOnMat: (id: PieceId) => boolean;
   onChipPointerDown: (pieceId: PieceId, event: React.PointerEvent) => void;
   onLocate: (pieceId: PieceId) => void;
+  /** The tray is in select mode (§06): a tap toggles instead of locating. */
+  selecting?: boolean;
+  /** 1-based selection order for a piece, or 0. */
+  badgeOf?: (id: PieceId) => number;
+  /** A tap while `selecting`. */
+  onChipClick?: (id: PieceId) => void;
 }
 
 export function PieceGrid({
@@ -41,7 +47,15 @@ export function PieceGrid({
   isOnMat,
   onChipPointerDown,
   onLocate,
+  selecting,
+  badgeOf,
+  onChipClick,
 }: PieceGridProps): React.ReactElement {
+  // One `onActivate` for both meanings a tap can have, decided here rather than
+  // by a second callback on `PieceChip` — locate-on-mat and toggle-in-select-mode
+  // never apply at the same time, so there is only ever one thing a tap does.
+  const activate = selecting ? (onChipClick ?? ((): void => {})) : onLocate;
+
   const scroller = useRef<HTMLDivElement>(null);
   const [metrics, setMetrics] = useState({ top: 0, height: 0, width: 0 });
 
@@ -99,7 +113,9 @@ export function PieceGrid({
                 isEdge={isEdge(id)}
                 onMat={isOnMat(id)}
                 onPointerDown={onChipPointerDown}
-                onActivate={onLocate}
+                onActivate={activate}
+                badge={badgeOf ? badgeOf(id) : 0}
+                selecting={selecting ?? false}
               />
             </div>
           ))}

@@ -26,6 +26,10 @@ export interface PieceChipProps {
   onMat: boolean;
   onPointerDown: (pieceId: PieceId, event: React.PointerEvent) => void;
   onActivate: (pieceId: PieceId) => void;
+  /** 1-based selection order, or 0. Rendered as a numeral — never colour alone. */
+  badge?: number;
+  pinned?: boolean;
+  selecting?: boolean;
 }
 
 export function PieceChip({
@@ -36,6 +40,9 @@ export function PieceChip({
   onMat,
   onPointerDown,
   onActivate,
+  badge = 0,
+  pinned,
+  selecting,
 }: PieceChipProps): React.ReactElement {
   const canvas = useRef<HTMLCanvasElement>(null);
 
@@ -70,19 +77,34 @@ export function PieceChip({
       // from here would be a second copy of a piece that already exists, so the
       // chip locates it instead — the frustration it fixes is "where did it go",
       // not "I cannot reach it".
-      aria-label={onMat ? `Find piece ${pieceId} on the mat` : `Piece ${pieceId}`}
+      aria-label={
+        onMat
+          ? `Find piece ${pieceId} on the mat`
+          : badge
+            ? `Piece ${pieceId}, selected ${badge}`
+            : `Piece ${pieceId}`
+      }
+      aria-pressed={selecting ? badge > 0 : undefined}
       onPointerDown={(event) => {
         if (onMat) return;
         onPointerDown(pieceId, event);
       }}
       onClick={() => {
-        if (onMat) onActivate(pieceId);
+        if (selecting) onActivate(pieceId);
+        else if (onMat) onActivate(pieceId);
       }}
-      style={{ width: size, height: size, touchAction: 'none' }}
+      // `pan-y`, never `none`. `none` does not lose a race with native scrolling
+      // — it disables it, so no `pointercancel` ever fires and the handler in
+      // `useTrayDrag` never runs. Chips are 56px on an 8px gap, which left the
+      // scroll container reachable only through the gutters: on a phone the tray
+      // could not be scrolled by touch at all. The vertical axis belongs to the
+      // browser; `TrayDrag` commits to a drag on horizontal movement.
+      style={{ width: size, height: size, touchAction: 'pan-y' }}
       className={[
         'relative flex items-center justify-center rounded-[8px] border transition-colors',
         'border-[var(--edge-hair)] bg-[var(--mat-felt)]',
         onMat ? 'opacity-40' : 'active:border-[var(--accent)]',
+        pinned && !onMat ? 'border-[var(--accent)]' : '',
       ].join(' ')}
     >
       <canvas ref={canvas} style={{ width: size, height: size }} className="pointer-events-none" />
@@ -93,6 +115,13 @@ export function PieceChip({
           aria-hidden
           className="pointer-events-none absolute left-[3px] top-[3px] h-[9px] w-[9px] border-l-2 border-t-2 border-[var(--accent)] opacity-80"
         />
+      )}
+      {badge > 0 && (
+        // §06's numbered order badge. The numeral is the signal; the ring is
+        // decoration, because colour is never the only signal.
+        <span className="pointer-events-none absolute right-[2px] top-[2px] flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[var(--accent)] px-[3px] font-[var(--font-data)] text-[10px] text-black">
+          {badge}
+        </span>
       )}
       {onMat && (
         <span className="pointer-events-none absolute bottom-[2px] right-[4px] font-[var(--font-data)] text-[10px] text-[var(--ink-muted)]">

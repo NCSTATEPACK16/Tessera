@@ -13,15 +13,19 @@
  * the canvas.
  */
 
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { PieceId } from '@/cut/types';
 import type { ColourBin } from '@/tray/colour';
 import type { Lens } from '@/tray/lenses';
+import { TraySelection } from '@/tray/selection';
 import { LensChips } from './LensChips';
 import { PieceGrid } from './PieceGrid';
+import { SelectionBar } from './SelectionBar';
+import { Shelf } from './Shelf';
 import { Sheet } from './Sheet';
-import { TRAY_MAX_WIDTH, TRAY_MIN_WIDTH } from './store';
+import { TRAY_MAX_WIDTH, TRAY_MIN_WIDTH, useChrome } from './store';
 import type { SheetDetent } from './store';
+import { useTrayDrag } from './useTrayDrag';
 
 /** 44pt floor with air around the thumbnail. */
 const CELL = 56;
@@ -37,6 +41,9 @@ export interface TrayProps {
    * drop test would silently always answer "no".
    */
   rootRef?: React.Ref<HTMLElement> | undefined;
+  /** The shelf row's own element (§06), so a drop over it can pin rather than
+   * just return. Same reasoning as `rootRef`, one region smaller. */
+  shelfRef?: React.Ref<HTMLDivElement> | undefined;
   docked: boolean;
   width: number;
   detent: SheetDetent;
@@ -55,11 +62,63 @@ export interface TrayProps {
   bitmapOf: (id: PieceId) => ImageBitmap | null;
   isEdge: (id: PieceId) => boolean;
   isOnMat: (id: PieceId) => boolean;
-  onChipPointerDown: (pieceId: PieceId, event: React.PointerEvent) => void;
+  /**
+   * The drag-out probe now lives here rather than at the call site: select mode
+   * is entered from the same press-and-hold the probe already watches, and the
+   * `TraySelection` it feeds is owned by this component (see below).
+   */
+  onPullOut: (pieceId: PieceId, event: PointerEvent) => boolean;
   onLocate: (pieceId: PieceId) => void;
+  /** A chip drag is in flight (§06) — the shelf shows its dashed placeholder. */
+  dragging: boolean;
+  /** §06's pull-out. The button that calls it is disabled below two pieces. */
+  onPullSelection: (pieceIds: readonly PieceId[]) => void;
 }
 
 export function Tray(props: TrayProps): React.ReactElement {
+  const chrome = useChrome();
+
+  // Never in state — the badges come from `selectedCount` plus a render-time
+  // read of this, and putting a mutable set in state would re-render the grid
+  // on every toggle anyway. The count is the only thing React needs to know.
+  const selection = useRef(new TraySelection());
+
+  const enterSelect = (pieceId: PieceId): void => {
+    selection.current.clear();
+    selection.current.toggle(pieceId);
+    chrome.setSelecting(true);
+    chrome.setSelectedCount(selection.current.size);
+  };
+
+  const toggleSelected = (pieceId: PieceId): void => {
+    selection.current.toggle(pieceId);
+    chrome.setSelectedCount(selection.current.size);
+  };
+
+  const exitSelect = (): void => {
+    selection.current.clear();
+    chrome.setSelecting(false);
+    chrome.setSelectedCount(0);
+  };
+
+  // Exit is explicit — Cancel, Escape, or completing the pull-out — and never an
+  // outside tap. A stray tap on the board during a careful ten-piece selection
+  // must not discard it.
+  useEffect(() => {
+    if (!chrome.selecting) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') exitSelect();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [chrome.selecting]);
+
+  const { onChipPointerDown } = useTrayDrag({
+    onPullOut: props.onPullOut,
+    onEnterSelect: enterSelect,
+    selecting: () => chrome.selecting,
+  });
+
   const header = (
     <div className="flex flex-col gap-[12px]">
       <div className="flex items-baseline justify-between">
@@ -79,17 +138,44 @@ export function Tray(props: TrayProps): React.ReactElement {
     </div>
   );
 
-  const grid = (
-    <PieceGrid
-      ids={props.ids}
-      cell={CELL}
-      gap={GAP}
-      bitmapOf={props.bitmapOf}
-      isEdge={props.isEdge}
-      isOnMat={props.isOnMat}
-      onChipPointerDown={props.onChipPointerDown}
-      onLocate={props.onLocate}
-    />
+  // Shelf, then grid, then the select-mode action bar — in that order both on
+  // the dock and in the sheet, so the two form factors read identically.
+  const body = (
+    <>
+      <Shelf
+        rootRef={props.shelfRef}
+        ids={chrome.shelf}
+        cell={CELL}
+        dragging={props.dragging}
+        bitmapOf={props.bitmapOf}
+        isEdge={props.isEdge}
+        onChipPointerDown={onChipPointerDown}
+      />
+      <PieceGrid
+        ids={props.ids}
+        cell={CELL}
+        gap={GAP}
+        bitmapOf={props.bitmapOf}
+        isEdge={props.isEdge}
+        isOnMat={props.isOnMat}
+        onChipPointerDown={onChipPointerDown}
+        onLocate={props.onLocate}
+        selecting={chrome.selecting}
+        badgeOf={(id) => selection.current.badgeOf(id)}
+        onChipClick={toggleSelected}
+      />
+      {chrome.selecting && (
+        <SelectionBar
+          count={chrome.selectedCount}
+          onPullOut={() => {
+            const ids = selection.current.ordered;
+            exitSelect();
+            props.onPullSelection(ids);
+          }}
+          onCancel={exitSelect}
+        />
+      )}
+    </>
   );
 
   if (!props.docked) {
@@ -100,7 +186,7 @@ export function Tray(props: TrayProps): React.ReactElement {
         onDetent={props.onDetent}
         header={header}
       >
-        {grid}
+        {body}
       </Sheet>
     );
   }
@@ -114,7 +200,7 @@ export function Tray(props: TrayProps): React.ReactElement {
     >
       <ResizeEdge width={props.width} onWidth={props.onWidth} />
       <div className="shrink-0 px-[12px] pb-[12px] pt-[16px]">{header}</div>
-      {grid}
+      {body}
     </aside>
   );
 }
