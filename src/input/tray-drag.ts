@@ -3,10 +3,11 @@
  *
  * Pulling a piece out of the tray is one continuous movement of one finger that
  * crosses from DOM to canvas halfway through, and the player must not be able to
- * feel where. So the chip runs the *same* promotion thresholds the board runs —
- * `MOVE_THRESHOLD_PX` and `LONG_PRESS_MS`, imported rather than restated,
- * because two copies of 6 and 120 would drift and the drift would present as
- * "the tray feels different from the mat".
+ * feel where. So the chip shares `MOVE_THRESHOLD_PX` with the board — imported
+ * rather than restated, because two copies of 6 would drift and the drift would
+ * present as "the tray feels different from the mat". It does **not** share the
+ * board's `LONG_PRESS_MS`: §06 spends stillness on multi-select, so the chip's
+ * hold is `SELECT_HOLD_MS` and means something else entirely.
  *
  * On promotion this file does nothing clever: it reports the pointer and gets
  * out of the way. Deploying the piece and handing the pointer to
@@ -19,7 +20,17 @@
  */
 
 import type { PieceId } from '@/cut/types';
-import { LONG_PRESS_MS, MOVE_THRESHOLD_PX } from './pointer';
+import { MOVE_THRESHOLD_PX } from './pointer';
+
+/**
+ * §06: stillness on a chip enters multi-select.
+ *
+ * Longer than the mat's `LONG_PRESS_MS` on purpose. 120ms is the right latency
+ * for a piece coming up into the hand, and far too eager for a mode change the
+ * player has to be *deciding* to make — at 120ms an ordinary hesitation before a
+ * drag would put the tray into select mode instead.
+ */
+export const SELECT_HOLD_MS = 450;
 
 export interface TrayDragOptions {
   /**
@@ -28,8 +39,12 @@ export interface TrayDragOptions {
    * abandons the probe rather than leaving it half-promoted.
    */
   onPullOut: (pieceId: PieceId, event: PointerEvent) => boolean;
+  /** Stillness past `SELECT_HOLD_MS`: enter multi-select with this chip as #1. */
+  onEnterSelect?: (pieceId: PieceId) => void;
   /** Under both thresholds and released: a tap on the chip, not a drag. */
   onTap?: (pieceId: PieceId, event: PointerEvent) => void;
+  /** True while the tray is in select mode. Asked, never cached. */
+  selecting?: () => boolean;
 }
 
 interface Probe {
@@ -70,24 +85,46 @@ export class TrayDrag {
     const probe = this.probe;
     if (!probe || event.pointerId !== this.pointerId) return;
 
-    const moved = Math.hypot(event.clientX - probe.x, event.clientY - probe.y);
-    if (moved < MOVE_THRESHOLD_PX) return;
+    const dx = event.clientX - probe.x;
+    const dy = event.clientY - probe.y;
+    if (Math.hypot(dx, dy) < MOVE_THRESHOLD_PX) return;
+
+    // In select mode the chip is a checkbox and nothing else.
+    if (this.options.selecting?.()) {
+      this.clear();
+      return;
+    }
+
+    // The chip cedes the vertical axis to the browser (`touch-action: pan-y`), so
+    // a vertical touch is the grid scrolling and must not become a drag.
+    //
+    // Cleared rather than left watching: a scroll that later curves sideways is
+    // still a scroll, and promoting mid-flick would pull a piece out from under a
+    // finger that was reading the tray.
+    //
+    // Touch only, deliberately. A mouse never scrolls from a drag, so applying the
+    // check there would leave the desktop build with a dead gesture — and would
+    // quietly rewrite what the Playwright suite measures.
+    if (event.pointerType === 'touch' && Math.abs(dy) >= Math.abs(dx)) {
+      this.clear();
+      return;
+    }
+
     this.promote(probe, event);
   }
 
   /**
    * Driven from the frame loop, exactly as the board's long press is.
    *
-   * Without it a player who presses a chip and holds still is never heard from —
-   * and holding still is what someone does while deciding, which is precisely
-   * the moment the piece should come up into the hand.
+   * Stillness is multi-select now, not drag-out. A finger that has not moved is
+   * deciding *which pieces*, not which piece — and §06 has no other input to spend
+   * on entering the mode.
    */
   tick(nowMs: number): void {
     const probe = this.probe;
-    if (!probe || nowMs - probe.t < LONG_PRESS_MS) return;
-    // No event to hand over: synthesise the position from the press. The finger
-    // has not moved, so the press point *is* the current point.
-    this.promote(probe, this.syntheticEvent(probe));
+    if (!probe || nowMs - probe.t < SELECT_HOLD_MS) return;
+    this.clear();
+    this.options.onEnterSelect?.(probe.pieceId);
   }
 
   up(event: PointerEvent): void {
@@ -114,14 +151,5 @@ export class TrayDrag {
   private clear(): void {
     this.probe = null;
     this.pointerId = null;
-  }
-
-  private syntheticEvent(probe: Probe): PointerEvent {
-    return {
-      pointerId: this.pointerId ?? -1,
-      clientX: probe.x,
-      clientY: probe.y,
-      timeStamp: probe.t + LONG_PRESS_MS,
-    } as PointerEvent;
   }
 }
