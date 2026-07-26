@@ -16,7 +16,7 @@
  * Deleted at step 5, when the real setup screen lands.
  */
 
-import { cutInWorker, cutPixelRatio } from '@/cut/cut-client';
+import { cutInWorker } from '@/cut/cut-client';
 import type { CutPiece } from '@/cut/types';
 import type { SnapDifficulty } from '@/board/snap';
 import { AudioEngine } from '@/audio/engine';
@@ -67,6 +67,8 @@ let controls: BoardControls | null = null;
 let seed = 1;
 let boardW = 0;
 let boardH = 0;
+/** Image pixels per world unit — the units piece outlines are in. */
+let pathScale = 1;
 
 /**
  * Pieces drawn while the cut is still running.
@@ -116,11 +118,14 @@ function pump(now: number): void {
   controls?.tick(now);
   audio.tick(now);
   const stillMoving = session?.advance(dt) ?? false;
-  const dragging = controls?.machine.phase === 'dragging';
+  // `pressing` counts as busy, or the long-press timer never gets a tick to
+  // fire on — a finger held still would be a finger nothing is listening to.
+  const phase = controls?.machine.phase;
+  const handDown = phase === 'dragging' || phase === 'pressing';
 
   render();
 
-  if (stillMoving || dragging) {
+  if (stillMoving || handDown) {
     requestAnimationFrame(pump);
   } else {
     pumping = false;
@@ -161,7 +166,7 @@ function buildSession(pieces: CutPiece[], boardW: number, boardH: number): PlayS
     pieces,
     boardW,
     boardH,
-    bitmapScale: cutPixelRatio(),
+    pathScale,
     difficulty: difficulty(),
     rotation: ui.rotation.checked,
     reducedMotion: ui.reduced.checked,
@@ -217,7 +222,6 @@ async function runCut(): Promise<void> {
   render();
 
   const source = await createSyntheticImage();
-  const bitmapScale = cutPixelRatio();
 
   try {
     const result = await cutInWorker({
@@ -230,6 +234,7 @@ async function runCut(): Promise<void> {
           ui.grid.textContent = `${grid.cols} × ${grid.rows} = ${grid.count}`;
           boardW = grid.boardW;
           boardH = grid.boardH;
+          pathScale = grid.scale;
           frameContent();
           render();
         },
@@ -246,7 +251,7 @@ async function runCut(): Promise<void> {
               rot: 0,
               bitmap: piece.bitmap,
               path: piece.path,
-              bitmapScale,
+              pathScale,
             });
           }
           ui.pieces.textContent = `${done} / ${total}`;

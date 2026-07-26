@@ -8,7 +8,7 @@
 import type { CutGeometry, CutMessage, CutPiece, NeighbourLink } from './types';
 
 export interface CutHandlers {
-  onGrid?: (grid: { cols: number; rows: number; count: number; boardW: number; boardH: number }) => void;
+  onGrid?: (grid: CutClientResult['geometry']) => void;
   onPieces?: (pieces: CutPiece[], done: number, total: number) => void;
   onError?: (message: string) => void;
 }
@@ -22,7 +22,7 @@ export interface CutClientOptions {
 }
 
 export interface CutClientResult {
-  geometry: Pick<CutGeometry, 'cols' | 'rows' | 'count' | 'boardW' | 'boardH'>;
+  geometry: Pick<CutGeometry, 'cols' | 'rows' | 'count' | 'boardW' | 'boardH' | 'scale'>;
   pieces: CutPiece[];
   /** Milliseconds from post to done. §04 budgets under 1.2s on an iPhone 12. */
   elapsedMs: number;
@@ -64,6 +64,7 @@ export function cutInWorker(options: CutClientOptions): Promise<CutClientResult>
             count: message.count,
             boardW: message.boardW,
             boardH: message.boardH,
+            scale: message.scale,
           };
           handlers.onGrid?.(grid);
           break;

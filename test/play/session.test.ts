@@ -65,7 +65,7 @@ function session(onEvent?: (event: PlayEvent) => void): PlaySession {
     pieces: pieces(),
     boardW: COLS,
     boardH: ROWS,
-    bitmapScale: SCALE,
+    pathScale: SCALE,
     ...(onEvent ? { onEvent } : {}),
   });
   // Scatter, so only the adjacency a test sets up is ever in range.
@@ -260,6 +260,33 @@ describe('hit-testing', () => {
 
     expect(play.pickCluster({ x: 7.5, y: 4.5 })).toBe(cluster);
     expect(play.pickCluster({ x: 4.5, y: 4.5 })).toBeNull();
+  });
+});
+
+describe('the path scale guard', () => {
+  // The outline arrives in *image* pixels and the world is measured in piece
+  // widths, so the conversion between them is a number that has to be carried
+  // correctly through three files. Get it wrong and the polygons come out tens
+  // of times too large, sitting off the corner of the pieces they describe —
+  // and the only symptom is that nothing on the board can be picked up, with no
+  // error anywhere. That silence is what this guard exists to break.
+  const options = {
+    pieces: pieces(),
+    boardW: COLS,
+    boardH: ROWS,
+    pathScale: SCALE,
+  };
+
+  it('accepts a scale that matches the pieces', () => {
+    expect(() => new PlaySession(options)).not.toThrow();
+  });
+
+  it('rejects a device pixel ratio passed where the outline scale belongs', () => {
+    expect(() => new PlaySession({ ...options, pathScale: 2 })).toThrow(/pathScale/);
+  });
+
+  it('rejects a scale that shrinks the outline to nothing', () => {
+    expect(() => new PlaySession({ ...options, pathScale: SCALE * 50 })).toThrow(/pathScale/);
   });
 });
 

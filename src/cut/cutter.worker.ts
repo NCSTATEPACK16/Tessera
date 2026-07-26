@@ -44,6 +44,7 @@ self.onmessage = (message: MessageEvent<CutRequest>) => {
           count: emitted.geometry.count,
           boardW: emitted.geometry.boardW,
           boardH: emitted.geometry.boardH,
+          scale: emitted.geometry.scale,
         });
       } else {
         // Bitmaps are transferred, not copied — copying 36 MB of pixels back

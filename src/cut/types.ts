@@ -95,7 +95,16 @@ export interface CutResult {
 
 /** Progressive messages from the cutter worker. */
 export type CutMessage =
-  | { type: 'grid'; cols: number; rows: number; count: number; boardW: number; boardH: number }
+  | {
+      type: 'grid';
+      cols: number;
+      rows: number;
+      count: number;
+      boardW: number;
+      boardH: number;
+      /** Image pixels per world unit. Hit-testing needs it to read `path`. */
+      scale: number;
+    }
   | { type: 'pieces'; pieces: CutPiece[]; done: number; total: number }
   | { type: 'graph'; graph: (NeighbourLink | null)[][] }
   | { type: 'done' }

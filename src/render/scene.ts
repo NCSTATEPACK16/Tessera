@@ -21,10 +21,18 @@ export interface ScenePiece {
   h: number;
   rot: number;
   bitmap: ImageBitmap;
-  /** Outline in bitmap-local pixels, for hit testing. */
+  /** Outline in bitmap-local *image* pixels, for hit testing. */
   path: CubicPath;
-  /** Pixels per world unit the bitmap was rasterised at. */
-  bitmapScale: number;
+  /**
+   * Image pixels per world unit — the scale `path` is expressed in.
+   *
+   * Not the device pixel ratio, and not the bitmap's own resolution. It was
+   * called `bitmapScale` once and the ambiguity cost an afternoon: passing the
+   * DPR here makes every hit-test polygon tens of times too large and offset
+   * clean off the piece it describes, so nothing on the board can be picked up
+   * and nothing anywhere reports an error.
+   */
+  pathScale: number;
 }
 
 export interface Scene {

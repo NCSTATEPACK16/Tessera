@@ -118,6 +118,10 @@ export class BoardControls {
   private readonly onDown = (event: PointerEvent): void => {
     this.machine.down(this.local(event));
     this.camera.feedDown(event);
+    // Wake the frame loop on the press itself, not on the first movement: the
+    // 120ms long-press is driven from `tick`, so without this a player who picks
+    // a piece up and holds it still is never heard from.
+    this.options.onChange();
   };
 
   private readonly onMove = (event: PointerEvent): void => {

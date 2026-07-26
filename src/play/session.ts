@@ -57,8 +57,12 @@ export interface PlaySessionOptions {
   pieces: readonly SessionPiece[];
   boardW: number;
   boardH: number;
-  /** Pixels per world unit the piece bitmaps were rasterised at. */
-  bitmapScale: number;
+  /**
+   * Image pixels per world unit — `CutGeometry.scale`, the units `piece.path`
+   * is expressed in. Checked against the pieces at construction, because
+   * getting it wrong is silent and total.
+   */
+  pathScale: number;
   finish?: MatFinish;
   difficulty?: SnapDifficulty;
   /** The Rotation modifier. Defaults OFF (§01). */
@@ -116,9 +120,48 @@ export class PlaySession {
 
     for (const piece of options.pieces) {
       this.source.set(piece.id, piece);
-      this.polygons.set(piece.id, polygonFromPath(piece.path, options.bitmapScale));
+      this.polygons.set(piece.id, polygonFromPath(piece.path, options.pathScale));
     }
+    this.assertPathScale();
     this.rebuild();
+  }
+
+  /**
+   * Check the outline actually describes the piece it belongs to.
+   *
+   * The outline arrives in image pixels and the world is measured in piece
+   * widths, so one number carries between them through three files. Get it
+   * wrong — pass the device pixel ratio, say — and every polygon comes out tens
+   * of times too large and sitting off the corner of its piece. The only symptom
+   * is that nothing on the board can be picked up, with no error raised
+   * anywhere, no visual difference, and every unit test still passing because
+   * fixtures are self-consistent. Breaking that silence is worth eight lines.
+   *
+   * One piece is enough: they all share the scale.
+   */
+  private assertPathScale(): void {
+    const piece = this.options.pieces[0];
+    if (!piece) return;
+
+    const poly = this.polygons.get(piece.id)!;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    for (let i = 0; i < poly.length; i += 2) {
+      minX = Math.min(minX, poly[i]!);
+      maxX = Math.max(maxX, poly[i]!);
+    }
+
+    // The outline sits inside the bitmap, which is its bounds plus a little
+    // bleed — so a factor of two either way is slack, and the mistakes this
+    // catches are factors of fifty.
+    const spread = maxX - minX;
+    if (!Number.isFinite(spread) || spread < piece.worldW / 2 || spread > piece.worldW * 2) {
+      throw new Error(
+        `PlaySession: pathScale ${this.options.pathScale} makes piece ${piece.id} ` +
+          `${spread.toFixed(2)} world units wide, but it is ${piece.worldW.toFixed(2)}. ` +
+          `pathScale is image pixels per world unit (CutGeometry.scale), not the pixel ratio.`,
+      );
+    }
   }
 
   get animating(): boolean {
@@ -389,7 +432,7 @@ export class PlaySession {
       rot,
       bitmap: source.bitmap,
       path: source.path,
-      bitmapScale: this.options.bitmapScale,
+      pathScale: this.options.pathScale,
     };
   }
 

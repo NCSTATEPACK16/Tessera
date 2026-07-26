@@ -65,7 +65,7 @@ function table() {
     pieces: pieces(),
     boardW: COLS,
     boardH: ROWS,
-    bitmapScale: SCALE,
+    pathScale: SCALE,
   });
 
   // Scatter well clear of the board, as a real session opens.
