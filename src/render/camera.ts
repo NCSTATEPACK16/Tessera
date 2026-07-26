@@ -101,6 +101,37 @@ export function fitCameraToBounds(viewport: Size, bounds: Rect, margin = 0.9): C
   };
 }
 
+/**
+ * The visible world rectangle, inset from the viewport's edges by `insets`
+ * screen pixels each side — the part of the mat the player can actually see
+ * and reach once chrome (a docked tray, an iPhone sheet) is sitting on top of
+ * some of the canvas.
+ *
+ * Both corners go through `screenToWorld` independently rather than
+ * converting one corner and subtracting a raw screen-space size from it: an
+ * inset is stated in screen pixels, and `camera.zoom` is screen pixels *per
+ * world unit* — so getting this wrong the obvious way is correct only at
+ * zoom 1, and silently wrong (too large at high zoom, too small at low zoom)
+ * everywhere else.
+ */
+export function insetWorldRect(
+  camera: Camera,
+  viewport: Size,
+  insets: { left: number; right: number; top: number; bottom: number },
+): Rect {
+  const topLeft = screenToWorld(camera, viewport, { x: insets.left, y: insets.top });
+  const bottomRight = screenToWorld(camera, viewport, {
+    x: viewport.w - insets.right,
+    y: viewport.h - insets.bottom,
+  });
+  return {
+    x: topLeft.x,
+    y: topLeft.y,
+    w: bottomRight.x - topLeft.x,
+    h: bottomRight.y - topLeft.y,
+  };
+}
+
 /** Visible world rectangle, used to cull everything off-screen. */
 export function visibleWorldBounds(
   camera: Camera,

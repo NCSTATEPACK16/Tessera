@@ -28,6 +28,7 @@ import {
   createCamera,
   fitCameraToBounds,
   fitScale,
+  insetWorldRect,
   relativeZoom,
   screenToWorld,
   visibleWorldBounds,
@@ -275,21 +276,7 @@ export class PlayRuntime {
 
   /** The part of the mat the player can actually see and reach, in world units. */
   safeWorldRect(): Rect {
-    const size = this.viewport;
-    const topLeft = screenToWorld(this.camera, size, {
-      x: this.insets.left,
-      y: this.insets.top,
-    });
-    const bottomRight = screenToWorld(this.camera, size, {
-      x: size.w - this.insets.right,
-      y: size.h - this.insets.bottom,
-    });
-    return {
-      x: topLeft.x,
-      y: topLeft.y,
-      w: bottomRight.x - topLeft.x,
-      h: bottomRight.y - topLeft.y,
-    };
+    return insetWorldRect(this.camera, this.viewport, this.insets);
   }
 
   /**
@@ -473,6 +460,10 @@ export class PlayRuntime {
     if (event.type === 'snap' && event.placed) {
       for (const piece of this.session!.board.cluster(0).pieceIds) this.tray?.place(piece);
     }
+    // Applied from the event rather than at each `returnToTray` call site: the
+    // event is the one place every return path converges, present and future,
+    // so a caller added later cannot forget to pin (§06).
+    if (event.type === 'return' && event.pinned) this.tray?.pin(event.pieceId);
     if (event.type === 'snap' || event.type === 'deploy' || event.type === 'return') {
       this.bumpTray();
     }
