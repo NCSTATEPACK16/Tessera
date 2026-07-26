@@ -12,12 +12,17 @@ Web-first, built for iPad and iPhone touch from day one.
 
 ## Status
 
-**Step 1 of 9 — the cutter and the renderer.** Hardcoded photo, no UI, per the build order in the
-design doc §17.
+**Step 2 of 9 — drag, snap, spring, audio.** The board is playable: pick a piece up, drop it near
+where it belongs, and it snaps. Still no product UI — that arrives with the tray at step 3.
+
+Step 2 is not *finished* until it has been tuned by hand on an iPad, which the design doc budgets a
+week for and treats as a real gate: **the snap must feel complete with the device on silent and no
+vibration.** The code is in place and the dials are on screen; the judging has not happened yet.
 
 - [x] **Step 1** — the cut (grid, jittered lattice, interlocking edges, baked bevel, adjacency
       graph) in a worker, and the Canvas 2D layer stack behind `draw(scene, camera)`
-- [ ] **Step 2** — drag, snap, spring, audio *(and stop there and tune it)*
+- [x] **Step 2** — clusters and union-find, snap resolution over graph neighbours, the release
+      spring, the pointer machine, and the three-layer snap audio *(tuning still owed)*
 - [ ] **Step 3** — tray and lenses
 - [ ] **Step 4** — hints and light
 - [ ] **Step 5** — setup, library, resume
@@ -38,19 +43,24 @@ npm run dev
 The dev server is host-exposed, so the printed network URL works from an iPad or iPhone on the same
 network. Real-hardware testing is a gate at every step.
 
-The step 1 harness cuts a synthetic validation target — numbered cells, a hue sweep across x, a
-value sweep down y, and a 1px hairline grid — chosen because a photo hides exactly the bugs this
-step can produce. A misplaced piece or a misaligned tab is obvious against it and invisible against
-foliage.
+The harness cuts a synthetic validation target — numbered cells, a hue sweep across x, a value sweep
+down y, and a 1px hairline grid — chosen because a photo hides exactly the bugs these steps can
+produce. A misplaced piece or a misaligned tab is obvious against it and invisible against foliage.
 
-Controls: drag to pan, pinch or scroll to zoom, double-tap to fit. **Solve** drops every piece into
-its slot so the seams can be inspected; **Re-cut** reseeds.
+**Playing it:** drag a piece onto the board. One finger on a piece drags it, one finger on the mat
+or on the placed board pans, and two fingers always mean camera. There is no tap-to-select — direct
+manipulation only. A piece dropped anywhere else stays exactly where you dropped it.
 
-The HUD reports the real grid, the cut time against the 1.2s budget, and whether the renderer
-currently has a frame scheduled — an idle board must read `scheduled: no`.
+The tuning dials are along the bottom, and switching any of them re-cuts: snap tolerance
+(Precise / Standard / Generous), rotation, reduced motion, and sound. **Solve** drops every
+remaining piece into its slot so the seams can be inspected; **Re-cut** reseeds.
+
+The HUD reports the real grid, the cut time against the 1.2s budget, how many pieces are placed, and
+whether the renderer currently has a frame scheduled — with no finger down and nothing springing, an
+idle board must read `scheduled: no`.
 
 ```bash
-npm test          # 85 tests
+npm test          # 235 tests
 npm run typecheck
 npm run build
 ```

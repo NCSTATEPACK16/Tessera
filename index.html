@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no"
+    />
+    <meta name="color-scheme" content="dark" />
+    <title>Tessera — step 1 harness</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Step 1 is "no UI at all" — this is a dev harness, not product chrome.
+         The real chrome is React DOM and arrives at step 3. */
+      :root {
+        --mat-void: #0b0d10;
+        --mat-raised: #1e232a;
+        --edge-hair: #2c333c;
+        --ink-primary: #edf0f4;
+        --ink-muted: #8a929e;
+        --accent-fallback: #6fa8ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
+        background: var(--mat-void);
+        color: var(--ink-primary);
+        font-family: 'Inter Tight', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      #board {
+        position: fixed;
+        inset: 0;
+        touch-action: none;
+      }
+
+      #hud {
+        position: fixed;
+        top: max(12px, env(safe-area-inset-top));
+        left: max(12px, env(safe-area-inset-left));
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 14px;
+        border: 1px solid var(--edge-hair);
+        border-radius: 14px;
+        background: rgba(30, 35, 42, 0.82);
+        backdrop-filter: blur(12px);
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        color: var(--ink-muted);
+        pointer-events: none;
+        max-width: min(320px, calc(100vw - 24px));
+      }
+
+      #hud .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+      }
+
+      #hud .row b {
+        color: var(--ink-primary);
+        font-weight: 500;
+      }
+
+      #hud .status {
+        color: var(--accent-fallback);
+      }
+
+      #controls {
+        position: fixed;
+        bottom: max(12px, env(safe-area-inset-bottom));
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        display: flex;
+        gap: 8px;
+        padding: 8px;
+        border: 1px solid var(--edge-hair);
+        border-radius: 22px;
+        background: rgba(30, 35, 42, 0.82);
+        backdrop-filter: blur(12px);
+      }
+
+      button {
+        min-height: 44px;
+        padding: 0 16px;
+        border: 1px solid var(--edge-hair);
+        border-radius: 14px;
+        background: transparent;
+        color: var(--ink-primary);
+        font-family: 'Inter Tight', system-ui, sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+
+      button:active {
+        background: rgba(111, 168, 255, 0.16);
+      }
+
+      select {
+        min-height: 44px;
+        padding: 0 12px;
+        border: 1px solid var(--edge-hair);
+        border-radius: 14px;
+        background: transparent;
+        color: var(--ink-primary);
+        font-family: 'Inter Tight', system-ui, sans-serif;
+        font-size: 14px;
+      }
+
+      /* 44pt touch target floor, everywhere — including the tuning switches. */
+      .toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 44px;
+        padding: 0 12px;
+        border: 1px solid var(--edge-hair);
+        border-radius: 14px;
+        font-size: 13px;
+        color: var(--ink-muted);
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .toggle input {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--accent-fallback);
+      }
+
+      @media (max-width: 720px) {
+        #controls {
+          flex-wrap: wrap;
+          justify-content: center;
+          max-width: calc(100vw - 24px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="board"></div>
+
+    <div id="hud">
+      <div class="row"><span>status</span><b class="status" id="status">booting</b></div>
+      <div class="row"><span>grid</span><b id="grid">—</b></div>
+      <div class="row"><span>pieces</span><b id="pieces">—</b></div>
+      <div class="row"><span>cut</span><b id="cutms">—</b></div>
+      <div class="row"><span>zoom</span><b id="zoom">—</b></div>
+      <div class="row"><span>drawn</span><b id="drawn">—</b></div>
+      <div class="row"><span>frames</span><b id="frames">—</b></div>
+      <div class="row"><span>scheduled</span><b id="sched">—</b></div>
+      <div class="row"><span>placed</span><b id="placed">—</b></div>
+    </div>
+
+    <div id="controls">
+      <select id="count" aria-label="piece count">
+        <option value="50">50</option>
+        <option value="100">100</option>
+        <option value="150">150</option>
+        <option value="200" selected>200</option>
+        <option value="250">250</option>
+      </select>
+      <select id="tolerance" aria-label="snap tolerance">
+        <option value="precise">Precise</option>
+        <option value="standard" selected>Standard</option>
+        <option value="generous">Generous</option>
+      </select>
+      <!-- Rotation defaults OFF (§01), and reduced motion mirrors the OS
+           setting rather than replacing it — this is a tuning switch. -->
+      <label class="toggle"><input id="rotation" type="checkbox" />rotate</label>
+      <label class="toggle"><input id="reduced" type="checkbox" />reduced</label>
+      <label class="toggle"><input id="sound" type="checkbox" checked />sound</label>
+      <button id="recut" type="button">Re-cut</button>
+      <button id="solve" type="button">Solve</button>
+      <button id="fit" type="button">Fit</button>
+    </div>
+
+    <script type="module" src="/src/dev/harness.ts"></script>
+  </body>
+</html>
