@@ -78,10 +78,17 @@ real grid, the cut time against the 1.2s budget, and whether the renderer has a 
 with no finger down and nothing springing, an idle board must read `scheduled: no`.
 
 ```bash
-npm test          # 319 tests
+npm test             # 319 unit tests, node environment
+npm run test:browser # 29 Playwright checks, dock and phone viewports
 npm run typecheck
 npm run build
 ```
+
+`npm run test:browser` boots the dev server itself and drives the real app. It is a gate at the end
+of every step, not an optional extra: a green unit suite says nothing about whether the app boots,
+and the two invariants that matter most here — **the board never re-renders through React**, and
+**an idle board draws nothing at all** — are only observable in a browser. Both are measured rather
+than asserted.
 
 ## Design documents
 

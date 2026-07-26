@@ -105,7 +105,8 @@ src/
             theme.css                 §13 tokens, once, for both consumers
   main.tsx                            the product entry — index.html
   dev/      harness.ts                steps 1-2 — dev.html, deleted at step 5
-test/                                 mirrors src/
+test/                                 mirrors src/ — vitest, *.test.ts
+  browser/  *.spec.ts board-page.ts   playwright, the app in a real browser
 docs/                                 design documents — gitignored, local only
 ```
 
@@ -148,10 +149,11 @@ Do not drift from these without changing the design doc first.
 ## Commands
 
 ```
-npm run dev        # host-exposed for real-device testing
-                   #   /          the product — board and tray
-                   #   /dev.html  the step-2 harness and its tuning dials
-npm test           # vitest
+npm run dev          # host-exposed for real-device testing
+                     #   /          the product — board and tray
+                     #   /dev.html  the step-2 harness and its tuning dials
+npm test             # vitest — pure functions, node environment
+npm run test:browser # playwright — the app, in a browser, dock and phone
 npm run typecheck
 npm run build
 ```
@@ -169,8 +171,33 @@ anywhere; and the forest case in `test/tray/colour.test.ts` is the one that told
 lightness weight cannot work — it passed at every setting until the axes were normalised.
 **A test that passes at both extremes of the constant it is guarding is not testing that constant.**
 
-Snap *feel* is not testable. It is judged by hand on an iPad, and that is a real gate, not a
-formality — §17 budgets a week on it and says to spend it.
+### `npm run test:browser` is a gate, not an optional extra
 
-Test on real hardware every step. The iPad Safari behaviours in the plan are not reproducible in
-Chrome devtools.
+**Run it on every change, and without exception at the end of every step, before the PR.** A green
+`npm test` is not evidence the app works — it is 300-odd assertions about pure functions, and it
+stays green while the app fails to boot.
+
+Two things in this codebase are *only* observable in a browser, and both are top-line invariants:
+
+- **The board never re-renders through React.** `test/browser/invariants.spec.ts` counts DOM
+  mutations inside the tray during a camera gesture and a 60-frame drag. A re-render of the chip
+  grid is hundreds of mutations, so the answer is unambiguous rather than a matter of opinion.
+- **An idle board draws nothing at all.** Asserted against the harness's own `scheduled` readout.
+
+`@playwright/test` boots vite itself and runs `test/browser/*.spec.ts` over a dock viewport and a
+phone viewport. Vitest owns `*.test.ts`, Playwright owns `*.spec.ts`, and neither ever collects the
+other's files. **The Playwright version is pinned** because each release ties to one Chromium build;
+bump it deliberately and run `npx playwright install chromium` when you do.
+
+Writing browser tests here has one recurring trap, and it has caught every bad assertion so far:
+**the tray is virtualised and the sheet overlays the board.** Only ~70 of 250 chips are ever
+mounted, so counting chips measures the viewport; and on a phone the centre of the board canvas is
+underneath the sheet, so dropping there returns the piece to the tray. `BoardPage` in
+`test/browser/board-page.ts` exists to make both facts unavoidable — use `remaining()` and
+`matPoint()` rather than reaching past it.
+
+Snap *feel* is not testable, by Playwright or anything else. It is judged by hand on an iPad, and
+that is a real gate, not a formality — §17 budgets a week on it and says to spend it.
+
+Test on real hardware every step. Chromium on a desk is not iPad Safari, and the behaviours in the
+plan are not reproducible in Chrome devtools.
