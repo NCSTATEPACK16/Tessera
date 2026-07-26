@@ -14,6 +14,7 @@ import { PlaySession } from '@/play/session';
 import type { PlayEvent, SessionPiece } from '@/play/session';
 import { buildNeighbourGraph, pieceIdAt } from '@/cut/graph';
 import type { CubicPath, Rect } from '@/core/geom';
+import { WORKSET_DROP_TOLERANCE } from '@/play/workset';
 
 const COLS = 3;
 const ROWS = 2;
@@ -221,6 +222,55 @@ describe('worksets', () => {
     const [a] = pulled();
     expect(play.scene().loose.map((p) => p.id)).not.toContain(a);
     expect(play.pickCluster({ x: 20.5, y: 20.5 })).toBeNull();
+  });
+
+  it('a piece released well clear of its group leaves it (the miss branch)', () => {
+    const play = session();
+    const group = play.pullOut(pulled(), spread);
+    const [a, b, c] = pulled();
+
+    // c is the rightmost of the other two members, at spread[2]; its box's right
+    // edge is the reference point for "outside the group". Multiplying the
+    // tolerance rather than adding a literal keeps this meaningful if
+    // WORKSET_DROP_TOLERANCE is retuned.
+    const rightEdge = spread[2]!.x + 1;
+    const farAway = rightEdge + WORKSET_DROP_TOLERANCE * 5;
+
+    const cluster = play.board.clusterIdOf(a!);
+    play.grab(cluster);
+    // Far from both its own slot and the other two members, so resolveSnap
+    // finds no candidate: release() must take the miss branch, which is the
+    // only branch the proximity rule runs in.
+    play.board.moveCluster(cluster, farAway, spread[2]!.y);
+    play.release(cluster, { x: 0, y: 0 });
+
+    // Confirms the miss branch, not the snap branch, actually ran.
+    expect(play.board.isPlaced(a!)).toBe(false);
+    expect(play.worksets.worksetOf(a!)).toBeUndefined();
+    expect(play.worksets.get(group)?.pieceIds).toEqual(expect.arrayContaining([b, c]));
+    expect(play.worksets.get(group)?.pieceIds).not.toContain(a);
+  });
+
+  it('a piece released just within tolerance of its group stays in it', () => {
+    const play = session();
+    const group = play.pullOut(pulled(), spread);
+    const [a, b, c] = pulled();
+
+    const rightEdge = spread[2]!.x + 1;
+    // Outside the others' box, but by less than the tolerance — the companion
+    // to the escape test above. Without this, a test could pass with the
+    // tolerance set to zero: only this one makes the slack load-bearing.
+    const justInside = rightEdge + WORKSET_DROP_TOLERANCE / 2;
+
+    const cluster = play.board.clusterIdOf(a!);
+    play.grab(cluster);
+    play.board.moveCluster(cluster, justInside, spread[2]!.y);
+    play.release(cluster, { x: 0, y: 0 });
+
+    // Confirms the miss branch, not the snap branch, actually ran.
+    expect(play.board.isPlaced(a!)).toBe(false);
+    expect(play.worksets.worksetOf(a!)?.id).toBe(group);
+    expect(play.worksets.get(group)?.pieceIds).toEqual(expect.arrayContaining([a, b, c]));
   });
 
   it('a pinned return puts the piece back in the tray, flagged', () => {
