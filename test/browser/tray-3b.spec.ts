@@ -45,9 +45,6 @@ import type { InkBox } from './board-page';
  */
 const RERENDER_BUDGET = 300;
 
-const isPhone = ({ viewport }: { viewport: { width: number } | null }): boolean =>
-  (viewport?.width ?? 0) < 768;
-
 /**
  * Enter select mode on the first of `count` mounted chips, add the rest, and
  * pull the lot out.
@@ -101,9 +98,11 @@ test('the pull-out puts the selection on the mat as one labelled group', async (
   await board.enterSelect(ids[0]!);
   for (const id of ids.slice(1)) await board.chipAny(id).click();
 
-  // Read the count off the bar rather than assuming it.
+  // Every one of them, the chip the hold started on included — that chip is
+  // selection #1, and it used to be toggled straight back off by the click that
+  // ended its own hold.
   const selected = Number((await board.pullOutButton.innerText()).match(/(\d+)/)![1]);
-  expect(selected).toBeGreaterThanOrEqual(ids.length - 1);
+  expect(selected).toBe(ids.length);
 
   await board.pullOutButton.click();
   await page.waitForTimeout(500);
@@ -112,7 +111,7 @@ test('the pull-out puts the selection on the mat as one labelled group', async (
   // `remaining()` reads the header, so virtualisation cannot skew it. A piece on
   // the mat has left the tray but is not placed, so this must not move.
   expect(await board.remaining()).toBe(before);
-  for (const id of ids.slice(1)) await expect(board.chipAny(id)).toHaveCount(0);
+  for (const id of ids) await expect(board.chipAny(id)).toHaveCount(0);
 
   const ink = await boardInk(page);
   expect(ink.pieces, 'nothing was drawn on the mat').not.toBeNull();
@@ -184,10 +183,12 @@ test('the group label chip is canvas, and tapping it renames the group', async (
 // The shelf
 
 test.describe('the shelf', () => {
-  test.skip(isPhone, 'the sheet form factor is covered on its own below');
-
   test('a chip dropped on it is pinned, and lifts out of every lens', async ({ page }) => {
-    // This is `isOverShelf`, and it has had no automated coverage until now.
+    // This is `isOverShelf`, and it had no automated coverage until now. It runs
+    // at both viewports deliberately: the phone is the hard case, because
+    // `collapseForDrag()` drops the sheet to peek at the exact moment the drag
+    // makes the shelf appear, and the shelf has to still be somewhere a finger
+    // can reach when it lands.
     const board = await BoardPage.open(page);
     const before = await board.remaining();
     const id = (await board.mountedIds())[0]!;
@@ -222,21 +223,20 @@ test.describe('the shelf on a phone', () => {
   test.skip(({ viewport }) => (viewport?.width ?? 0) >= 768, 'dock viewport');
 
   test('is inside the viewport while a chip is in flight', async ({ page }) => {
-    // KNOWN DEFECT, carried from task 9. `collapseForDrag()` drops the sheet to
-    // peek exactly when a drag makes the shelf appear, and peek is
-    // `PEEK_PX + SHELF_ROW_PX` = 164px — but the sheet's own pinned region (the
-    // 28px handle, the title, and two wrapped rows of lens chips) is already
-    // 169px before the shelf is added at all. The shelf therefore renders below
-    // the section's own box and, because the section is `bottom: 0`, below the
-    // viewport: measured at y=669 in a 664px-tall viewport.
+    // The peek arithmetic, guarded directly rather than through its consequence.
     //
-    // The consequence is that drop-to-pin is unreachable on a phone. It is not
-    // a drop-target arithmetic bug — `isOverShelf` answers correctly about a
-    // rectangle no finger can occupy.
+    // It has been wrong twice. `collapseForDrag()` drops the sheet to peek at
+    // the exact moment a drag makes the shelf appear, so peek is the height the
+    // shelf has to survive; and peek was a constant plus a constant, derived
+    // from a pinned region that had been counted by hand. It came out 164px
+    // against a region that measured 169px before the shelf was added at all,
+    // and the shelf rendered at y=669 in a 664px viewport — a drop target no
+    // finger could occupy, with `isOverShelf` answering about it perfectly
+    // correctly and nothing anywhere reporting an error.
     //
-    // Marked `fail` rather than skipped so the gate says so the day it is fixed.
-    test.fail();
-
+    // `Sheet` now measures the region instead, so this asserts the measurement
+    // is honest. A drop target that is off the screen by one pixel is off the
+    // screen, which is why the comparison has no slack in it.
     const board = await BoardPage.open(page);
     const id = (await board.mountedIds())[0]!;
     const box = (await board.chip(id).boundingBox())!;
@@ -332,25 +332,31 @@ test.describe('select mode', () => {
     }
   });
 
-  test('the chip the hold started on is selection #1', async ({ page }) => {
-    // KNOWN DEFECT, carried from task 9. `TrayDrag.tick` enters select mode at
-    // 450ms while the finger is still down; the `pointerup` that ends the hold
-    // then fires an ordinary `click` on that same chip, and in select mode a
-    // click is a toggle — so the chip that opened the mode is immediately
-    // toggled back out of it. Observable as the bar reading "Pull out 1" during
-    // the hold and "Pull out 0" the instant the finger lifts.
+  test('the chip the hold started on is selection #1, and can still be tapped off', async ({
+    page,
+  }) => {
+    // The hold fires from the frame loop with the finger still down, so the
+    // `pointerup` that ends it dispatches an ordinary DOM click on that same
+    // chip — and in select mode a click is a toggle. Left alone, the gesture
+    // that opens the mode deselects the piece it just selected, and every
+    // pull-out is one piece short of what the player chose. It read as "Pull
+    // out 1" during the hold and "Pull out 0" the instant the finger lifted.
     //
-    // `TrayDrag` cannot see this: the click is a DOM event on the button, not
-    // part of the probe it clears in `tick`.
-    //
-    // Marked `fail` rather than skipped so the gate says so the day it is fixed.
-    test.fail();
-
+    // `Tray` swallows exactly that one click, armed by the hold and disarmed by
+    // the next press. The second half of this test is what makes that a guard
+    // rather than a hole: once the finger has lifted and come back down, the
+    // very same chip is an ordinary toggle again.
     const board = await BoardPage.open(page);
     const id = (await board.mountedIds())[0]!;
 
     await board.enterSelect(id);
     await expect(board.chipAny(id)).toHaveAttribute('aria-label', `Piece ${id}, selected 1`);
+    await expect(board.pullOutButton).toHaveText(/Pull out 1/);
+
+    await board.chipAny(id).click();
+    await expect(board.pullOutButton).toHaveText(/Pull out 0/);
+    await board.chipAny(id).click();
+    await expect(board.pullOutButton).toHaveText(/Pull out 1/);
   });
 });
 

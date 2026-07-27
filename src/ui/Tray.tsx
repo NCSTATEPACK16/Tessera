@@ -83,20 +83,46 @@ export function Tray(props: TrayProps): React.ReactElement {
   // on every toggle anyway. The count is the only thing React needs to know.
   const selection = useRef(new TraySelection());
 
+  /**
+   * The chip whose still press opened select mode, while that press is still on.
+   *
+   * The hold fires from the frame loop at `SELECT_HOLD_MS` with the finger
+   * *still down*. The `pointerup` that ends that same hold then dispatches an
+   * ordinary DOM `click` on the same chip, and in select mode a click is a
+   * toggle — so without this the mode-opening gesture immediately deselects the
+   * one piece it just selected, and every pull-out is a piece short.
+   *
+   * Tied to the gesture, never to a clock. It is armed by the hold and disarmed
+   * by the next press on any chip, so a fast second tap on the same chip is
+   * never eaten; and a hold that ends in a `pointercancel` — no click at all —
+   * cannot leave a guard behind, because the only thing that could reach it is a
+   * click, and a click needs a press first.
+   *
+   * `TrayDrag` cannot do this: it is DOM-free, it has already cleared its probe
+   * by the time the hold fires, and a `click` is not an event it has ever seen.
+   */
+  const openedSelect = useRef<PieceId | null>(null);
+
   const enterSelect = (pieceId: PieceId): void => {
     selection.current.clear();
     selection.current.toggle(pieceId);
+    openedSelect.current = pieceId;
     chrome.setSelecting(true);
     chrome.setSelectedCount(selection.current.size);
   };
 
   const toggleSelected = (pieceId: PieceId): void => {
+    if (openedSelect.current === pieceId) {
+      openedSelect.current = null;
+      return;
+    }
     selection.current.toggle(pieceId);
     chrome.setSelectedCount(selection.current.size);
   };
 
   const exitSelect = (): void => {
     selection.current.clear();
+    openedSelect.current = null;
     chrome.setSelecting(false);
     chrome.setSelectedCount(0);
   };
@@ -113,29 +139,41 @@ export function Tray(props: TrayProps): React.ReactElement {
     return () => window.removeEventListener('keydown', onKey);
   }, [chrome.selecting]);
 
-  const { onChipPointerDown } = useTrayDrag({
+  const { onChipPointerDown: pressChip } = useTrayDrag({
     onPullOut: props.onPullOut,
     onEnterSelect: enterSelect,
     selecting: () => chrome.selecting,
   });
 
-  const header = (
-    <div className="flex flex-col gap-[12px]">
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-[16px] font-medium text-[var(--ink-primary)]">Pieces</h2>
-        <span className="font-[var(--font-data)] text-[12px] tabular-nums text-[var(--ink-muted)]">
-          {props.remaining} left
-        </span>
-      </div>
-      <LensChips
-        lens={props.lens}
-        lensArg={props.lensArg}
-        counts={props.counts}
-        bins={props.bins}
-        binCount={props.binCount}
-        onPick={props.onPick}
-      />
+  // A new press is a new gesture, so whatever the last one armed is spent.
+  // This is the disarm half of `openedSelect` and the reason it cannot leak.
+  const onChipPointerDown = (pieceId: PieceId, event: React.PointerEvent): void => {
+    openedSelect.current = null;
+    pressChip(pieceId, event);
+  };
+
+  // Two nodes rather than one, because the sheet has to put the shelf *between*
+  // them: at peek the shelf is the row that has to survive and the lenses are
+  // the row that may clip, and a single header node offers nowhere to say so.
+  // The dock has no peek to collide with and stacks them straight back up.
+  const title = (
+    <div className="flex items-baseline justify-between">
+      <h2 className="text-[16px] font-medium text-[var(--ink-primary)]">Pieces</h2>
+      <span className="font-[var(--font-data)] text-[12px] tabular-nums text-[var(--ink-muted)]">
+        {props.remaining} left
+      </span>
     </div>
+  );
+
+  const lenses = (
+    <LensChips
+      lens={props.lens}
+      lensArg={props.lensArg}
+      counts={props.counts}
+      bins={props.bins}
+      binCount={props.binCount}
+      onPick={props.onPick}
+    />
   );
 
   // Built once, per the review note: two literal copies of this prop list
@@ -186,20 +224,21 @@ export function Tray(props: TrayProps): React.ReactElement {
   );
 
   if (!props.docked) {
-    // The sheet pins the shelf with the header instead of scrolling it with
-    // the grid. At peek the header alone leaves the grid almost no room, so a
-    // shelf placed in document order between them would render below the
-    // section's own box — reachable by drop-target math but not by any
-    // finger. Pinning it fixes that the same way pinning the lens chips
-    // already does.
+    // The sheet pins the shelf directly under the title, above the lens chips.
+    // `collapseForDrag()` drops it to peek at the exact moment a drag makes the
+    // shelf appear, so the shelf is the row that has to survive peek and the
+    // lenses are the row that may clip — which is what they did at peek before
+    // the shelf existed. Sizing peek from the measured region rather than from
+    // arithmetic is the other half of that; see `Sheet.heightOf`.
     return (
       <Sheet
         rootRef={props.rootRef}
         detent={props.detent}
         onDetent={props.onDetent}
-        header={header}
+        header={title}
         shelf={shelf}
         shelfVisible={shelfVisible}
+        lenses={lenses}
       >
         {grid}
         {selectionBar}
@@ -217,7 +256,10 @@ export function Tray(props: TrayProps): React.ReactElement {
       style={{ width: props.width, paddingRight: 'env(safe-area-inset-right)' }}
     >
       <ResizeEdge width={props.width} onWidth={props.onWidth} />
-      <div className="shrink-0 px-[12px] pb-[12px] pt-[16px]">{header}</div>
+      <div className="flex shrink-0 flex-col gap-[12px] px-[12px] pb-[12px] pt-[16px]">
+        {title}
+        {lenses}
+      </div>
       {shelf}
       {grid}
       {selectionBar}
