@@ -20,18 +20,37 @@ import type { SheetDetent } from './store';
 /** §06: peek is one row of pieces. */
 const PEEK_PX = 96;
 
+/**
+ * The shelf's own row height (chip cell + its `py-[6px]` row padding),
+ * added to peek only while the shelf is actually rendering something. A
+ * pinned piece — or a drag in flight — has to survive peek exactly like the
+ * lens chips it now sits beside; a shelf hidden below the section's own box
+ * is unreachable no matter how correct its drop-target math is.
+ */
+const SHELF_ROW_PX = 68;
+
 export interface SheetProps {
   rootRef?: React.Ref<HTMLElement> | undefined;
   detent: SheetDetent;
   onDetent: (detent: SheetDetent) => void;
   header: React.ReactNode;
+  /**
+   * The pinned shelf row (§06), rendered below the header rather than with
+   * `children` — it has the identical "reachable at every detent" requirement
+   * the header already states for the lens chips, so it lives in the same
+   * pinned, never-scrolls region. `undefined`/no node when the shelf has
+   * nothing to show; see `shelfVisible` for the height contribution.
+   */
+  shelf?: React.ReactNode;
+  /** Whether `shelf` will actually render a row, so peek can grow to fit it. */
+  shelfVisible?: boolean;
   children: React.ReactNode;
 }
 
-function heightOf(detent: SheetDetent, viewport: number): number {
+function heightOf(detent: SheetDetent, viewport: number, shelfVisible: boolean): number {
   switch (detent) {
     case 'peek':
-      return PEEK_PX;
+      return PEEK_PX + (shelfVisible ? SHELF_ROW_PX : 0);
     case 'half':
       return Math.round(viewport * 0.5);
     case 'full':
@@ -44,21 +63,24 @@ export function Sheet({
   detent,
   onDetent,
   header,
+  shelf,
+  shelfVisible = false,
   children,
 }: SheetProps): React.ReactElement {
   const viewport = typeof window === 'undefined' ? 800 : window.innerHeight;
   const [dragHeight, setDragHeight] = useState<number | null>(null);
   const origin = useRef<{ y: number; height: number } | null>(null);
 
-  const resting = heightOf(detent, viewport);
+  const resting = heightOf(detent, viewport, shelfVisible);
   const height = dragHeight ?? resting;
+  const peekFloor = heightOf('peek', viewport, shelfVisible);
 
   const nearest = (target: number): SheetDetent => {
     const options: SheetDetent[] = ['peek', 'half', 'full'];
     let best: SheetDetent = 'peek';
     let bestDistance = Infinity;
     for (const option of options) {
-      const distance = Math.abs(heightOf(option, viewport) - target);
+      const distance = Math.abs(heightOf(option, viewport, shelfVisible) - target);
       if (distance < bestDistance) {
         bestDistance = distance;
         best = option;
@@ -91,7 +113,7 @@ export function Sheet({
           const start = origin.current;
           if (!start) return;
           const next = start.height + (start.y - event.clientY);
-          setDragHeight(Math.max(PEEK_PX, Math.min(viewport * 0.94, next)));
+          setDragHeight(Math.max(peekFloor, Math.min(viewport * 0.94, next)));
         }}
         onPointerUp={() => {
           if (dragHeight !== null) onDetent(nearest(dragHeight));
@@ -108,6 +130,10 @@ export function Sheet({
 
       {/* Pinned, so the lenses stay in the thumb's arc at every detent. */}
       <div className="shrink-0 px-[12px] pb-[8px]">{header}</div>
+
+      {/* Pinned alongside the header, for the identical reason (see `shelf`
+          above) — this is what makes drop-to-pin reachable at peek. */}
+      {shelf}
 
       {children}
     </section>

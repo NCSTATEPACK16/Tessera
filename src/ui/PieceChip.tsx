@@ -102,9 +102,9 @@ export function PieceChip({
       style={{ width: size, height: size, touchAction: 'pan-y' }}
       className={[
         'relative flex items-center justify-center rounded-[8px] border transition-colors',
-        'border-[var(--edge-hair)] bg-[var(--mat-felt)]',
         onMat ? 'opacity-40' : 'active:border-[var(--accent)]',
-        pinned && !onMat ? 'border-[var(--accent)]' : '',
+        pinned && !onMat ? 'border-[var(--accent)]' : 'border-[var(--edge-hair)]',
+        'bg-[var(--mat-felt)]',
       ].join(' ')}
     >
       <canvas ref={canvas} style={{ width: size, height: size }} className="pointer-events-none" />
@@ -114,6 +114,18 @@ export function PieceChip({
         <span
           aria-hidden
           className="pointer-events-none absolute left-[3px] top-[3px] h-[9px] w-[9px] border-l-2 border-t-2 border-[var(--accent)] opacity-80"
+        />
+      )}
+      {pinned && !onMat && (
+        // The pinned glyph — drawn, not typed, matching the notch's approach
+        // above. A free corner (badge top-right, notch top-left, mat label
+        // bottom-right), because colour is never the only signal: the accent
+        // border is decoration, this shape is what the state actually reads
+        // on, colour vision or not.
+        <span
+          aria-hidden
+          className="pointer-events-none absolute bottom-[2px] left-[3px] h-[9px] w-[7px] bg-[var(--accent)] opacity-80"
+          style={{ clipPath: 'polygon(50% 100%, 0% 35%, 15% 0%, 85% 0%, 100% 35%)' }}
         />
       )}
       {badge > 0 && (

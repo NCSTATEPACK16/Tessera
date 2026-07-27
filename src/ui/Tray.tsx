@@ -138,59 +138,77 @@ export function Tray(props: TrayProps): React.ReactElement {
     </div>
   );
 
-  // Shelf, then grid, then the select-mode action bar — in that order both on
-  // the dock and in the sheet, so the two form factors read identically.
-  const body = (
-    <>
-      <Shelf
-        rootRef={props.shelfRef}
-        ids={chrome.shelf}
-        cell={CELL}
-        dragging={props.dragging}
-        bitmapOf={props.bitmapOf}
-        isEdge={props.isEdge}
-        onChipPointerDown={onChipPointerDown}
-      />
-      <PieceGrid
-        ids={props.ids}
-        cell={CELL}
-        gap={GAP}
-        bitmapOf={props.bitmapOf}
-        isEdge={props.isEdge}
-        isOnMat={props.isOnMat}
-        onChipPointerDown={onChipPointerDown}
-        onLocate={props.onLocate}
-        selecting={chrome.selecting}
-        badgeOf={(id) => selection.current.badgeOf(id)}
-        onChipClick={toggleSelected}
-      />
-      {chrome.selecting && (
-        <SelectionBar
-          count={chrome.selectedCount}
-          onPullOut={() => {
-            const ids = selection.current.ordered;
-            exitSelect();
-            props.onPullSelection(ids);
-          }}
-          onCancel={exitSelect}
-        />
-      )}
-    </>
+  // Built once, per the review note: two literal copies of this prop list
+  // would be two places to forget the shelf exists. Which container ends up
+  // mounting it is the only thing that differs below.
+  const shelf = (
+    <Shelf
+      rootRef={props.shelfRef}
+      ids={chrome.shelf}
+      cell={CELL}
+      dragging={props.dragging}
+      bitmapOf={props.bitmapOf}
+      isEdge={props.isEdge}
+      onChipPointerDown={onChipPointerDown}
+    />
+  );
+  // Mirrors `Shelf`'s own hidden-when-empty condition (`ids.length === 0 &&
+  // !dragging`) — the sheet needs to know whether that row will render
+  // *before* rendering it, to grow peek by exactly a shelf row and no more.
+  const shelfVisible = chrome.shelf.length > 0 || props.dragging;
+
+  const grid = (
+    <PieceGrid
+      ids={props.ids}
+      cell={CELL}
+      gap={GAP}
+      bitmapOf={props.bitmapOf}
+      isEdge={props.isEdge}
+      isOnMat={props.isOnMat}
+      onChipPointerDown={onChipPointerDown}
+      onLocate={props.onLocate}
+      selecting={chrome.selecting}
+      badgeOf={(id) => selection.current.badgeOf(id)}
+      onChipClick={toggleSelected}
+    />
+  );
+
+  const selectionBar = chrome.selecting && (
+    <SelectionBar
+      count={chrome.selectedCount}
+      onPullOut={() => {
+        const ids = selection.current.ordered;
+        exitSelect();
+        props.onPullSelection(ids);
+      }}
+      onCancel={exitSelect}
+    />
   );
 
   if (!props.docked) {
+    // The sheet pins the shelf with the header instead of scrolling it with
+    // the grid. At peek the header alone leaves the grid almost no room, so a
+    // shelf placed in document order between them would render below the
+    // section's own box — reachable by drop-target math but not by any
+    // finger. Pinning it fixes that the same way pinning the lens chips
+    // already does.
     return (
       <Sheet
         rootRef={props.rootRef}
         detent={props.detent}
         onDetent={props.onDetent}
         header={header}
+        shelf={shelf}
+        shelfVisible={shelfVisible}
       >
-        {body}
+        {grid}
+        {selectionBar}
       </Sheet>
     );
   }
 
+  // The dock has no detent to survive, so the shelf stays in document order
+  // above the grid — there is no peek to collide with.
   return (
     <aside
       ref={props.rootRef}
@@ -200,7 +218,9 @@ export function Tray(props: TrayProps): React.ReactElement {
     >
       <ResizeEdge width={props.width} onWidth={props.onWidth} />
       <div className="shrink-0 px-[12px] pb-[12px] pt-[16px]">{header}</div>
-      {body}
+      {shelf}
+      {grid}
+      {selectionBar}
     </aside>
   );
 }

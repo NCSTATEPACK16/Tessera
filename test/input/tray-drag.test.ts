@@ -96,6 +96,18 @@ describe('TrayDrag', () => {
     expect(pulled).toEqual([]);
   });
 
+  it('a still press already in select mode does not re-enter it', () => {
+    // Mirrors `move()`'s guard above, for `tick()`: select mode is already
+    // active, so a fourth chip held still for SELECT_HOLD_MS must not restart
+    // it — that would clear the selection the player is building.
+    const { drag, selected } = harness(true, true);
+    drag.down(4, at(10, 10, 0));
+
+    drag.tick(SELECT_HOLD_MS);
+    expect(selected).toEqual([]);
+    expect(drag.pressing).toBe(false);
+  });
+
   it('a press that goes nowhere is a tap, not a drag', () => {
     const { drag, pulled, tapped } = harness();
     drag.down(9, at(10, 10, 0));

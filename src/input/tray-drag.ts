@@ -123,6 +123,18 @@ export class TrayDrag {
   tick(nowMs: number): void {
     const probe = this.probe;
     if (!probe || nowMs - probe.t < SELECT_HOLD_MS) return;
+
+    // Select mode is already active: the chip is already a checkbox, and
+    // there is nothing left for a hold to enter. Without this, a fourth chip
+    // held still while the player is choosing a fifth calls `onEnterSelect`
+    // again, which clears and restarts the selection under the finger that
+    // is still deciding what to add to it. Mirrors the `selecting` guard in
+    // `move()` above.
+    if (this.options.selecting?.()) {
+      this.clear();
+      return;
+    }
+
     this.clear();
     this.options.onEnterSelect?.(probe.pieceId);
   }
