@@ -52,6 +52,21 @@ Break any of these and something downstream breaks in a way that looks like a di
 - **Tray filters are lenses, never sorts.** The canonical order never reflows. Machine-checkable
   form: **every lens's output is a subsequence of the canonical order**, asserted for all six in
   `test/tray/lenses.test.ts`. There is no comparator in `lenses.ts` and there must never be one.
+- **A Workset is not a cluster.** Pull-out groups loose pieces under a label; it never merges them.
+  §05's island is welded and holds true relative offsets; §06's pull-out group is a loose grid that
+  deliberately does not, so making it a cluster would hand `snap.ts` geometry that is wrong by
+  construction and it would resolve against it silently. `snap.ts` and `board.ts` do not know
+  `workset.ts` exists. **A Workset stores no position** — its bounds derive from its members every
+  frame, because a stored one would disagree with the pieces the first time a member moved.
+- **A piece is in at most one Workset**, and membership ends on merge, on return to tray, or on
+  proximity drop. Two predicates gate the mat — `inTray` and `worksets.isHidden` — and both are
+  consulted in `rebuild`, `scene`, and `contentBounds`. Honour one without the other and the player
+  grabs invisible pieces.
+- **Pinning is an attribute, not a location.** A piece is still in exactly one of `tray`, `mat`, or
+  placed. A pinned chip leaves every lens and appears once, on the shelf.
+- **The chip cedes the vertical axis to the browser** — `touch-action: pan-y`, and drag-out commits
+  on horizontal movement, for touch pointers only. `touch-action: none` does not lose a race with
+  native scrolling, it *disables* it, which left the tray unscrollable by touch through all of 3a.
 - **No `localStorage` for session state** — IndexedDB only.
 - **No feedback may depend on a channel the web build lacks.** Haptics are an amplifier, never the
   carrier. The snap must feel complete on a silent device with no vibration.
@@ -93,15 +108,20 @@ src/
             bank.ts engine.ts         synthesised samples, Web Audio buses
   tray/     order.ts                  canonical order — seeded, never reflows
             lenses.ts                 the lens filter; the invariant lives here
+            selection.ts              the ordered multi-select set
             colour.ts                 OKLab, weighted k-means, six bins + mixed
             recent.ts tray.ts         the twenty-ring, and the model over it
   play/     session.ts                board + snap + settle + scene + tray/mat
+            workset.ts                pull-out groups — not clusters, see above
+            layout.ts                 the pull-out grid, on the safe rect
             runtime.ts                the whole board, mounted and pumped
   render/   renderer.ts               draw(scene, camera) — the whole surface
             frame-scheduler.ts        invalidation; "idle draws nothing"
             camera.ts camera-controls.ts scene.ts mat.ts
+            group-chip.ts             a Workset's label chip — canvas, never DOM over it
   ui/       App.tsx store.ts          React chrome; board never renders through it
             Tray Sheet PieceGrid PieceChip LensChips TopBar ProgressRing
+            Shelf SelectionBar        the pinned row, and the pull-out bar
             theme.css                 §13 tokens, once, for both consumers
   main.tsx                            the product entry — index.html
   dev/      harness.ts                steps 1-2 — dev.html, deleted at step 5
@@ -171,6 +191,11 @@ anywhere; and the forest case in `test/tray/colour.test.ts` is the one that told
 lightness weight cannot work — it passed at every setting until the axes were normalised.
 **A test that passes at both extremes of the constant it is guarding is not testing that constant.**
 
+`test/play/workset.test.ts` is step 3b's equivalent. Its central assertion is that **a piece is in at
+most one Workset and membership ends on merge**, because the failure is silent: a placed piece still
+counted in a group draws a containing outline stretching into the assembled board, with nothing on
+screen to explain it and no error anywhere.
+
 ### `npm run test:browser` is a gate, not an optional extra
 
 **Run it on every change, and without exception at the end of every step, before the PR.** A green
@@ -183,6 +208,11 @@ Two things in this codebase are *only* observable in a browser, and both are top
   mutations inside the tray during a camera gesture and a 60-frame drag. A re-render of the chip
   grid is hundreds of mutations, so the answer is unambiguous rather than a matter of opinion.
 - **An idle board draws nothing at all.** Asserted against the harness's own `scheduled` readout.
+
+Step 3b is why this is not a formality: `test/browser/tray-3b.spec.ts` found two real defects that
+reading the code had missed — a select-mode hold that deselected the piece it had just selected
+(the terminating click toggled it back off), and drop-to-pin unreachable on a phone because the
+shelf rendered below the fold at peek. Neither had any unit-test surface; both are fixed.
 
 `@playwright/test` boots vite itself and runs `test/browser/*.spec.ts` over a dock viewport and a
 phone viewport. Vitest owns `*.test.ts`, Playwright owns `*.spec.ts`, and neither ever collects the
