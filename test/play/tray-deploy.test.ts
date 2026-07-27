@@ -214,6 +214,46 @@ describe('worksets', () => {
     expect(play.worksets.get(group)?.pieceIds).not.toContain(a);
   });
 
+  it('a merge onto a fellow group member empties both sides, not just the dragged one', () => {
+    // §06's "membership ends on merge" (CLAUDE.md) has to hold for the
+    // stationary side of a snap too. `release()` captures `pieceIds` from the
+    // *dragged* cluster before `applySnap` runs; if the workset cleanup loops
+    // over that stale list instead of the survivor's actual membership, the
+    // piece it merged into — still a workset member — never leaves, and the
+    // group's containing outline is left stretching over half a welded island.
+    const play = session();
+    const members = [id(0, 0), id(1, 0), id(2, 0), id(0, 1), id(1, 1)];
+    const [a, b, c, d, e] = members;
+    const origins = [
+      { x: 20, y: 20 },
+      { x: 24, y: 20 },
+      { x: 28, y: 20 },
+      { x: 20, y: 24 },
+      { x: 24, y: 24 },
+    ];
+    const group = play.pullOut(members, origins);
+
+    // a and b are graph neighbours (targets (0,0) and (1,0)): drag a to sit
+    // exactly one unit left of b's current position so resolveSnap finds a
+    // real candidate against a fellow workset member, not the board.
+    const clusterA = play.board.clusterIdOf(a!);
+    const bWorld = play.board.worldOf(b!);
+    play.grab(clusterA);
+    play.board.moveCluster(clusterA, bWorld.x - 1, bWorld.y);
+    play.release(clusterA, { x: 0, y: 0 });
+
+    // Confirms the snap branch actually ran, not the miss branch.
+    expect(play.board.clusterIdOf(a!)).toBe(play.board.clusterIdOf(b!));
+    expect(play.board.isPlaced(a!)).toBe(false);
+
+    // Both sides of the merge left the group...
+    expect(play.worksets.worksetOf(a!)).toBeUndefined();
+    expect(play.worksets.worksetOf(b!)).toBeUndefined();
+    // ...and the group shrank to exactly the three untouched members.
+    expect(play.worksets.get(group)?.pieceIds).toHaveLength(3);
+    expect(play.worksets.get(group)?.pieceIds).toEqual(expect.arrayContaining([c, d, e]));
+  });
+
   it('a collapsed workset draws nothing and cannot be picked up', () => {
     const play = session();
     const group = play.pullOut(pulled(), spread);

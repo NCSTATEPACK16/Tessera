@@ -489,14 +489,18 @@ export class PlaySession {
 
     const result = applySnap(this.board, clusterId, candidate, this.snapOptions());
 
-    // Merged is out of the group (§06). Done here rather than in `board.ts`,
-    // which must stay unaware that Worksets exist at all.
-    for (const pieceId of pieceIds) this.worksets.remove(pieceId);
-    this.emit({ type: 'worksetChanged' });
-
     // Where that frame ended up. Read back from a piece rather than re-derived,
     // so the spring lands on whatever the union-find actually decided.
     const survivor = this.board.cluster(result.survivorId);
+
+    // Merged is out of the group (§06) — the whole survivor, not just the
+    // dragged side. The stationary piece a drag lands on is every bit as
+    // merged as the piece that moved, and `pieceIds` (captured pre-merge)
+    // only ever names the dragged cluster. Done here rather than in
+    // `board.ts`, which must stay unaware that Worksets exist at all.
+    for (const pieceId of survivor.pieceIds) this.worksets.remove(pieceId);
+    this.emit({ type: 'worksetChanged' });
+
     const anchor = this.board.worldOf(pieceIds[0]!);
     const offset = rotateVector(local[0]!, survivor.rot);
     const to: Pose = { x: anchor.x - offset.x, y: anchor.y - offset.y, rot: survivor.rot };

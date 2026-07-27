@@ -62,6 +62,10 @@ Break any of these and something downstream breaks in a way that looks like a di
   proximity drop. Two predicates gate the mat — `inTray` and `worksets.isHidden` — and both are
   consulted in `rebuild`, `scene`, and `contentBounds`. Honour one without the other and the player
   grabs invisible pieces.
+- **Group collapse is designed-and-deferred, not abandoned.** `PlaySession.moveWorksetBy`,
+  `PlayRuntime.toggleGroupCollapsed`, `Renderer.drawGroupChips`'s collapsed branch, and
+  `WorksetStore.isHidden` have no gesture wired to them yet — the only tap a group chip answers is
+  rename. See `PLAN.md`'s 3b entry for what's carried forward.
 - **Pinning is an attribute, not a location.** A piece is still in exactly one of `tray`, `mat`, or
   placed. A pinned chip leaves every lens and appears once, on the shelf.
 - **The chip cedes the vertical axis to the browser** — `touch-action: pan-y`, and drag-out commits
@@ -127,7 +131,8 @@ src/
   dev/      harness.ts                steps 1-2 — dev.html, deleted at step 5
 test/                                 mirrors src/ — vitest, *.test.ts
   browser/  *.spec.ts board-page.ts   playwright, the app in a real browser
-docs/                                 design documents — gitignored, local only
+docs/                                 the three sources of truth are gitignored, local only;
+                                       docs/superpowers/ (plans, specs) is committed
 ```
 
 Two pages. `index.html` is the product; `dev.html` keeps the step-2 harness with every snap-tuning

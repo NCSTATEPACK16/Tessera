@@ -41,7 +41,6 @@ export function Shelf({
   return (
     <div
       ref={rootRef}
-      data-shelf
       aria-label="Shelf"
       className={[
         'flex shrink-0 gap-[8px] overflow-x-auto px-[12px] py-[6px]',

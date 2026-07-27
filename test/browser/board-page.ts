@@ -232,6 +232,12 @@ export class BoardPage {
     await this.page.mouse.down();
     await this.page.mouse.move(box!.x - 40, box!.y, { steps: 6 });
 
+    // The promotion auto-collapses the sheet to peek — a 200ms transition —
+    // and the shelf sits inside it. Reading the box before that settles is
+    // this method's own version of the flake `tray-3b.spec.ts`'s sibling
+    // geometry test already waits out.
+    await this.page.waitForTimeout(250);
+
     const shelf = await this.shelf.boundingBox();
     expect(shelf, 'the shelf did not appear while a chip was in flight').not.toBeNull();
 

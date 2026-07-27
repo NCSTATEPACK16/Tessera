@@ -83,6 +83,20 @@ export function App(): React.ReactElement {
     );
   };
 
+  // Shared by the mount effect and the resize effect below, so there is one
+  // place that knows how to compute insets rather than two branches that can
+  // drift. Keyed on `docked` because the docked tray contributes nothing (a
+  // flex sibling already out of the board container) while the phone sheet's
+  // height is the whole point.
+  const updateInsets = useCallback((): void => {
+    const rect = trayRef.current?.getBoundingClientRect();
+    if (docked || !rect) {
+      runtime.current?.setTrayInsets({ left: 0, right: 0, top: 0, bottom: 0 });
+    } else {
+      runtime.current?.setTrayInsets({ left: 0, right: 0, top: 0, bottom: rect.height });
+    }
+  }, [docked]);
+
   // -- the runtime, mounted once ---------------------------------------------
 
   useEffect(() => {
@@ -115,6 +129,14 @@ export function App(): React.ReactElement {
       });
 
       runtime.current = instance;
+      // `runtime.current` was null for every render until this line, so the
+      // effect below's initial call was always a no-op — this is the first
+      // point at which there is a runtime to hand the current inset to. Today
+      // that race is invisible because `createSyntheticImage()` resolves on
+      // the microtask queue; step 5's real photo picker introduces a genuine
+      // `await`, and without this call the insets would sit at zero until
+      // something happens to resize the sheet or the board.
+      updateInsets();
       void instance.start();
     })();
 
@@ -123,6 +145,10 @@ export function App(): React.ReactElement {
       instance?.destroy();
       runtime.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mounted once by
+    // design (§03: the board never re-renders through React); `updateInsets`
+    // is called for its side effect on the runtime it just created, not
+    // watched for change here.
   }, []);
 
   // The dock's inner edge changes the board's viewport, and a window resize
@@ -140,15 +166,6 @@ export function App(): React.ReactElement {
     const container = boardRef.current;
     if (!container) return;
 
-    const updateInsets = (): void => {
-      const rect = trayRef.current?.getBoundingClientRect();
-      if (docked || !rect) {
-        runtime.current?.setTrayInsets({ left: 0, right: 0, top: 0, bottom: 0 });
-      } else {
-        runtime.current?.setTrayInsets({ left: 0, right: 0, top: 0, bottom: rect.height });
-      }
-    };
-
     const observer = new ResizeObserver(() => {
       runtime.current?.resize();
       updateInsets();
@@ -157,7 +174,7 @@ export function App(): React.ReactElement {
     if (trayRef.current) observer.observe(trayRef.current);
     updateInsets();
     return () => observer.disconnect();
-  }, [docked]);
+  }, [docked, updateInsets]);
 
   // §08: unlock the audio context on the first deliberate tap, and never before
   // — iOS leaves it suspended otherwise and the first snap of the session is

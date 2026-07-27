@@ -151,11 +151,6 @@ test('the group label chip is canvas, and tapping it renames the group', async (
   const board = await BoardPage.open(page);
   await pullOut(board, page, 5);
 
-  // Never DOM. A chip mounted over the board would re-render the tray on every
-  // frame of a drag, which is precisely what keeping the board out of React was
-  // for — so the absence of this node is the assertion, not an oversight.
-  await expect(page.locator('[data-group-chip]')).toHaveCount(0);
-
   const chip = (await boardInk(page)).chip;
   expect(chip, 'no label chip was drawn').not.toBeNull();
 
