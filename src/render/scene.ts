@@ -7,7 +7,7 @@
  * and it means the renderer can be reasoned about without a canvas.
  */
 
-import type { CubicPath } from '@/core/geom';
+import type { CubicPath, Rect } from '@/core/geom';
 
 export type MatFinish = 'felt' | 'linen' | 'walnut' | 'slate';
 
@@ -35,6 +35,23 @@ export interface ScenePiece {
   pathScale: number;
 }
 
+/**
+ * A group drawn on the mat — §05's island, or §06's pull-out Workset.
+ *
+ * **Both kinds render identically**, deliberately. The model has two objects
+ * because a pull-out group's internal offsets are wrong by construction and must
+ * never reach the union-find; the player has one concept, and this is where that
+ * stays true.
+ */
+export interface SceneGroup {
+  id: number;
+  label: string;
+  collapsed: boolean;
+  /** World units. The members' bounding box, or the chip's box when collapsed. */
+  bounds: Rect;
+  kind: 'workset' | 'island';
+}
+
 export interface Scene {
   finish: MatFinish;
   /** Board extent in world units. */
@@ -45,6 +62,8 @@ export interface Scene {
   placed: ScenePiece[];
   /** Loose pieces and islands. Redrawn every active frame. */
   loose: ScenePiece[];
+  /** Containing outlines and label chips. Drawn with the dynamic layer. */
+  groups: SceneGroup[];
   /** The cluster currently in hand, drawn above everything with its lift. */
   held: ScenePiece[];
   /**
@@ -68,6 +87,7 @@ export function emptyScene(finish: MatFinish = 'felt'): Scene {
     boardH: 0,
     placed: [],
     loose: [],
+    groups: [],
     held: [],
     heldLift: { offsetPx: 8, scale: 1.06 },
     completion: 0,

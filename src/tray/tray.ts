@@ -57,6 +57,7 @@ export class TrayModel {
   private readonly bins_: ColourBin[];
   private readonly binOf: ReadonlyMap<PieceId, number>;
   private readonly recent_ = new RecentPieces();
+  private readonly pinned_ = new Set<PieceId>();
   private readonly source = new Map<PieceId, TrayPiece>();
 
   constructor(private readonly options: TrayModelOptions) {
@@ -89,11 +90,44 @@ export class TrayModel {
   /** A piece landed on the board. "Touched but did not place" stops applying. */
   place(id: PieceId): void {
     this.recent_.forget(id);
+    this.pinned_.delete(id);
   }
 
   /** The player dragged a chip somewhere else in the tray (§06's one exception). */
   moveInOrder(moved: PieceId, before: PieceId | null): void {
     this.order_ = reorder(this.order_, moved, before);
+  }
+
+  /**
+   * Pin to the shelf (§06): "drag a piece there to say I am working on this one."
+   *
+   * An attribute of a tray piece, never a fourth location — a piece is still in
+   * exactly one of `tray`, `mat`, or placed, and `PlaySession` remains the sole
+   * authority on which.
+   */
+  pin(id: PieceId): void {
+    if (this.locationOf(id) === 'tray') this.pinned_.add(id);
+  }
+
+  unpin(id: PieceId): void {
+    this.pinned_.delete(id);
+  }
+
+  isPinned(id: PieceId): boolean {
+    return this.pinned_.has(id);
+  }
+
+  /**
+   * The shelf, in canonical order.
+   *
+   * Canonical and not pin order, deliberately: the shelf is a smaller tray, and
+   * the muscle memory §06 is protecting does not stop applying because there are
+   * four chips instead of two hundred.
+   */
+  get pinned(): PieceId[] {
+    return this.order_.filter(
+      (id) => this.pinned_.has(id) && this.options.locationOf(id) === 'tray',
+    );
   }
 
   /** The ids a lens reveals, in canonical order. */
@@ -136,7 +170,7 @@ export class TrayModel {
   // -------------------------------------------------------------------------
 
   private view(region: Rect | null): LensView {
-    return { region, recent: this.recent_.ids };
+    return { region, recent: this.recent_.ids, pinned: this.pinned_ };
   }
 
   /**

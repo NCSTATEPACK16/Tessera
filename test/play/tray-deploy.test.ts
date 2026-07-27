@@ -14,6 +14,7 @@ import { PlaySession } from '@/play/session';
 import type { PlayEvent, SessionPiece } from '@/play/session';
 import { buildNeighbourGraph, pieceIdAt } from '@/cut/graph';
 import type { CubicPath, Rect } from '@/core/geom';
+import { WORKSET_DROP_TOLERANCE } from '@/play/workset';
 
 const COLS = 3;
 const ROWS = 2;
@@ -169,7 +170,161 @@ describe('returnToTray', () => {
 
     events.length = 0;
     play.returnToTray(clusterId);
-    expect(events).toEqual([{ type: 'return', pieceId }]);
+    expect(events).toEqual([{ type: 'return', pieceId, pinned: false }]);
+  });
+});
+
+describe('worksets', () => {
+  /** Three ids that are not graph neighbours of each other, laid out apart. */
+  const pulled = () => [id(0, 0), id(2, 0), id(1, 1)];
+  const spread = [
+    { x: 20, y: 20 },
+    { x: 24, y: 20 },
+    { x: 28, y: 20 },
+  ];
+
+  it('pull-out groups pieces without merging them', () => {
+    const play = session();
+    const group = play.pullOut(pulled(), spread);
+
+    expect(group).toBeGreaterThan(0);
+    // Three separate clusters, not one. A merge here is the silent bug this
+    // whole file exists to catch.
+    const [a, b] = pulled();
+    expect(play.board.clusterIdOf(a!)).not.toBe(play.board.clusterIdOf(b!));
+    expect(play.locationOf(a!)).toBe('mat');
+    expect(play.worksets.get(group)?.pieceIds).toHaveLength(3);
+  });
+
+  it('a piece merged into the board leaves its workset', () => {
+    const play = session();
+    const group = play.pullOut(pulled(), spread);
+    const [a] = pulled();
+
+    // Drop it exactly on its own slot: the board frame bootstraps cluster 0, so
+    // this places it.
+    const piece = play.board.piece(a!);
+    const cluster = play.board.clusterIdOf(a!);
+    play.grab(cluster);
+    play.board.moveCluster(cluster, piece.targetX, piece.targetY);
+    play.release(cluster, { x: 0, y: 0 });
+
+    expect(play.board.isPlaced(a!)).toBe(true);
+    expect(play.worksets.worksetOf(a!)).toBeUndefined();
+    expect(play.worksets.get(group)?.pieceIds).not.toContain(a);
+  });
+
+  it('a merge onto a fellow group member empties both sides, not just the dragged one', () => {
+    // §06's "membership ends on merge" (CLAUDE.md) has to hold for the
+    // stationary side of a snap too. `release()` captures `pieceIds` from the
+    // *dragged* cluster before `applySnap` runs; if the workset cleanup loops
+    // over that stale list instead of the survivor's actual membership, the
+    // piece it merged into — still a workset member — never leaves, and the
+    // group's containing outline is left stretching over half a welded island.
+    const play = session();
+    const members = [id(0, 0), id(1, 0), id(2, 0), id(0, 1), id(1, 1)];
+    const [a, b, c, d, e] = members;
+    const origins = [
+      { x: 20, y: 20 },
+      { x: 24, y: 20 },
+      { x: 28, y: 20 },
+      { x: 20, y: 24 },
+      { x: 24, y: 24 },
+    ];
+    const group = play.pullOut(members, origins);
+
+    // a and b are graph neighbours (targets (0,0) and (1,0)): drag a to sit
+    // exactly one unit left of b's current position so resolveSnap finds a
+    // real candidate against a fellow workset member, not the board.
+    const clusterA = play.board.clusterIdOf(a!);
+    const bWorld = play.board.worldOf(b!);
+    play.grab(clusterA);
+    play.board.moveCluster(clusterA, bWorld.x - 1, bWorld.y);
+    play.release(clusterA, { x: 0, y: 0 });
+
+    // Confirms the snap branch actually ran, not the miss branch.
+    expect(play.board.clusterIdOf(a!)).toBe(play.board.clusterIdOf(b!));
+    expect(play.board.isPlaced(a!)).toBe(false);
+
+    // Both sides of the merge left the group...
+    expect(play.worksets.worksetOf(a!)).toBeUndefined();
+    expect(play.worksets.worksetOf(b!)).toBeUndefined();
+    // ...and the group shrank to exactly the three untouched members.
+    expect(play.worksets.get(group)?.pieceIds).toHaveLength(3);
+    expect(play.worksets.get(group)?.pieceIds).toEqual(expect.arrayContaining([c, d, e]));
+  });
+
+  it('a collapsed workset draws nothing and cannot be picked up', () => {
+    const play = session();
+    const group = play.pullOut(pulled(), spread);
+    play.setWorksetCollapsed(group, true);
+
+    const [a] = pulled();
+    expect(play.scene().loose.map((p) => p.id)).not.toContain(a);
+    expect(play.pickCluster({ x: 20.5, y: 20.5 })).toBeNull();
+  });
+
+  it('a piece released well clear of its group leaves it (the miss branch)', () => {
+    const play = session();
+    const group = play.pullOut(pulled(), spread);
+    const [a, b, c] = pulled();
+
+    // c is the rightmost of the other two members, at spread[2]; its box's right
+    // edge is the reference point for "outside the group". Multiplying the
+    // tolerance rather than adding a literal keeps this meaningful if
+    // WORKSET_DROP_TOLERANCE is retuned.
+    const rightEdge = spread[2]!.x + 1;
+    const farAway = rightEdge + WORKSET_DROP_TOLERANCE * 5;
+
+    const cluster = play.board.clusterIdOf(a!);
+    play.grab(cluster);
+    // Far from both its own slot and the other two members, so resolveSnap
+    // finds no candidate: release() must take the miss branch, which is the
+    // only branch the proximity rule runs in.
+    play.board.moveCluster(cluster, farAway, spread[2]!.y);
+    play.release(cluster, { x: 0, y: 0 });
+
+    // Confirms the miss branch, not the snap branch, actually ran.
+    expect(play.board.isPlaced(a!)).toBe(false);
+    expect(play.worksets.worksetOf(a!)).toBeUndefined();
+    expect(play.worksets.get(group)?.pieceIds).toEqual(expect.arrayContaining([b, c]));
+    expect(play.worksets.get(group)?.pieceIds).not.toContain(a);
+  });
+
+  it('a piece released just within tolerance of its group stays in it', () => {
+    const play = session();
+    const group = play.pullOut(pulled(), spread);
+    const [a, b, c] = pulled();
+
+    const rightEdge = spread[2]!.x + 1;
+    // Outside the others' box, but by less than the tolerance — the companion
+    // to the escape test above. Without this, a test could pass with the
+    // tolerance set to zero: only this one makes the slack load-bearing.
+    const justInside = rightEdge + WORKSET_DROP_TOLERANCE / 2;
+
+    const cluster = play.board.clusterIdOf(a!);
+    play.grab(cluster);
+    play.board.moveCluster(cluster, justInside, spread[2]!.y);
+    play.release(cluster, { x: 0, y: 0 });
+
+    // Confirms the miss branch, not the snap branch, actually ran.
+    expect(play.board.isPlaced(a!)).toBe(false);
+    expect(play.worksets.worksetOf(a!)?.id).toBe(group);
+    expect(play.worksets.get(group)?.pieceIds).toEqual(expect.arrayContaining([a, b, c]));
+  });
+
+  it('a pinned return puts the piece back in the tray, flagged', () => {
+    const seen: string[] = [];
+    const play = session((event) => {
+      if (event.type === 'return') seen.push(`${event.pieceId}:${event.pinned}`);
+    });
+
+    const a = id(0, 0);
+    const cluster = play.deploy(a, { x: 20, y: 20 })!;
+    play.returnToTray(cluster, true);
+
+    expect(play.locationOf(a)).toBe('tray');
+    expect(seen).toEqual([`${a}:true`]);
   });
 });
 

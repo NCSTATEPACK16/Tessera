@@ -1,30 +1,42 @@
 /**
- * The tray half of drag-out (§06).
+ * The tray half of drag-out (§06), and the entry to multi-select.
  *
- * `uses the same thresholds as the mat` is the one worth keeping. The tray and
- * the board are two different technologies either side of one continuous finger
- * movement, and the fastest way to make that seam visible is for the two halves
- * to disagree about when a press becomes a drag.
+ * Two rules earn their tests here. **Stillness selects, movement drags** — the
+ * mat's 120ms long press no longer applies to a chip, because §06 spends that
+ * input on multi-select and only one gesture can have it. And **the chip cedes
+ * the vertical axis to the browser**: the grid scrolls vertically, so a vertical
+ * touch is a scroll and must never become a drag.
  */
 
 import { describe, expect, it } from 'vitest';
-import { LONG_PRESS_MS, MOVE_THRESHOLD_PX } from '@/input/pointer';
-import { TrayDrag } from '@/input/tray-drag';
+import { MOVE_THRESHOLD_PX } from '@/input/pointer';
+import { SELECT_HOLD_MS, TrayDrag } from '@/input/tray-drag';
 
-const at = (x: number, y: number, t: number, id = 1): PointerEvent =>
-  ({ pointerId: id, clientX: x, clientY: y, timeStamp: t }) as PointerEvent;
+const at = (
+  x: number,
+  y: number,
+  t: number,
+  id = 1,
+  pointerType = 'mouse',
+): PointerEvent => ({ pointerId: id, clientX: x, clientY: y, timeStamp: t, pointerType }) as PointerEvent;
 
-function harness(taken = true) {
+const touch = (x: number, y: number, t: number, id = 1): PointerEvent =>
+  at(x, y, t, id, 'touch');
+
+function harness(taken = true, selecting = false) {
   const pulled: number[] = [];
   const tapped: number[] = [];
+  const selected: number[] = [];
   const drag = new TrayDrag({
     onPullOut: (pieceId) => {
       pulled.push(pieceId);
       return taken;
     },
+    onEnterSelect: (pieceId) => selected.push(pieceId),
     onTap: (pieceId) => tapped.push(pieceId),
+    selecting: () => selecting,
   });
-  return { drag, pulled, tapped };
+  return { drag, pulled, tapped, selected };
 }
 
 describe('TrayDrag', () => {
@@ -38,15 +50,62 @@ describe('TrayDrag', () => {
     expect(pulled).toEqual([4]);
   });
 
-  it('promotes on a long press, for a player who picks up and thinks', () => {
-    const { drag, pulled } = harness();
+  it('stillness enters select mode, and never drags out', () => {
+    const { drag, pulled, selected } = harness();
     drag.down(4, at(10, 10, 0));
 
-    drag.tick(LONG_PRESS_MS - 1);
-    expect(pulled).toEqual([]);
+    drag.tick(SELECT_HOLD_MS - 1);
+    expect(selected).toEqual([]);
 
-    drag.tick(LONG_PRESS_MS);
+    drag.tick(SELECT_HOLD_MS);
+    expect(selected).toEqual([4]);
+    expect(pulled).toEqual([]);
+  });
+
+  it('a vertical touch is the grid scrolling, not a drag', () => {
+    const { drag, pulled } = harness();
+    drag.down(4, touch(0, 0, 0));
+    drag.move(touch(2, 40, 16));
+
+    expect(pulled).toEqual([]);
+    // Cleared, not left watching: a scroll that curves sideways is still a scroll.
+    expect(drag.pressing).toBe(false);
+  });
+
+  it('a horizontal touch commits to the drag', () => {
+    const { drag, pulled } = harness();
+    drag.down(4, touch(0, 0, 0));
+    drag.move(touch(-40, 2, 16));
+
     expect(pulled).toEqual([4]);
+  });
+
+  it('the axis check is touch only — mouse and pen keep 3a behaviour', () => {
+    const { drag, pulled } = harness();
+    drag.down(4, at(0, 0, 0));
+    drag.move(at(0, 40, 16));
+
+    expect(pulled).toEqual([4]);
+  });
+
+  it('in select mode a chip is a checkbox, never a handle', () => {
+    const { drag, pulled } = harness(true, true);
+    drag.down(4, at(0, 0, 0));
+    drag.move(at(40, 0, 16));
+
+    expect(pulled).toEqual([]);
+  });
+
+  it('a still press already in select mode does not re-enter it', () => {
+    // Mirrors `move()`'s guard above, for `tick()`: select mode is already
+    // active, so a fourth chip held still for SELECT_HOLD_MS must not restart
+    // it — that would clear the selection the player is building.
+    const { drag, selected } = harness(true, true);
+    drag.down(4, at(10, 10, 0));
+
+    drag.tick(SELECT_HOLD_MS);
+    expect(selected).toEqual([]);
+    expect(drag.pressing).toBe(false);
   });
 
   it('a press that goes nowhere is a tap, not a drag', () => {
@@ -59,13 +118,14 @@ describe('TrayDrag', () => {
   });
 
   it('promotes exactly once', () => {
-    const { drag, pulled } = harness();
+    const { drag, pulled, selected } = harness();
     drag.down(4, at(0, 0, 0));
     drag.move(at(40, 0, 16));
     drag.move(at(80, 0, 32));
     drag.tick(1000);
 
     expect(pulled).toEqual([4]);
+    expect(selected).toEqual([]);
   });
 
   it('clears itself before handing over — the chip is about to unmount', () => {

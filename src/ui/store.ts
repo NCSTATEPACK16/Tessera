@@ -16,6 +16,7 @@
  */
 
 import { create } from 'zustand';
+import type { PieceId } from '@/cut/types';
 import type { Lens } from '@/tray/lenses';
 
 /** §06's three detents on iPhone: one row of pieces, half, full. */
@@ -46,6 +47,12 @@ export interface ChromeState {
   /** Restored when the drag ends, so the mat is never obscured mid-drag (§06). */
   detentBeforeDrag: SheetDetent | null;
 
+  /** Select mode (§06). Chrome state — the board knows nothing about it. */
+  selecting: boolean;
+  selectedCount: number;
+  /** Pinned piece ids, in canonical order. Republished when the tray bumps. */
+  shelf: PieceId[];
+
   setStatus: (status: ChromeState['status']) => void;
   setCut: (cut: Partial<ChromeState['cut']>) => void;
   setProgress: (placed: number, total: number) => void;
@@ -56,6 +63,9 @@ export interface ChromeState {
   setDetent: (detent: SheetDetent) => void;
   collapseForDrag: () => void;
   restoreAfterDrag: () => void;
+  setSelecting: (selecting: boolean) => void;
+  setSelectedCount: (count: number) => void;
+  setShelf: (shelf: PieceId[]) => void;
 }
 
 export const useChrome = create<ChromeState>((set) => ({
@@ -74,6 +84,10 @@ export const useChrome = create<ChromeState>((set) => ({
   trayWidth: 340,
   detent: 'half',
   detentBeforeDrag: null,
+
+  selecting: false,
+  selectedCount: 0,
+  shelf: [],
 
   setStatus: (status) => set({ status }),
   setCut: (cut) => set((state) => ({ cut: { ...state.cut, ...cut } })),
@@ -111,4 +125,8 @@ export const useChrome = create<ChromeState>((set) => ({
         ? state
         : { detent: state.detentBeforeDrag, detentBeforeDrag: null },
     ),
+
+  setSelecting: (selecting) => set({ selecting }),
+  setSelectedCount: (selectedCount) => set({ selectedCount }),
+  setShelf: (shelf) => set({ shelf }),
 }));

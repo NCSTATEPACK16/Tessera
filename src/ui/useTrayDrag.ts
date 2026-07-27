@@ -16,6 +16,10 @@ import { TrayDrag } from '@/input/tray-drag';
 export interface UseTrayDragOptions {
   onPullOut: (pieceId: PieceId, event: PointerEvent) => boolean;
   onTap?: (pieceId: PieceId) => void;
+  /** Stillness past `SELECT_HOLD_MS`: enter multi-select with this chip as #1. */
+  onEnterSelect?: (pieceId: PieceId) => void;
+  /** True while the tray is in select mode. Asked, never cached. */
+  selecting?: () => boolean;
 }
 
 export function useTrayDrag(options: UseTrayDragOptions): {
@@ -32,7 +36,9 @@ export function useTrayDrag(options: UseTrayDragOptions): {
   if (!drag.current) {
     drag.current = new TrayDrag({
       onPullOut: (pieceId, event) => latest.current.onPullOut(pieceId, event),
+      onEnterSelect: (pieceId) => latest.current.onEnterSelect?.(pieceId),
       onTap: (pieceId) => latest.current.onTap?.(pieceId),
+      selecting: () => latest.current.selecting?.() ?? false,
     });
   }
 
@@ -47,9 +53,8 @@ export function useTrayDrag(options: UseTrayDragOptions): {
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', cancel);
 
-    // The long press needs a heartbeat, exactly as the board's does — a player
-    // who presses a chip and holds still is deciding, and that is the moment the
-    // piece should come up into the hand.
+    // The select hold needs a heartbeat, exactly as the board's long press does —
+    // a player who presses a chip and holds still is deciding *which pieces*.
     const tick = (now: number): void => {
       if (probe.pressing) probe.tick(now);
       frame.current = requestAnimationFrame(tick);

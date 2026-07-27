@@ -11,6 +11,7 @@ import {
   fitCamera,
   fitCameraToBounds,
   fitScale,
+  insetWorldRect,
   MAX_ZOOM,
   MIN_ZOOM,
   relativeZoom,
@@ -176,5 +177,64 @@ describe('visibleWorldBounds', () => {
     const near = visibleWorldBounds({ x: 0, y: 0, zoom: 4 }, VIEWPORT);
     const far = visibleWorldBounds({ x: 0, y: 0, zoom: 1 }, VIEWPORT);
     expect(near.w).toBeLessThan(far.w);
+  });
+});
+
+describe('insetWorldRect', () => {
+  // Both corners must go through `screenToWorld` independently. The obvious
+  // wrong shortcut — convert the top-left corner, then subtract a raw
+  // screen-space size from the visible extent — is correct only at zoom 1
+  // and silently wrong everywhere else, because an inset is stated in screen
+  // pixels while `camera.zoom` is screen pixels *per world unit*.
+
+  it('with zero insets matches the full visible world bounds', () => {
+    const camera = { x: 12, y: -4, zoom: 2.5 };
+    const zero = { left: 0, right: 0, top: 0, bottom: 0 };
+    const rect = insetWorldRect(camera, VIEWPORT, zero);
+    const view = visibleWorldBounds(camera, VIEWPORT);
+
+    expect(rect.x).toBeCloseTo(view.x, 10);
+    expect(rect.y).toBeCloseTo(view.y, 10);
+    expect(rect.w).toBeCloseTo(view.w, 10);
+    expect(rect.h).toBeCloseTo(view.h, 10);
+  });
+
+  it('shrinks the rect on the correct sides, at zoom 1 where world units equal screen pixels', () => {
+    const camera = { x: 0, y: 0, zoom: 1 };
+    const insets = { left: 100, right: 50, top: 20, bottom: 80 };
+    const rect = insetWorldRect(camera, VIEWPORT, insets);
+    const view = visibleWorldBounds(camera, VIEWPORT);
+
+    expect(rect.x).toBeCloseTo(view.x + insets.left, 10);
+    expect(rect.y).toBeCloseTo(view.y + insets.top, 10);
+    expect(rect.w).toBeCloseTo(view.w - insets.left - insets.right, 10);
+    expect(rect.h).toBeCloseTo(view.h - insets.top - insets.bottom, 10);
+  });
+
+  it('halves the world-space inset at 2x zoom and doubles it at 0.5x — the load-bearing case', () => {
+    // camera.zoom is screen px per world unit, so `insetPx` screen pixels on
+    // each side eat `insetPx / zoom` world units off the *width*, never a
+    // fixed world amount. This is asserted against `w`/`h`, not `x`/`y`: the
+    // wrong shortcut this test exists to catch — converting the top-left
+    // corner correctly, then setting width/height from the raw screen-space
+    // size — leaves `x`/`y` looking right while `w`/`h` (what `gridLayout`
+    // actually lays pieces out against) come out zoom-independent and wrong
+    // everywhere except zoom 1. A non-zero pan is included so nothing here
+    // passes by accident of the camera sitting at the origin.
+    const insetPx = 40;
+    const symmetric = { left: insetPx, right: insetPx, top: insetPx, bottom: insetPx };
+    const zero = { left: 0, right: 0, top: 0, bottom: 0 };
+
+    for (const zoom of [2, 0.5]) {
+      const camera = { x: 12, y: -4, zoom };
+      const full = insetWorldRect(camera, VIEWPORT, zero);
+      const inset = insetWorldRect(camera, VIEWPORT, symmetric);
+
+      // insetPx screen pixels off each side shrinks each world dimension by
+      // 2 * (insetPx / zoom) — one inset's worth off each edge.
+      const expectedShrink = 2 * (insetPx / zoom);
+      expect(full.w - inset.w).toBeCloseTo(expectedShrink, 10);
+      expect(full.h - inset.h).toBeCloseTo(expectedShrink, 10);
+    }
   });
 });

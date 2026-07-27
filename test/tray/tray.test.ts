@@ -118,6 +118,65 @@ describe('TrayModel', () => {
       [...before].sort((a, b) => a - b),
     );
   });
+
+  it('the shelf is in canonical order, not pin order', () => {
+    const tray = model();
+    const first = tray.order[3]!;
+    const second = tray.order[1]!;
+
+    tray.pin(first);
+    tray.pin(second);
+
+    // Canonical, so the later-pinned piece comes first — the muscle memory §06
+    // protects does not stop applying because there are two chips instead of 200.
+    expect(tray.pinned).toEqual([second, first]);
+  });
+
+  it('a pinned piece is on the shelf and out of the grid', () => {
+    const tray = model();
+    const id = tray.order[0]!;
+    tray.pin(id);
+
+    expect(tray.pinned).toContain(id);
+    expect(tray.visible('all', null, null)).not.toContain(id);
+
+    tray.unpin(id);
+    expect(tray.visible('all', null, null)).toContain(id);
+  });
+
+  it('a piece that leaves the tray leaves the shelf, without calling unpin', () => {
+    const locations = new Map<number, PieceLocation>();
+    const tray = model(locations);
+    const id = tray.order[0]!;
+
+    tray.pin(id);
+    locations.set(id, 'mat');
+
+    // No unpin call: the getter's own live-location filter must be what hides
+    // it, not a prior unpin. This is the assertion that catches deleting the
+    // `&& this.options.locationOf(id) === 'tray'` clause from the getter.
+    expect(tray.pinned).not.toContain(id);
+
+    // Moving it back to 'tray' makes it reappear, because `pinned_` still holds
+    // the id — nothing here has cleared it. That is correct for this class in
+    // isolation: clearing the pin on deploy is Task 8's job, in
+    // `PlayRuntime.onPlayEvent`, not this getter's. Asserting the opposite would
+    // require TrayModel to duplicate that responsibility.
+    locations.set(id, 'tray');
+    expect(tray.pinned).toContain(id);
+  });
+
+  it('pin() silently rejects a piece that is not in the tray', () => {
+    const locations = new Map<number, PieceLocation>();
+    const tray = model(locations);
+    const id = tray.order[0]!;
+
+    locations.set(id, 'mat');
+    tray.pin(id);
+
+    expect(tray.isPinned(id)).toBe(false);
+    expect(tray.pinned).not.toContain(id);
+  });
 });
 
 describe('RecentPieces', () => {

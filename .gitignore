@@ -1,8 +1,17 @@
 # Design documents and the build plan are the source of truth, but they live
 # only on the working machine — they are updated in place (ticking off PLAN.md
 # as steps land) and deliberately kept out of the repo.
-/docs/
+#
+# `/docs/*` rather than `/docs/`: git cannot re-include anything beneath an
+# excluded *directory*, so the exclusion has to name the contents for the
+# negation below to be reachable at all.
+/docs/*
 /PLAN.md
+
+# Per-step implementation specs are a different kind of document — written once
+# for one step, reviewed in the PR beside the code they describe, and never
+# updated in place. They are committed.
+!/docs/superpowers/
 
 node_modules/
 dist/

@@ -19,9 +19,10 @@
 
 import type { Size } from '@/core/geom';
 import type { Camera } from './camera';
-import { visibleWorldBounds } from './camera';
+import { visibleWorldBounds, worldToScreen } from './camera';
 import { FrameScheduler } from './frame-scheduler';
 import type { LayerName } from './frame-scheduler';
+import { GROUP_CHIP, groupChipRect, groupChipText } from './group-chip';
 import { drawMat } from './mat';
 import type { Scene, ScenePiece } from './scene';
 import { emptyScene } from './scene';
@@ -194,8 +195,13 @@ export class Renderer {
   private paintDynamic(): void {
     const ctx = this.layerContext('dynamic');
     ctx.clearRect(0, 0, this.viewport.w, this.viewport.h);
+    ctx.save();
     this.applyCamera(ctx);
+    this.drawGroupOutlines(ctx);
     this.stats.lastDynamicCount = this.drawPieces(ctx, this.scene.loose);
+    ctx.restore();
+    // Camera unwound; the device-pixel transform is back. Screen space from here.
+    this.drawGroupChips(ctx);
   }
 
   private paintOverlay(): void {
@@ -233,6 +239,74 @@ export class Renderer {
     ctx.lineWidth = 1 / this.camera.zoom;
     ctx.strokeStyle = 'rgba(44,51,60,0.9)';
     ctx.strokeRect(0, 0, boardW, boardH);
+    ctx.restore();
+  }
+
+  /**
+   * The faint containing outline (§05).
+   *
+   * Under the pieces on purpose: it is a surface the group sits on, not a box
+   * drawn around it. Line width is divided by zoom so it stays a hairline at
+   * every scale, the same way the board outline does.
+   */
+  private drawGroupOutlines(ctx: CanvasRenderingContext2D): void {
+    const groups = this.scene.groups;
+    if (groups.length === 0) return;
+
+    const zoom = this.camera.zoom;
+    ctx.save();
+    for (const group of groups) {
+      const pad = group.collapsed ? 0 : 0.25;
+      const { x, y, w, h } = group.bounds;
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+      ctx.lineWidth = 1 / zoom;
+      ctx.beginPath();
+      ctx.roundRect(x - pad, y - pad, w + pad * 2, h + pad * 2, 0.2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * The mono label chip (§05), and the whole of a collapsed group.
+   *
+   * Drawn in *screen* space rather than world space: a label that scaled with
+   * zoom would be unreadable at 0.5× and absurd at 4×, and it is a piece of
+   * chrome about the group rather than a thing lying on the mat. It is also the
+   * first non-piece hit target in the app — `PlayRuntime` tests these same rects.
+   */
+  private drawGroupChips(ctx: CanvasRenderingContext2D): void {
+    const groups = this.scene.groups;
+    if (groups.length === 0) return;
+
+    ctx.save();
+    ctx.font = GROUP_CHIP.font;
+    ctx.textBaseline = 'middle';
+
+    for (const group of groups) {
+      const at = worldToScreen(this.camera, this.viewport, {
+        x: group.bounds.x,
+        y: group.bounds.y,
+      });
+      const text = groupChipText(group.label, group.collapsed);
+      // The same function `PlayRuntime.groupChipAt` calls, so the tap target
+      // cannot drift from the thing under the finger.
+      const rect = groupChipRect(group.label, group.collapsed, at, (t) => ctx.measureText(t).width);
+
+      ctx.fillStyle = 'rgba(20, 20, 22, 0.86)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(rect.x, rect.y, rect.w, rect.h, GROUP_CHIP.radius);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.82)';
+      ctx.fillText(text, rect.x + GROUP_CHIP.padX, rect.y + rect.h / 2);
+    }
     ctx.restore();
   }
 
