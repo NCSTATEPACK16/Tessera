@@ -64,6 +64,8 @@ export class BoardPage {
   static async open(page: Page): Promise<BoardPage> {
     const board = new BoardPage(page);
     await page.goto('/', { waitUntil: 'load' });
+    await page.getByRole('button', { name: 'Choose this photo' }).click();
+    await page.getByRole('button', { name: 'Use this photo' }).click();
     await board.waitForCut();
     return board;
   }
