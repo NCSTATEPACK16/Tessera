@@ -17,15 +17,28 @@
  * inside the canvas.
  */
 
-import type { Size } from '@/core/geom';
+import type { Rect, Size } from '@/core/geom';
 import type { Camera } from './camera';
 import { visibleWorldBounds, worldToScreen } from './camera';
 import { FrameScheduler } from './frame-scheduler';
 import type { LayerName } from './frame-scheduler';
 import { GROUP_CHIP, groupChipRect, groupChipText } from './group-chip';
+import {
+  COMPLETION_HOLD_MS,
+  COMPLETION_RAMP_MS,
+  HINT_GLOW_DECAY_END_MS,
+  completionIntensity,
+  hintGlowIntensity,
+  progressBloomIntensity,
+} from './light';
 import { drawMat } from './mat';
 import type { Scene, ScenePiece } from './scene';
 import { emptyScene } from './scene';
+
+/** §07's outline holds roughly as long as the glow it accompanies. */
+const HINT_OUTLINE_HOLD_MS = HINT_GLOW_DECAY_END_MS;
+/** 1px in accent, per the design doc. Renderer has no accent token yet (step 4c). */
+const HINT_OUTLINE_COLOR = 'rgba(111, 168, 255, 0.9)';
 
 export interface RendererStats {
   frames: number;
@@ -58,6 +71,17 @@ export class Renderer {
   private pixelRatio: number;
   private scene: Scene = emptyScene();
   private camera: Camera = { x: 0, y: 0, zoom: 1 };
+
+  /** Scratch canvas for the light system's downsample-and-blur pass (§07). */
+  private readonly bloomCanvas = document.createElement('canvas');
+  /** `performance.now()` timestamp `completePuzzle` was called, or null before completion. */
+  private completionStartMs: number | null = null;
+  /** Tier 1's localised region, world units, or null when no hint is active. */
+  private hintGlowRect: Rect | null = null;
+  private hintGlowStartMs: number | null = null;
+  /** Tier 2's exact slot outline, world units, or null. */
+  private hintOutlineRect: Rect | null = null;
+  private hintOutlineStartMs: number | null = null;
 
   readonly stats: RendererStats = {
     frames: 0,
@@ -127,6 +151,42 @@ export class Renderer {
     this.scheduler.stopAnimating(source);
   }
 
+  /**
+   * §07's completion payoff. Call once, from `PlayEvent.complete` — the ramp,
+   * hold, and settle all run from this single timestamp. The overlay layer
+   * keeps the frame loop open until it settles, then lets it go idle again;
+   * the settled glow stays on screen because canvas layers hold their last
+   * drawn pixels, the same way the idle-board invariant already relies on.
+   */
+  completePuzzle(nowMs: number = performance.now()): void {
+    this.completionStartMs = nowMs;
+    this.scheduler.startAnimating('completion');
+    this.scheduler.invalidate('overlay');
+  }
+
+  /** §07 Tier 1: a localised region breathes, feathered so no exact slot is legible. */
+  fireHintGlow(worldRect: Rect, nowMs: number = performance.now()): void {
+    this.hintGlowRect = worldRect;
+    this.hintGlowStartMs = nowMs;
+    this.scheduler.startAnimating('hint-glow');
+    this.scheduler.invalidate('overlay');
+  }
+
+  /**
+   * §07 Tier 2: the exact slot outlined at 1px in accent.
+   *
+   * The magnetised 6px lean toward it is not built here — it would act on the
+   * held/selected piece's drawn position, and nothing in this pass currently
+   * knows which piece that is versus just where the outline goes. Flagged
+   * rather than faked.
+   */
+  fireHintOutline(worldRect: Rect, nowMs: number = performance.now()): void {
+    this.hintOutlineRect = worldRect;
+    this.hintOutlineStartMs = nowMs;
+    this.scheduler.startAnimating('hint-outline');
+    this.scheduler.invalidate('overlay');
+  }
+
   /** False on an idle board. Asserted in tests. */
   get isScheduled(): boolean {
     return this.scheduler.isScheduled;
@@ -190,6 +250,13 @@ export class Renderer {
     this.applyCamera(ctx);
     this.drawBoardOutline(ctx);
     this.stats.lastStaticCount = this.drawPieces(ctx, this.scene.placed);
+
+    // Progress bloom (§07): the same layer's own pixels, downsampled, blurred,
+    // and drawn back over themselves additively — the assembled photo lights
+    // itself, brighter the more of it exists. Screen space, so reset past the
+    // camera transform first.
+    ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+    this.drawBloom(ctx, ctx.canvas, progressBloomIntensity(this.scene.completion), 4);
   }
 
   private paintDynamic(): void {
@@ -204,9 +271,132 @@ export class Renderer {
     this.drawGroupChips(ctx);
   }
 
+  /**
+   * §07's completion payoff: the same bloom pass as progress bloom, sourced
+   * from the static layer, but global and animated rather than growing with
+   * placement. Retires its own animator once settled, so the idle-board
+   * invariant holds after the puzzle finishes.
+   */
+  private paintCompletion(ctx: CanvasRenderingContext2D): void {
+    if (this.completionStartMs === null) return;
+
+    const elapsed = performance.now() - this.completionStartMs;
+    const staticCanvas = this.byName.get('static')?.canvas;
+    ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+    if (staticCanvas) this.drawBloom(ctx, staticCanvas, completionIntensity(elapsed), 12);
+
+    if (elapsed >= COMPLETION_RAMP_MS + COMPLETION_HOLD_MS) {
+      this.scheduler.stopAnimating('completion');
+    }
+  }
+
+  /**
+   * The light system's one primitive (§07): downsample `source`, blur it, and
+   * draw it back onto `ctx` with additive blending at `intensity`. Every job —
+   * progress bloom, hint glow, merge seam, completion — is this same pass fed
+   * a different source, intensity, and blur radius.
+   */
+  private drawBloom(
+    ctx: CanvasRenderingContext2D,
+    source: CanvasImageSource & { width: number; height: number },
+    intensity: number,
+    blurPx: number,
+    /** CSS-px rect on `ctx` to draw into. Defaults to the full viewport. */
+    dest?: Rect,
+  ): void {
+    if (intensity <= 0) return;
+    const target = dest ?? { x: 0, y: 0, w: this.viewport.w, h: this.viewport.h };
+    if (target.w <= 0 || target.h <= 0) return;
+
+    // Local passes (hint glow, hint outline's glow) are already small in
+    // screen space, so downsampling them as aggressively as a full-viewport
+    // pass would blur past recognisable. Scale the factor to the crop.
+    const DOWNSAMPLE = dest ? 0.6 : 0.2;
+    const w = Math.max(1, Math.floor(target.w * DOWNSAMPLE));
+    const h = Math.max(1, Math.floor(target.h * DOWNSAMPLE));
+    if (this.bloomCanvas.width !== w) this.bloomCanvas.width = w;
+    if (this.bloomCanvas.height !== h) this.bloomCanvas.height = h;
+    const bctx = this.bloomCanvas.getContext('2d');
+    if (!bctx) return;
+
+    bctx.clearRect(0, 0, w, h);
+    // Source-space rect mirrors `target`, mapped 1:1 in CSS px — both `source`
+    // (a layer canvas) and `ctx` share this renderer's pixel ratio, so no
+    // separate device-pixel conversion is needed here.
+    bctx.drawImage(source, target.x, target.y, target.w, target.h, 0, 0, w, h);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = intensity;
+    ctx.filter = `blur(${blurPx}px)`;
+    ctx.drawImage(this.bloomCanvas, 0, 0, w, h, target.x, target.y, target.w, target.h);
+    ctx.restore();
+  }
+
+  /** §07 Tier 1: a localised, feathered breathing glow around a target region. */
+  private paintHintGlow(ctx: CanvasRenderingContext2D): void {
+    if (this.hintGlowRect === null || this.hintGlowStartMs === null) return;
+
+    const elapsed = performance.now() - this.hintGlowStartMs;
+    const staticCanvas = this.byName.get('static')?.canvas;
+    if (staticCanvas) {
+      const screen = this.screenRectFeathered(this.hintGlowRect, 1.5);
+      this.drawBloom(ctx, staticCanvas, hintGlowIntensity(elapsed), 6, screen);
+    }
+
+    if (elapsed >= HINT_GLOW_DECAY_END_MS) {
+      this.hintGlowRect = null;
+      this.hintGlowStartMs = null;
+      this.scheduler.stopAnimating('hint-glow');
+    }
+  }
+
+  /** §07 Tier 2: the exact slot, 1px in accent. */
+  private paintHintOutline(ctx: CanvasRenderingContext2D): void {
+    if (this.hintOutlineRect === null || this.hintOutlineStartMs === null) return;
+
+    const elapsed = performance.now() - this.hintOutlineStartMs;
+    if (elapsed < HINT_OUTLINE_HOLD_MS) {
+      const topLeft = worldToScreen(this.camera, this.viewport, this.hintOutlineRect);
+      const w = this.hintOutlineRect.w * this.camera.zoom;
+      const h = this.hintOutlineRect.h * this.camera.zoom;
+      ctx.save();
+      ctx.strokeStyle = HINT_OUTLINE_COLOR;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(topLeft.x, topLeft.y, w, h);
+      ctx.restore();
+    } else {
+      this.hintOutlineRect = null;
+      this.hintOutlineStartMs = null;
+      this.scheduler.stopAnimating('hint-outline');
+    }
+  }
+
+  /** A world rect's screen-space bounds, padded by `pieceWidths` of its own width. */
+  private screenRectFeathered(worldRect: Rect, pieceWidths: number): Rect {
+    const pad = worldRect.w * pieceWidths;
+    const topLeft = worldToScreen(this.camera, this.viewport, {
+      x: worldRect.x - pad,
+      y: worldRect.y - pad,
+    });
+    const bottomRight = worldToScreen(this.camera, this.viewport, {
+      x: worldRect.x + worldRect.w + pad,
+      y: worldRect.y + worldRect.h + pad,
+    });
+    return {
+      x: topLeft.x,
+      y: topLeft.y,
+      w: bottomRight.x - topLeft.x,
+      h: bottomRight.y - topLeft.y,
+    };
+  }
+
   private paintOverlay(): void {
     const ctx = this.layerContext('overlay');
     ctx.clearRect(0, 0, this.viewport.w, this.viewport.h);
+    this.paintCompletion(ctx);
+    this.paintHintGlow(ctx);
+    this.paintHintOutline(ctx);
     if (this.scene.held.length === 0) return;
 
     this.applyCamera(ctx);

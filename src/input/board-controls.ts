@@ -47,6 +47,8 @@ export interface BoardControlsOptions {
    * This is not bounce-back — the player aimed at the tray.
    */
   interceptRelease?: (event: { clusterId: number; client: Point }) => boolean;
+  /** A press that lifted without becoming a drag (§07, step 4). See `pointer.ts`. */
+  onTap?: (clusterId: number) => void;
 }
 
 export class BoardControls {
@@ -94,6 +96,7 @@ export class BoardControls {
       },
       onCameraBegin: () => options.onChange(),
       onCameraEnd: () => options.onChange(),
+      ...(options.onTap ? { onTap: (clusterId: number) => options.onTap!(clusterId) } : {}),
     });
 
     const el = options.element;

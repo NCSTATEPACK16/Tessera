@@ -235,7 +235,7 @@ export function binByColour(pieces: readonly ColourInput[], seed: number): Colou
   const samples = lab.map((sample) => scale(sample, norm));
 
   const k = Math.min(COLOUR_BINS, samples.length);
-  const scaled = k > 0 ? kMeans(samples, k, seed) : [];
+  const scaled = k > 0 ? kMeans(samples, k, seed, 'colourBins') : [];
   const centroids = scaled.map((centroid) => unscale(centroid, norm));
 
   const counts = new Array<number>(centroids.length).fill(0);
@@ -280,7 +280,7 @@ export function binByColour(pieces: readonly ColourInput[], seed: number): Colou
   return { bins, binOf };
 }
 
-function hueOf(lab: OkLab): number {
+export function hueOf(lab: OkLab): number {
   return Math.atan2(lab.b, lab.a);
 }
 
@@ -300,12 +300,14 @@ function nearest(sample: OkLab, centroids: readonly OkLab[]): number {
 /**
  * k-means with a k-means++ seeding, drawn from a stream of its own.
  *
- * Seeded because the cut is deterministic from a seed and the bins are part of
+ * Seeded because the cut is deterministic from a seed and the result is part of
  * what a player will have memorised — "the dark green one is two rows down on the
- * left" (§06) has to survive a reload.
+ * left" (§06) has to survive a reload. `kind` is `rngFor`'s stream discriminator:
+ * every caller needs its own, per-concern stream — never a shared one — so
+ * this takes it as a parameter rather than hardcoding the tray's.
  */
-function kMeans(samples: readonly OkLab[], k: number, seed: number): OkLab[] {
-  const rng = rngFor(seed, 'colourBins', 0);
+export function kMeans(samples: readonly OkLab[], k: number, seed: number, kind: string): OkLab[] {
+  const rng = rngFor(seed, kind, 0);
   const centroids: OkLab[] = [samples[Math.floor(rng.next() * samples.length)]!];
 
   while (centroids.length < k) {
