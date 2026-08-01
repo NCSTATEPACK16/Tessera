@@ -87,6 +87,7 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
   const [zoom, setZoom] = useState(MIN_ZOOM);
   const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
   const frameRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragStart = useRef<{ pointerId: number; x: number; y: number; pan: Point } | null>(null);
 
   const frameAspect = aspectChoice === 'original' ? originalAspect : aspectChoice;
@@ -98,6 +99,19 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
       clampPan({ width: source.width, height: source.height }, frameAspect, rotateSteps, zoom, p),
     );
   }, [zoom, frameAspect, rotateSteps, source.width, source.height]);
+
+  // The source bitmap is drawn once per `source` change, not on every render —
+  // an inline ref callback would re-run `drawImage` (a full, undownscaled
+  // decode) on every pointermove during a drag.
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    el.width = source.width;
+    el.height = source.height;
+    const ctx = el.getContext('2d');
+    ctx?.clearRect(0, 0, el.width, el.height);
+    ctx?.drawImage(source, 0, 0);
+  }, [source]);
 
   const rect = useMemo(
     () =>
@@ -185,18 +199,18 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
         style={{ aspectRatio: frameAspect, background: 'var(--mat-void)' }}
       >
         <canvas
-          ref={(el) => {
-            if (!el) return;
-            el.width = source.width;
-            el.height = source.height;
-            const ctx = el.getContext('2d');
-            ctx?.clearRect(0, 0, el.width, el.height);
-            ctx?.drawImage(source, 0, 0);
-          }}
+          ref={canvasRef}
           className="absolute left-1/2 top-1/2 max-w-none"
           style={{
             width: `${(source.width / rect.width) * 100}%`,
-            transform: `translate(-50%, -50%) rotate(${rotateSteps * 90}deg)`,
+            // The photo's own translate is expressed as a percentage of the
+            // canvas's local (pre-rotation) box, the same basis the width
+            // percentage above uses — that keeps the offset self-consistent
+            // regardless of rotation. Increasing pan.x moves the crop rect's
+            // center right in photo space (see computeCropRect), so the
+            // image itself must shift left on screen to keep that new
+            // center in the middle of the frame — hence the subtraction.
+            transform: `translate(calc(-50% - ${(100 * pan.x) / source.width}%), calc(-50% - ${(100 * pan.y) / source.height}%)) rotate(${rotateSteps * 90}deg)`,
           }}
         />
         {grid && (
@@ -246,6 +260,11 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
         ))}
       </div>
 
+      {/* CLAUDE.md "Hard numbers": touch target 44pt floor, everywhere — a bare
+          range input's hit area is only as tall as its (thin) track. Setting
+          min-height on the input directly grows the interactive box while
+          browsers keep the visible track centered and thin within it, the
+          same way a <select>'s box grows without thickening its text. */}
       <input
         type="range"
         aria-label="Zoom"
@@ -254,6 +273,7 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
         step={0.01}
         value={zoom}
         onChange={(e) => setZoom(Number(e.target.value))}
+        className="min-h-[44px] w-full"
       />
 
       <button
