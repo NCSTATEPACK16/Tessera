@@ -13,7 +13,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createSyntheticImage } from '@/dev/synthetic-image';
 import type { PieceId } from '@/cut/types';
 import { MOVE_THRESHOLD_PX } from '@/input/pointer';
 import { PlayRuntime } from '@/play/runtime';
@@ -25,9 +24,13 @@ import { useChrome } from './store';
 import { Tray } from './Tray';
 import { TopBar } from './TopBar';
 import { HintButton } from './HintButton';
+import { PhotoPicker } from './PhotoPicker';
+import type { PhotoChoice } from './PhotoPicker';
+import { PhotoCrop } from './PhotoCrop';
+import type { PhotoCropResult } from './PhotoCrop';
+import { renderCuratedPhoto } from '@/play/curated';
 
-/** Step 5 brings the real photo picker; until then the cut needs *a* photo. */
-const SEED = 1;
+/** Step 5b brings a real difficulty/size picker; until then the cut needs *a* count. */
 const TARGET_COUNT = 200;
 
 export function App(): React.ReactElement {
@@ -35,6 +38,13 @@ export function App(): React.ReactElement {
   const trayRef = useRef<HTMLDivElement>(null);
   const shelfRef = useRef<HTMLDivElement>(null);
   const runtime = useRef<PlayRuntime | null>(null);
+
+  type SetupPhase =
+    | { kind: 'picker'; error: string | null }
+    | { kind: 'cropping'; source: ImageBitmap };
+
+  const [setupPhase, setSetupPhase] = useState<SetupPhase>({ kind: 'picker', error: null });
+  const [playConfig, setPlayConfig] = useState<{ source: ImageBitmap; seed: number } | null>(null);
 
   // Human-speed, not per-frame: flips once when a chip leaves or returns to the
   // tray, never during the drag itself. Drives the shelf's dashed placeholder.
@@ -112,59 +122,65 @@ export function App(): React.ReactElement {
     }
   }, [docked]);
 
-  // -- the runtime, mounted once ---------------------------------------------
+  // -- the setup flow: picker -> crop -> playConfig ---------------------------
+
+  const handlePhotoChosen = useCallback(async (choice: PhotoChoice): Promise<void> => {
+    try {
+      const bitmap =
+        choice.kind === 'curated'
+          ? await renderCuratedPhoto(choice.id)
+          : await createImageBitmap(choice.file);
+      setSetupPhase({ kind: 'cropping', source: bitmap });
+    } catch {
+      setSetupPhase({
+        kind: 'picker',
+        error: "Couldn't open that photo. Try a different file.",
+      });
+    }
+  }, []);
+
+  const handleCropConfirm = useCallback((result: PhotoCropResult): void => {
+    setPlayConfig({ source: result.source, seed: result.seed });
+  }, []);
+
+  // -- the runtime, mounted once the crop is confirmed -------------------------
 
   useEffect(() => {
     const container = boardRef.current;
-    if (!container) return;
+    if (!container || !playConfig) return;
 
-    let live = true;
     let instance: PlayRuntime | null = null;
 
-    void (async () => {
-      const source = await createSyntheticImage();
-      if (!live) return;
+    instance = new PlayRuntime({
+      container,
+      source: playConfig.source,
+      seed: playConfig.seed,
+      targetCount: TARGET_COUNT,
+      isOverTray: (client) => overTray.current(client),
+      isOverShelf: (client) => overShelf.current(client),
+      onDragStateChange: (isDragging) => {
+        // §06: dragging a piece out auto-collapses the sheet to peek and
+        // re-expands on release, so the mat is never obscured mid-drag.
+        const store = useChrome.getState();
+        if (isDragging) store.collapseForDrag();
+        else store.restoreAfterDrag();
+        setDragging(isDragging);
+      },
+      notify: setSummary,
+    });
 
-      instance = new PlayRuntime({
-        container,
-        source,
-        seed: SEED,
-        targetCount: TARGET_COUNT,
-        isOverTray: (client) => overTray.current(client),
-        isOverShelf: (client) => overShelf.current(client),
-        onDragStateChange: (isDragging) => {
-          // §06: dragging a piece out auto-collapses the sheet to peek and
-          // re-expands on release, so the mat is never obscured mid-drag.
-          const store = useChrome.getState();
-          if (isDragging) store.collapseForDrag();
-          else store.restoreAfterDrag();
-          setDragging(isDragging);
-        },
-        notify: setSummary,
-      });
-
-      runtime.current = instance;
-      // `runtime.current` was null for every render until this line, so the
-      // effect below's initial call was always a no-op — this is the first
-      // point at which there is a runtime to hand the current inset to. Today
-      // that race is invisible because `createSyntheticImage()` resolves on
-      // the microtask queue; step 5's real photo picker introduces a genuine
-      // `await`, and without this call the insets would sit at zero until
-      // something happens to resize the sheet or the board.
-      updateInsets();
-      void instance.start();
-    })();
+    runtime.current = instance;
+    updateInsets();
+    void instance.start();
 
     return () => {
-      live = false;
       instance?.destroy();
       runtime.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mounted once by
-    // design (§03: the board never re-renders through React); `updateInsets`
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `updateInsets`
     // is called for its side effect on the runtime it just created, not
-    // watched for change here.
-  }, []);
+    // watched for change here; see the original comment this replaces.
+  }, [playConfig]);
 
   // The dock's inner edge changes the board's viewport, and a window resize
   // event never fires for it. Without this the camera silently stops matching
@@ -268,6 +284,18 @@ export function App(): React.ReactElement {
   // scene, and calling it from `pointermove` would double that cost against the
   // 250-piece/60fps budget every frame of every gesture on the board.
   const groupTapOrigin = useRef<{ x: number; y: number } | null>(null);
+
+  if (!playConfig) {
+    return setupPhase.kind === 'picker' ? (
+      <PhotoPicker onPhotoChosen={handlePhotoChosen} error={setupPhase.error} />
+    ) : (
+      <PhotoCrop
+        source={setupPhase.source}
+        onConfirm={handleCropConfirm}
+        onBack={() => setSetupPhase({ kind: 'picker', error: null })}
+      />
+    );
+  }
 
   return (
     <div className="flex h-full w-full bg-[var(--mat-void)]">
