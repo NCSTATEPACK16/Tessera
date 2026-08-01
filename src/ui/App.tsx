@@ -18,11 +18,13 @@ import type { PieceId } from '@/cut/types';
 import { MOVE_THRESHOLD_PX } from '@/input/pointer';
 import { PlayRuntime } from '@/play/runtime';
 import type { RuntimeSummary } from '@/play/runtime';
+import { fallbackAccentTokens } from '@/render/accent';
 import type { Lens } from '@/tray/lenses';
 import { DOCK_QUERY, useMediaQuery } from './useMediaQuery';
 import { useChrome } from './store';
 import { Tray } from './Tray';
 import { TopBar } from './TopBar';
+import { HintButton } from './HintButton';
 
 /** Step 5 brings the real photo picker; until then the cut needs *a* photo. */
 const SEED = 1;
@@ -39,6 +41,8 @@ export function App(): React.ReactElement {
   const [dragging, setDragging] = useState(false);
   // The group chip under a tap, mid-rename. `null` is "no rename open".
   const [renaming, setRenaming] = useState<number | null>(null);
+  // 0 when docked (the tray is a flex sibling, not an overlay). See `updateInsets`.
+  const [trayHeight, setTrayHeight] = useState(0);
 
   const [summary, setSummary] = useState<RuntimeSummary>({
     status: 'cutting',
@@ -48,6 +52,9 @@ export function App(): React.ReactElement {
     regionUnlocked: false,
     regionRevision: 0,
     trayRevision: 0,
+    hintTarget: null,
+    hintsUsed: 0,
+    accent: fallbackAccentTokens(),
   });
 
   const docked = useMediaQuery(DOCK_QUERY);
@@ -92,8 +99,16 @@ export function App(): React.ReactElement {
     const rect = trayRef.current?.getBoundingClientRect();
     if (docked || !rect) {
       runtime.current?.setTrayInsets({ left: 0, right: 0, top: 0, bottom: 0 });
+      setTrayHeight(0);
     } else {
       runtime.current?.setTrayInsets({ left: 0, right: 0, top: 0, bottom: rect.height });
+      // The hint button's own floor: the sheet is a fixed overlay across the
+      // bottom of the viewport, at every detent, and a button bottom-anchored
+      // to the raw viewport sits underneath it — visible in neither layout nor
+      // hit-testing. `test/browser/hints.spec.ts` caught this on the phone
+      // project; the dock passed because the docked tray is a flex sibling and
+      // never overlaps the board at all.
+      setTrayHeight(rect.height);
     }
   }, [docked]);
 
@@ -208,6 +223,18 @@ export function App(): React.ReactElement {
     useChrome.getState().setShelf(runtime.current?.tray?.pinned ?? []);
   }, [summary]);
 
+  // §13: the extracted accent replaces the fallback wherever chrome reads
+  // `var(--accent)`/`var(--color-accent)`. Set on the root rather than baked
+  // into `theme.css`'s `@theme` block, which is a build-time constant — this
+  // is the one place the token set is genuinely per-puzzle.
+  useEffect(() => {
+    const root = document.documentElement.style;
+    root.setProperty('--accent', summary.accent.accent);
+    root.setProperty('--color-accent', summary.accent.accent);
+    root.setProperty('--color-accent-bloom', summary.accent.accentBloom);
+    root.setProperty('--color-accent-tray', summary.accent.accentTray);
+  }, [summary.accent]);
+
   // -- the tray --------------------------------------------------------------
 
   const tray = runtime.current?.tray ?? null;
@@ -278,6 +305,14 @@ export function App(): React.ReactElement {
           cut={summary.cut}
           onFit={() => runtime.current?.fit()}
         />
+
+        {summary.status === 'playing' && (
+          <HintButton
+            hasTarget={summary.hintTarget !== null}
+            onFire={(tier) => runtime.current?.fireHint(tier) ?? false}
+            clearanceBottomPx={trayHeight}
+          />
+        )}
 
         {renaming !== null && (
           <form

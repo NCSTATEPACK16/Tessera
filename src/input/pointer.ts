@@ -15,6 +15,13 @@
  * There is no tap-to-select-then-tap-to-place, deliberately. Direct manipulation
  * only — the entire product promise is weight in the hand.
  *
+ * One narrow exception (§07, step 4): a press that lifts before it ever becomes
+ * a drag — under `MOVE_THRESHOLD_PX` and `LONG_PRESS_MS` — was previously a
+ * complete no-op, an unclaimed gesture. It now reports `onTap`, consumed only
+ * to choose a hint's target. This is not placement: nothing moves, nothing
+ * merges, and the drag-or-nothing rule above is unchanged for every other
+ * gesture on this machine.
+ *
  * DOM-free by design: screen points and timestamps in, board commands out. The
  * listener shell that feeds it real `PointerEvent`s lives next door and stays
  * thin, because arbitration can only really be judged with two fingers on glass.
@@ -76,6 +83,8 @@ export interface PointerHost {
   onRelease(event: ReleaseEvent): void;
   onCameraBegin(): void;
   onCameraEnd(): void;
+  /** A press that lifted without ever becoming a drag. See the file header. */
+  onTap?(clusterId: number): void;
 }
 
 interface Tracked extends Point {
@@ -242,6 +251,14 @@ export class PointerMachine {
 
   private finish(sample: PointerSample, interrupted: boolean): void {
     this.pointers.delete(sample.id);
+
+    // Captured before `releaseHeld`/the reset below can clear it — a tap never
+    // reached 'dragging', so `releaseHeld` itself is a no-op for this pointer.
+    const tappedCluster =
+      !interrupted && this.phase_ === 'pressing' && this.activeId === sample.id
+        ? this.pressedCluster
+        : null;
+
     this.releaseHeld(sample, interrupted);
 
     if (this.pointers.size === 0) {
@@ -251,6 +268,8 @@ export class PointerMachine {
       this.pressedAt = null;
       this.pressedCluster = null;
     }
+
+    if (tappedCluster !== null) this.host.onTap?.(tappedCluster);
   }
 
   private releaseHeld(sample: PointerSample, interrupted: boolean): void {

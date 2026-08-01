@@ -18,9 +18,12 @@ import type { CutPiece, PieceId } from '@/cut/types';
 import type { SnapDifficulty } from '@/board/snap';
 import { AudioEngine } from '@/audio/engine';
 import { BoardControls } from '@/input/board-controls';
+import type { HintTier, PuzzleMode } from '@/play/hints';
 import { gridLayout } from '@/play/layout';
 import { PlaySession } from '@/play/session';
 import type { PlayEvent } from '@/play/session';
+import type { AccentTokens } from '@/render/accent';
+import { extractAccent, fallbackAccentTokens } from '@/render/accent';
 import { TrayModel } from '@/tray/tray';
 import {
   REGION_LENS_ZOOM,
@@ -59,6 +62,11 @@ export interface RuntimeSummary {
   regionRevision: number;
   /** Ticks whenever a piece changed hands, so the tray re-reads itself. */
   trayRevision: number;
+  /** §07: the loose mat piece a hint would act on, or null. Set by a tap. */
+  hintTarget: PieceId | null;
+  hintsUsed: number;
+  /** §13: the fallback until the cut finishes and the real photo is extracted from. */
+  accent: AccentTokens;
 }
 
 export interface PlayRuntimeOptions {
@@ -133,7 +141,21 @@ export class PlayRuntime {
     regionUnlocked: false,
     regionRevision: 0,
     trayRevision: 0,
+    hintTarget: null,
+    hintsUsed: 0,
+    accent: fallbackAccentTokens(),
   };
+
+  /** §07: the loose mat piece the last tap selected, or null. */
+  private hintTarget: PieceId | null = null;
+  /**
+   * No mode-select screen exists yet (step 5), so there is nowhere for a
+   * player to reach Zen or Daily from. Hardcoded rather than plumbed through
+   * `PlayRuntimeOptions` on a guess at that screen's shape — `hints.ts`
+   * already takes `mode` as a parameter, so this is the one line that moves
+   * when step 5 adds real mode selection.
+   */
+  private readonly mode: PuzzleMode = 'classic';
 
   constructor(private readonly options: PlayRuntimeOptions) {
     this.renderer = new Renderer({ container: options.container });
@@ -272,6 +294,75 @@ export class PlayRuntime {
 
   setTrayInsets(insets: { left: number; right: number; top: number; bottom: number }): void {
     this.insets = insets;
+  }
+
+  /**
+   * §07: a press on the board that lifted without becoming a drag. Only a
+   * lone loose piece is a valid hint target — an island or a placed piece
+   * (which `pickCluster` should never hand back, since the board is anchored)
+   * is not "a loose piece" in the sense the hint button means it.
+   */
+  private onBoardTap(clusterId: number): void {
+    const session = this.session;
+    if (!session) return;
+
+    const cluster = session.board.cluster(clusterId);
+    if (cluster.pieceIds.length !== 1) return;
+    const pieceId = cluster.pieceIds[0]!;
+    if (session.board.isPlaced(pieceId)) return;
+
+    this.hintTarget = pieceId;
+    this.patch({ hintTarget: pieceId });
+  }
+
+  /**
+   * Fire a hint at `tier` for the last-tapped piece. False (spending nothing)
+   * if there is no target or the economy can't afford it — the hint button
+   * decides what that looks like.
+   */
+  fireHint(tier: HintTier): boolean {
+    const session = this.session;
+    if (!session || this.hintTarget === null) return false;
+
+    const pieceId = this.hintTarget;
+    const piece = this.pieces.get(pieceId);
+    // The target may have been placed by an ordinary drag since it was
+    // tapped — stale rather than wrong, so refuse quietly rather than firing
+    // a hint at a piece that no longer needs one.
+    if (!piece || session.board.isPlaced(pieceId)) {
+      this.hintTarget = null;
+      this.patch({ hintTarget: null });
+      return false;
+    }
+
+    const now = performance.now();
+    const ok = session.useHint(pieceId, tier, this.mode, now);
+    if (!ok) return false;
+
+    if (tier === 1) {
+      // §07: "3×3-piece region", approximated as a square centred on the
+      // piece rather than snapped to the true grid — the feather already
+      // makes an exact slot illegible, so the region's precise edges are not
+      // load-bearing the way the outline's are.
+      const cx = piece.targetX + piece.worldW / 2;
+      const cy = piece.targetY + piece.worldH / 2;
+      this.renderer.fireHintGlow(
+        { x: cx - 1.5 * piece.worldW, y: cy - 1.5 * piece.worldH, w: 3 * piece.worldW, h: 3 * piece.worldH },
+        now,
+      );
+    } else if (tier === 2) {
+      this.renderer.fireHintOutline(
+        { x: piece.targetX, y: piece.targetY, w: piece.worldW, h: piece.worldH },
+        now,
+      );
+    } else {
+      // Tier 3 placed it — it is no longer a loose piece to target.
+      this.hintTarget = null;
+    }
+
+    this.patch({ hintTarget: this.hintTarget, hintsUsed: session.summary.hintsUsed });
+    this.wake();
+    return true;
   }
 
   /** The part of the mat the player can actually see and reach, in world units. */
@@ -425,10 +516,15 @@ export class PlayRuntime {
         if (returned) this.bumpTray();
         return returned;
       },
+      onTap: (clusterId) => this.onBoardTap(clusterId),
     });
 
     this.materialising = [];
-    this.patch({ status: 'playing', placed: 0, total: session.summary.total });
+    // Never lets extraction block the start of play (§13): `extractAccent`
+    // itself cannot throw, but this stays outside `try`-free code paths on
+    // purpose — a broken accent is a wrong colour, never a blocked puzzle.
+    const accent = extractAccent(cut, this.options.seed);
+    this.patch({ status: 'playing', placed: 0, total: session.summary.total, accent });
     this.frameContent();
     this.render();
     this.scheduleRegion();
@@ -459,6 +555,9 @@ export class PlayRuntime {
         case 'complete':
           this.audio.play('completion', { nowMs: now });
           break;
+        case 'hint':
+          this.audio.play('hint', { nowMs: now });
+          break;
         case 'deploy':
         case 'return':
           // Silent. Moving a piece between the tray and the mat is navigation,
@@ -466,6 +565,10 @@ export class PlayRuntime {
           break;
       }
     }
+
+    // Not gated on `sound`: the light payoff is a separate channel from audio,
+    // and muting one has no reason to mute the other (§07/§08 are independent).
+    if (event.type === 'complete') this.renderer.completePuzzle(now);
 
     if (event.type === 'snap' && event.placed) {
       for (const piece of this.session!.board.cluster(0).pieceIds) this.tray?.place(piece);
@@ -478,8 +581,8 @@ export class PlayRuntime {
       this.bumpTray();
     }
     if (this.session) {
-      const { placed, total } = this.session.summary;
-      this.patch({ placed, total });
+      const { placed, total, hintsUsed } = this.session.summary;
+      this.patch({ placed, total, hintsUsed });
     }
   }
 

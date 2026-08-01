@@ -99,7 +99,20 @@ export function PieceChip({
       // scroll container reachable only through the gutters: on a phone the tray
       // could not be scrolled by touch at all. The vertical axis belongs to the
       // browser; `TrayDrag` commits to a drag on horizontal movement.
-      style={{ width: size, height: size, touchAction: 'pan-y' }}
+      //
+      // `userSelect`/`WebkitTouchCallout` off: without it, the 450ms select-mode
+      // hold races iOS's own text-selection callout, which wins often enough
+      // that a real hold shows the copy/select magnifier over the chip instead
+      // of entering select mode. Found on an iPhone 15 Pro Max — never
+      // reproduced in Chromium, which has no callout to race.
+      style={{
+        width: size,
+        height: size,
+        touchAction: 'pan-y',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+        WebkitTouchCallout: 'none',
+      }}
       className={[
         'relative flex items-center justify-center rounded-[8px] border transition-colors',
         onMat ? 'opacity-40' : 'active:border-[var(--accent)]',

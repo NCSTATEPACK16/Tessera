@@ -23,11 +23,12 @@ interface Recorded {
   drags: { clusterId: number; dx: number; dy: number }[];
   releases: { clusterId: number; velocity: Point }[];
   camera: string[];
+  taps: number[];
 }
 
 function harness(options: { zoom?: number; pick?: (world: Point) => number | null } = {}) {
   const zoom = options.zoom ?? 1;
-  const log: Recorded = { grabs: [], drags: [], releases: [], camera: [] };
+  const log: Recorded = { grabs: [], drags: [], releases: [], camera: [], taps: [] };
 
   const host: PointerHost = {
     toWorld: (p) => ({ x: p.x / zoom, y: p.y / zoom }),
@@ -37,6 +38,7 @@ function harness(options: { zoom?: number; pick?: (world: Point) => number | nul
     onRelease: (event) => log.releases.push({ clusterId: event.clusterId, velocity: event.velocity }),
     onCameraBegin: () => log.camera.push('begin'),
     onCameraEnd: () => log.camera.push('end'),
+    onTap: (clusterId) => log.taps.push(clusterId),
   };
 
   return { machine: new PointerMachine(host), log };
@@ -229,6 +231,52 @@ describe('interruption', () => {
     machine.interrupt();
     expect(machine.phase).toBe('idle');
     expect(log.releases).toHaveLength(0);
+  });
+});
+
+describe('tap — a press that lifts before it ever becomes a drag (§07, step 4)', () => {
+  it('reports onTap, and never onGrab/onRelease, for a quick lift on a piece', () => {
+    const { machine, log } = harness();
+    machine.down(at(1, 10, 10, 0));
+    machine.up(at(1, 10, 10, 40));
+
+    expect(log.taps).toEqual([7]);
+    expect(log.grabs).toHaveLength(0);
+    expect(log.releases).toHaveLength(0);
+  });
+
+  it('does not fire once the press has crossed into a drag', () => {
+    const { machine, log } = harness();
+    machine.down(at(1, 10, 10, 0));
+    machine.move(at(1, 20, 10, 16));
+    machine.up(at(1, 20, 10, 40));
+
+    expect(log.taps).toHaveLength(0);
+    expect(log.releases).toHaveLength(1);
+  });
+
+  it('does not fire on bare mat, where pickCluster reports null', () => {
+    const { machine, log } = harness({ pick: () => null });
+    machine.down(at(1, 500, 500, 0));
+    machine.up(at(1, 500, 500, 40));
+
+    expect(log.taps).toHaveLength(0);
+  });
+
+  it('does not fire on an interrupted or cancelled press', () => {
+    const { machine, log } = harness();
+    machine.down(at(1, 10, 10, 0));
+    machine.cancel(at(1, 10, 10, 40));
+
+    expect(log.taps).toHaveLength(0);
+  });
+
+  it('never reintroduces tap-to-place: onDragTo still never fires for a tap', () => {
+    const { machine, log } = harness();
+    machine.down(at(1, 10, 10, 0));
+    machine.up(at(1, 10, 10, 40));
+
+    expect(log.drags).toHaveLength(0);
   });
 });
 

@@ -330,3 +330,109 @@ describe('progress', () => {
     expect(play.summary.total).toBe(COLS * ROWS);
   });
 });
+
+describe('elapsedMs', () => {
+  it('measures from the start timestamp passed at construction', () => {
+    const play = new PlaySession({
+      pieces: pieces(),
+      boardW: COLS,
+      boardH: ROWS,
+      pathScale: SCALE,
+      startInTray: false,
+      startedAtMs: 1000,
+    });
+
+    expect(play.elapsedMs(1000)).toBe(0);
+    expect(play.elapsedMs(6500)).toBe(5500);
+  });
+
+  it('never goes negative, for a clock read before the recorded start', () => {
+    const play = session();
+    expect(play.elapsedMs(-100)).toBe(0);
+  });
+});
+
+describe('useHint (§07)', () => {
+  it('tier 1 is free, unlimited, moves nothing, and only announces itself', () => {
+    const events: PlayEvent[] = [];
+    const play = session((event) => events.push(event));
+
+    const ok = play.useHint(id(1, 0), 1, 'classic', 0);
+
+    expect(ok).toBe(true);
+    expect(play.summary.hintsUsed).toBe(0);
+    expect(events).toEqual([{ type: 'hint', tier: 1 }]);
+    // Still scattered — a hint at tier 1 never touches the model.
+    expect(play.board.isPlaced(id(1, 0))).toBe(false);
+  });
+
+  it('tier 2 costs 1 and announces itself, but still moves nothing', () => {
+    const play = session();
+    const ok = play.useHint(id(1, 0), 2, 'classic', 0);
+
+    expect(ok).toBe(true);
+    expect(play.summary.hintsUsed).toBe(1);
+    expect(play.board.isPlaced(id(1, 0))).toBe(false);
+  });
+
+  it('tier 3 costs 2 (not 1+2) and auto-places with the real snap path', () => {
+    const events: PlayEvent[] = [];
+    const play = session((event) => events.push(event));
+
+    const ok = play.useHint(id(1, 0), 3, 'classic', 0);
+
+    expect(ok).toBe(true);
+    expect(play.summary.hintsUsed).toBe(2);
+    expect(play.board.isPlaced(id(1, 0))).toBe(true);
+    // The same `release()` path a real drop takes: a 'snap' event, not a
+    // diminished stand-in.
+    expect(events.some((e) => e.type === 'snap')).toBe(true);
+    expect(events.some((e) => e.type === 'hint' && e.tier === 3)).toBe(true);
+  });
+
+  it('tier 3 places a piece still in the tray, not only ones already on the mat', () => {
+    const play = new PlaySession({
+      pieces: pieces(),
+      boardW: COLS,
+      boardH: ROWS,
+      pathScale: SCALE,
+      // Default startInTray: true.
+    });
+
+    play.useHint(id(0, 1), 3, 'classic', 0);
+
+    expect(play.board.isPlaced(id(0, 1))).toBe(true);
+    expect(play.locationOf(id(0, 1))).toBe('placed');
+  });
+
+  it('refuses a tier the economy cannot afford, and spends nothing', () => {
+    const play = session();
+    // 3 hints available in Classic at t=0; tier 3 costs 2, so two tier-3
+    // hints in a row is 4 — the second must be refused.
+    expect(play.useHint(id(1, 0), 3, 'classic', 0)).toBe(true);
+    const before = play.summary.hintsUsed;
+
+    const ok = play.useHint(id(2, 0), 3, 'classic', 0);
+
+    expect(ok).toBe(false);
+    expect(play.summary.hintsUsed).toBe(before);
+    expect(play.board.isPlaced(id(2, 0))).toBe(false);
+  });
+
+  it('never spends in Zen, however many tier-3 hints fire', () => {
+    const play = session();
+    play.useHint(id(1, 0), 3, 'zen', 0);
+    play.useHint(id(2, 0), 3, 'zen', 0);
+
+    expect(play.summary.hintsUsed).toBe(0);
+    expect(play.board.isPlaced(id(1, 0))).toBe(true);
+    expect(play.board.isPlaced(id(2, 0))).toBe(true);
+  });
+
+  it('a puzzle finished with any hint used is not a clean run (§15)', () => {
+    const play = session();
+    expect(play.summary.hintsUsed).toBe(0);
+    play.useHint(id(1, 0), 2, 'classic', 0);
+    expect(play.summary.hintsUsed).toBeGreaterThan(0);
+  });
+});

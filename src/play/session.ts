@@ -27,6 +27,8 @@ import type { SnapDifficulty } from '@/board/snap';
 import { createSettle } from '@/board/settle';
 import type { Pose, Settle } from '@/board/settle';
 import type { MatFinish, Scene, SceneGroup, ScenePiece } from '@/render/scene';
+import type { HintTier, PuzzleMode } from './hints';
+import { canAffordTier, spendTier } from './hints';
 import { WORKSET_DROP_TOLERANCE, WorksetStore, escapedBounds, worksetBounds } from './workset';
 
 /** §05: the held cluster rides 8pt above the finger, never under it. */
@@ -69,7 +71,9 @@ export type PlayEvent =
   /** …and went back. `pinned` when it landed on the shelf rather than the grid. */
   | { type: 'return'; pieceId: PieceId; pinned: boolean }
   /** Membership or collapse changed; the chrome needs a repaint. */
-  | { type: 'worksetChanged' };
+  | { type: 'worksetChanged' }
+  /** §07: a hint fired, at whatever tier was reached. */
+  | { type: 'hint'; tier: HintTier };
 
 export interface PlaySessionOptions {
   pieces: readonly SessionPiece[];
@@ -94,6 +98,14 @@ export interface PlaySessionOptions {
    * predates the tray by two steps.
    */
   startInTray?: boolean;
+  /**
+   * `performance.now()` when the puzzle started, for the hint economy's "+1
+   * per 10 minutes" (§07). Defaults to 0 — fine for tests that never call
+   * `elapsedMs`/`useHint`, wrong for anything that does, so callers that care
+   * must pass it explicitly. This is deliberately the entire timer for now;
+   * pause/resume across `interrupted` is step 5's save-format territory.
+   */
+  startedAtMs?: number;
   onEvent?: (event: PlayEvent) => void;
 }
 
@@ -102,6 +114,8 @@ export interface PlaySummary {
   total: number;
   /** 0–1. Drives the progress bloom (§07) and the HUD. */
   completion: number;
+  /** §07/§15: a completion is "clean" only when this stays 0. */
+  hintsUsed: number;
 }
 
 /**
@@ -154,8 +168,11 @@ export class PlaySession {
   private pickSequence = 1;
   private edgeFrameAnnounced = false;
   private completionAnnounced = false;
+  private hintsUsed = 0;
+  private readonly startedAtMs: number;
 
   constructor(private readonly options: PlaySessionOptions) {
+    this.startedAtMs = options.startedAtMs ?? 0;
     this.board = createBoard(
       options.pieces.map((piece) => ({
         id: piece.id,
@@ -228,7 +245,13 @@ export class PlaySession {
       placed: this.board.placedCount,
       total,
       completion: total === 0 ? 0 : this.board.placedCount / total,
+      hintsUsed: this.hintsUsed,
     };
+  }
+
+  /** Milliseconds since the puzzle started. See `startedAtMs`'s caveat. */
+  elapsedMs(nowMs: number): number {
+    return Math.max(0, nowMs - this.startedAtMs);
   }
 
   /**
@@ -515,6 +538,56 @@ export class PlaySession {
       mergedClusters: result.mergedClusters,
     });
     this.announceMilestones();
+  }
+
+  /**
+   * §07: fire a hint at `tier` for `pieceId`. Returns false, spending nothing,
+   * if the economy can't afford it — the caller decides what that looks like
+   * (a refusal animation, a disabled button).
+   *
+   * Tiers 1 and 2 are announced only, via the `hint` event — `Renderer` owns
+   * the glow and the slot outline, because both are §07's light system and
+   * this file has no idea light exists. Tier 3 is the one tier with a model
+   * consequence: an auto-place through the exact same `release()` path a real
+   * drop takes, so it gets "the full snap treatment" rather than a diminished
+   * one, per §07.
+   */
+  useHint(pieceId: PieceId, tier: HintTier, mode: PuzzleMode, nowMs: number): boolean {
+    if (!canAffordTier(tier, this.hintsUsed, this.elapsedMs(nowMs), mode)) return false;
+
+    this.hintsUsed = spendTier(tier, this.hintsUsed, mode);
+    if (tier === 3) this.placeHint(pieceId);
+    this.emit({ type: 'hint', tier });
+    return true;
+  }
+
+  /**
+   * Move `pieceId`'s own cluster onto its target slot and release it there —
+   * the same spring, audio, and merge `release()` gives a real drop, because a
+   * player who needed help still deserves the good part (§07).
+   *
+   * Only meaningful for a lone loose piece: a hint that placed a whole island
+   * would be placing pieces the player never asked about. The caller is
+   * responsible for only ever targeting a single-piece cluster with a hint —
+   * this trusts that rather than re-checking it, the same way `release` trusts
+   * its caller for `clusterId`.
+   */
+  private placeHint(pieceId: PieceId): void {
+    const piece = this.board.piece(pieceId);
+    let clusterId: number;
+
+    if (this.inTray.has(pieceId)) {
+      // A tray piece's cluster already sits at `targetX/targetY` — nothing
+      // has moved it yet — so `deploy` here only takes it out of the tray.
+      const deployed = this.deploy(pieceId, { x: piece.targetX + piece.w / 2, y: piece.targetY + piece.h / 2 });
+      if (deployed === null) return;
+      clusterId = deployed;
+    } else {
+      clusterId = this.board.clusterIdOf(pieceId);
+      this.board.moveCluster(clusterId, piece.targetX, piece.targetY);
+    }
+
+    this.release(clusterId, { x: 0, y: 0 }, 0);
   }
 
   /** Step every settle. Returns whether anything is still moving. */
