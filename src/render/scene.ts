@@ -78,6 +78,14 @@ export interface Scene {
 
   /** 0–1. Drives the progress bloom (§07). */
   completion: number;
+
+  /**
+   * §07/§09's X-Ray focus: placed piece ids a member of the held cluster
+   * actually connects to, or `null` when nothing is held. Non-null (possibly
+   * empty) drives the overlay dimming pass — everything in `placed` that is
+   * not in this set drops to 35% contrast for the duration of the drag.
+   */
+  xray: ReadonlySet<number> | null;
 }
 
 export function emptyScene(finish: MatFinish = 'felt'): Scene {
@@ -91,5 +99,6 @@ export function emptyScene(finish: MatFinish = 'felt'): Scene {
     held: [],
     heldLift: { offsetPx: 8, scale: 1.06 },
     completion: 0,
+    xray: null,
   };
 }

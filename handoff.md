@@ -122,7 +122,55 @@ a `useNeutral` parameter as the seam, and `PlayRuntimeOptions.difficulty` alread
 and no settings sheet exists yet. That's step 5's pause sheet, not a step-4 gap. Recorded here so
 it isn't mistaken for forgotten rather than blocked.
 
+## 1d. Step 4d landed: the remaining three light jobs
+
+Closes out §07's "one light system, four jobs" — hint glow and completion were the only two wired
+at 4a; X-Ray, merge seam, and the edge-frame beat are wired now, all through the same `drawBloom`
+primitive (or, for X-Ray and the trace, the same overlay layer) rather than one-off passes.
+
+- **`Board.candidateSockets(clusterId)`** (`src/board/board.ts`) is the new pure primitive: placed
+  pieces a held cluster's graph neighbours actually touch. Same question `resolveSnap` asks, for
+  display instead of a merge. Tested in `test/board/board.test.ts`.
+- **X-Ray focus.** `Scene.xray` is `ReadonlySet<PieceId> | null` — non-null (possibly empty)
+  whenever a cluster is held, computed by `PlaySession.scene()` from `candidateSockets`. The model
+  drops it straight to `null` on release; the 160ms restore in §09 is purely a `Renderer` concern,
+  the same division `settle.ts` already draws between the model and the spring. `Renderer.paintXray`
+  dims every placed piece not in the set to `--xray-dim` (0.35), via a bounding-box fill rather than
+  the cut silhouette — cheaper per frame, and close enough at drag zoom.
+- **Merge seam.** `PlayEvent.snap` gained `seam: Rect | null` — the two resolved pieces' bounding
+  box, computed post-align in `PlaySession.seamOf`, `null` when the candidate resolved against the
+  board frame's own slot (§05's absolute-position exception, which has no second piece to draw a
+  seam between). `PlayRuntime` fires `Renderer.fireMergeSeam` whenever it's present. **Scoped
+  deliberately to merges that land on the board** — `paintMergeSeam` sources from the static layer,
+  same as progress bloom and completion, so an island-to-island merge on the mat (no static-layer
+  pixels yet) has nowhere to source the glow from. Revisit if island merges turn out to need it too;
+  nothing in the model prevents computing the rect for those, only the renderer's current source.
+- **Edge-frame beat.** New pure function `edgeFrameProgress` in `light.ts` (linear, not eased — a
+  trace reads as constant motion, not an approach curve) drives `Renderer.paintEdgeFrame`: a single
+  growing dash around the board outline, 600ms, clockwise from the top-left corner because that's
+  the order `strokeRect` already draws in. Fired from `PlayRuntime` on `PlayEvent.edgeFrame`.
+- **Accent finally reaches the renderer.** `Renderer.setAccent(color)`, called once from
+  `PlayRuntime.build()` after `extractAccent` runs, replaces the hardcoded `HINT_OUTLINE_COLOR` and
+  feeds the edge-frame stroke too. Both bloom-style passes (hint/progress/completion/seam) still use
+  the photo's own colours per §07's literal description — only the two *stroke* passes (hint outline,
+  edge frame) use the extracted token, since a stroke has no photo pixels of its own to draw from.
+
+Not unit-tested beyond the two new pure functions (`candidateSockets`, `edgeFrameProgress`) — the
+paint passes are canvas code, in the same "thin enough to judge by hand" category as the rest of
+`renderer.ts`. `npm run test:browser` stayed at the branch's established 58/62 (4 viewport-conditional
+skips); the one intermittent failure (`drag-out.spec.ts`'s "Recent finds it again") reproduced 0/3 on
+a targeted rerun, so it's a pre-existing flake, not a regression from this pass.
+
+**Still open from §07/§09, not touched by this pass:** the group-merge outline flash (both clusters'
+containing outlines flashing at 40% for 120ms before the seam light-bleeds) — `paintMergeSeam` draws
+the seam glow but not the outline flash, which is a `drawGroupOutlines`-adjacent concern rather than
+the bloom primitive. Bugs A–D from section 3 below are also untouched; this pass was scoped to the
+light system only.
+
 ## 2. What's next — Step 4: Hints and light
+
+**Superseded by sections 1a–1d above** — every item this section describes has landed. Left in place
+as the original scoping note rather than deleted, per this file's own convention elsewhere.
 
 Full detail in `PLAN.md` §"Step 4 — Hints and light" (gitignored, local only). The shape:
 

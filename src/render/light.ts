@@ -90,6 +90,21 @@ export function mergeSeamIntensity(elapsedMs: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Edge-frame completion beat — the border traces once in accent light, 600ms,
+// clockwise from the top-left corner (§09). Not an intensity mask like the
+// other three jobs: it drives how much of the perimeter stroke is revealed,
+// so the curve is linear rather than eased — a trace reads as constant
+// motion, and an ease-in would read as the line accelerating out of nowhere.
+
+export const EDGE_FRAME_TRACE_MS = 600;
+
+/** `elapsedMs` since `PlayEvent.edgeFrame` fired. 0–1, the fraction of the perimeter drawn. */
+export function edgeFrameProgress(elapsedMs: number): number {
+  if (elapsedMs < 0) return 0;
+  return clamp01(elapsedMs / EDGE_FRAME_TRACE_MS);
+}
+
+// ---------------------------------------------------------------------------
 // Completion payoff — global mask ramps to 1.0 over 1200ms, holds three
 // seconds, settles to 0.85 as the card composes.
 

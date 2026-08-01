@@ -26,9 +26,13 @@ import { GROUP_CHIP, groupChipRect, groupChipText } from './group-chip';
 import {
   COMPLETION_HOLD_MS,
   COMPLETION_RAMP_MS,
+  EDGE_FRAME_TRACE_MS,
   HINT_GLOW_DECAY_END_MS,
+  MERGE_SEAM_DURATION_MS,
   completionIntensity,
+  edgeFrameProgress,
   hintGlowIntensity,
+  mergeSeamIntensity,
   progressBloomIntensity,
 } from './light';
 import { drawMat } from './mat';
@@ -37,8 +41,12 @@ import { emptyScene } from './scene';
 
 /** §07's outline holds roughly as long as the glow it accompanies. */
 const HINT_OUTLINE_HOLD_MS = HINT_GLOW_DECAY_END_MS;
-/** 1px in accent, per the design doc. Renderer has no accent token yet (step 4c). */
-const HINT_OUTLINE_COLOR = 'rgba(111, 168, 255, 0.9)';
+/** Fallback accent, matching `ACCENT_FALLBACK` in `render/accent.ts` — used until `setAccent` is called. */
+const DEFAULT_ACCENT = 'rgba(111, 168, 255, 0.9)';
+/** §09/CLAUDE.md's `--xray-dim`: placed pieces without a connecting edge drop to this contrast. */
+const XRAY_CONTRAST = 0.35;
+/** How long the dim takes to lift once the cluster is released. */
+const XRAY_RESTORE_MS = 160;
 
 export interface RendererStats {
   frames: number;
@@ -82,6 +90,21 @@ export class Renderer {
   /** Tier 2's exact slot outline, world units, or null. */
   private hintOutlineRect: Rect | null = null;
   private hintOutlineStartMs: number | null = null;
+  /** §13: the photo's own accent, written by `setAccent`. `DEFAULT_ACCENT` until then. */
+  private accentColor = DEFAULT_ACCENT;
+  /** §07's merge seam, world units, or null when no merge is animating. */
+  private mergeSeamRect: Rect | null = null;
+  private mergeSeamStartMs: number | null = null;
+  /** §09's edge-frame trace, or null when it has not fired / has finished. */
+  private edgeFrameStartMs: number | null = null;
+  /**
+   * §07/§09's X-Ray focus. Non-null while a cluster is held or fading back
+   * out after release — `scene.xray` itself goes straight to `null` on
+   * release, so this is the renderer's own snapshot of the last set, kept
+   * alive only long enough for `paintXray` to fade it out.
+   */
+  private xrayCandidates: ReadonlySet<number> | null = null;
+  private xrayFadeStartMs: number | null = null;
 
   readonly stats: RendererStats = {
     frames: 0,
@@ -131,6 +154,19 @@ export class Renderer {
     const boardChanged = scene.boardW !== this.scene.boardW || scene.boardH !== this.scene.boardH;
     const placedChanged = scene.placed !== this.scene.placed || scene.completion !== this.scene.completion;
     const finishChanged = scene.finish !== this.scene.finish;
+
+    // X-Ray (§07/§09): the model drops straight to `xray: null` on release —
+    // the 160ms restore is a renderer-only presentation detail, the same
+    // division of labour the settle spring already draws between the two.
+    if (this.scene.xray !== null && scene.xray === null) {
+      this.xrayCandidates = this.scene.xray;
+      this.xrayFadeStartMs = performance.now();
+      this.scheduler.startAnimating('xray-fade');
+    } else if (scene.xray !== null) {
+      this.xrayCandidates = scene.xray;
+      this.xrayFadeStartMs = null;
+      this.scheduler.stopAnimating('xray-fade');
+    }
 
     this.scene = scene;
     this.camera = { ...camera };
@@ -184,6 +220,26 @@ export class Renderer {
     this.hintOutlineRect = worldRect;
     this.hintOutlineStartMs = nowMs;
     this.scheduler.startAnimating('hint-outline');
+    this.scheduler.invalidate('overlay');
+  }
+
+  /** §13: the extracted photo accent. Used by the edge-frame trace and the hint outline. */
+  setAccent(color: string): void {
+    this.accentColor = color;
+  }
+
+  /** §07: the newly joined seam, light-bleeding outward. Call from `PlayEvent.snap`. */
+  fireMergeSeam(worldRect: Rect, nowMs: number = performance.now()): void {
+    this.mergeSeamRect = worldRect;
+    this.mergeSeamStartMs = nowMs;
+    this.scheduler.startAnimating('merge-seam');
+    this.scheduler.invalidate('overlay');
+  }
+
+  /** §09: the border traces once, clockwise from the top-left. Call from `PlayEvent.edgeFrame`. */
+  fireEdgeFrame(nowMs: number = performance.now()): void {
+    this.edgeFrameStartMs = nowMs;
+    this.scheduler.startAnimating('edge-frame');
     this.scheduler.invalidate('overlay');
   }
 
@@ -361,7 +417,7 @@ export class Renderer {
       const w = this.hintOutlineRect.w * this.camera.zoom;
       const h = this.hintOutlineRect.h * this.camera.zoom;
       ctx.save();
-      ctx.strokeStyle = HINT_OUTLINE_COLOR;
+      ctx.strokeStyle = this.accentColor;
       ctx.lineWidth = 1;
       ctx.strokeRect(topLeft.x, topLeft.y, w, h);
       ctx.restore();
@@ -391,12 +447,106 @@ export class Renderer {
     };
   }
 
+  /**
+   * §07: the newly joined seam, light-bleeding outward — the same
+   * `drawBloom` primitive as the other three jobs, sourced from the static
+   * layer and cropped tight to the seam rather than feathered wide, because
+   * this one is meant to read as a line, not a region.
+   */
+  private paintMergeSeam(ctx: CanvasRenderingContext2D): void {
+    if (this.mergeSeamRect === null || this.mergeSeamStartMs === null) return;
+
+    const elapsed = performance.now() - this.mergeSeamStartMs;
+    const staticCanvas = this.byName.get('static')?.canvas;
+    if (staticCanvas) {
+      const screen = this.screenRectFeathered(this.mergeSeamRect, 0.15);
+      this.drawBloom(ctx, staticCanvas, mergeSeamIntensity(elapsed), 3, screen);
+    }
+
+    if (elapsed >= MERGE_SEAM_DURATION_MS) {
+      this.mergeSeamRect = null;
+      this.mergeSeamStartMs = null;
+      this.scheduler.stopAnimating('merge-seam');
+    }
+  }
+
+  /**
+   * §09: the border traces once in accent light, clockwise from the
+   * top-left. A single dash whose length grows from 0 to the perimeter reads
+   * as the line drawing itself, rather than a full stroke fading in.
+   */
+  private paintEdgeFrame(ctx: CanvasRenderingContext2D): void {
+    if (this.edgeFrameStartMs === null) return;
+
+    const elapsed = performance.now() - this.edgeFrameStartMs;
+    const { boardW, boardH } = this.scene;
+    const progress = edgeFrameProgress(elapsed);
+    if (boardW > 0 && boardH > 0 && progress > 0) {
+      const topLeft = worldToScreen(this.camera, this.viewport, { x: 0, y: 0 });
+      const w = boardW * this.camera.zoom;
+      const h = boardH * this.camera.zoom;
+      const perimeter = 2 * (w + h);
+
+      ctx.save();
+      ctx.strokeStyle = this.accentColor;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([perimeter * progress, perimeter]);
+      ctx.lineDashOffset = 0;
+      ctx.strokeRect(topLeft.x, topLeft.y, w, h);
+      ctx.restore();
+    }
+
+    if (elapsed >= EDGE_FRAME_TRACE_MS) {
+      this.edgeFrameStartMs = null;
+      this.scheduler.stopAnimating('edge-frame');
+    }
+  }
+
+  /**
+   * §07/§09's X-Ray focus: every placed piece the held cluster does not
+   * connect to drops to `XRAY_CONTRAST`, restoring over `XRAY_RESTORE_MS`
+   * once the cluster is released.
+   *
+   * Dims the piece's bounding box rather than its cut silhouette — close
+   * enough at the zoom levels a drag happens at, and it avoids building a
+   * second `Path2D` per placed piece on every frame of the drag.
+   */
+  private paintXray(ctx: CanvasRenderingContext2D): void {
+    if (this.xrayCandidates === null) return;
+
+    let strength = 1 - XRAY_CONTRAST;
+    if (this.xrayFadeStartMs !== null) {
+      const elapsed = performance.now() - this.xrayFadeStartMs;
+      if (elapsed >= XRAY_RESTORE_MS) {
+        this.xrayCandidates = null;
+        this.xrayFadeStartMs = null;
+        this.scheduler.stopAnimating('xray-fade');
+        return;
+      }
+      strength *= 1 - elapsed / XRAY_RESTORE_MS;
+    }
+    if (strength <= 0) return;
+
+    const candidates = this.xrayCandidates;
+    ctx.save();
+    this.applyCamera(ctx);
+    ctx.fillStyle = `rgba(0, 0, 0, ${strength})`;
+    for (const piece of this.scene.placed) {
+      if (candidates.has(piece.id)) continue;
+      ctx.fillRect(piece.x, piece.y, piece.w, piece.h);
+    }
+    ctx.restore();
+  }
+
   private paintOverlay(): void {
     const ctx = this.layerContext('overlay');
     ctx.clearRect(0, 0, this.viewport.w, this.viewport.h);
     this.paintCompletion(ctx);
     this.paintHintGlow(ctx);
     this.paintHintOutline(ctx);
+    this.paintMergeSeam(ctx);
+    this.paintEdgeFrame(ctx);
+    this.paintXray(ctx);
     if (this.scene.held.length === 0) return;
 
     this.applyCamera(ctx);

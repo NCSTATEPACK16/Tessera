@@ -524,6 +524,7 @@ export class PlayRuntime {
     // itself cannot throw, but this stays outside `try`-free code paths on
     // purpose — a broken accent is a wrong colour, never a blocked puzzle.
     const accent = extractAccent(cut, this.options.seed);
+    this.renderer.setAccent(accent.accent);
     this.patch({ status: 'playing', placed: 0, total: session.summary.total, accent });
     this.frameContent();
     this.render();
@@ -569,6 +570,8 @@ export class PlayRuntime {
     // Not gated on `sound`: the light payoff is a separate channel from audio,
     // and muting one has no reason to mute the other (§07/§08 are independent).
     if (event.type === 'complete') this.renderer.completePuzzle(now);
+    if (event.type === 'snap' && event.seam) this.renderer.fireMergeSeam(event.seam, now);
+    if (event.type === 'edgeFrame') this.renderer.fireEdgeFrame(now);
 
     if (event.type === 'snap' && event.placed) {
       for (const piece of this.session!.board.cluster(0).pieceIds) this.tray?.place(piece);

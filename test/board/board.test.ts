@@ -254,3 +254,37 @@ describe('placement', () => {
     expect([...board.clusters.keys()]).toEqual([BOARD_CLUSTER]);
   });
 });
+
+describe('candidateSockets', () => {
+  it('names placed neighbours of a held cluster, and nothing else placed', () => {
+    // (0,0) and (0,1) are placed. (1,0) is a graph neighbour of (0,0) only —
+    // X-Ray's candidate socket is the piece a drop would actually connect to.
+    const board = createBoard(input());
+    board.merge(board.clusterIdOf(id(0, 0)), BOARD_CLUSTER);
+    board.merge(board.clusterIdOf(id(0, 1)), BOARD_CLUSTER);
+
+    const held = board.clusterIdOf(id(1, 0));
+    const sockets = board.candidateSockets(held);
+
+    expect(sockets).toEqual(new Set([id(0, 0)]));
+  });
+
+  it('is empty when the held cluster borders no placed piece', () => {
+    const board = createBoard(input());
+    const held = board.clusterIdOf(id(2, 1));
+    expect(board.candidateSockets(held)).toEqual(new Set());
+  });
+
+  it('gathers a socket per member when the held cluster is an island', () => {
+    const board = createBoard(input());
+    board.merge(board.clusterIdOf(id(0, 0)), BOARD_CLUSTER);
+    board.merge(board.clusterIdOf(id(1, 1)), BOARD_CLUSTER);
+
+    // (1,0) neighbours placed (0,0); (2,1) neighbours placed (1,1). Neither
+    // neighbours the other, so merging them into one island still surfaces
+    // both sockets.
+    const island = board.merge(board.clusterIdOf(id(1, 0)), board.clusterIdOf(id(2, 1)));
+
+    expect(board.candidateSockets(island)).toEqual(new Set([id(0, 0), id(1, 1)]));
+  });
+});
