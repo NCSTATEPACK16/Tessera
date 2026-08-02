@@ -51,11 +51,11 @@ export function PhotoPicker({ onPhotoChosen, error }: PhotoPickerProps): React.R
           onClick={() => setSource('curated')}
           className={`flex-1 rounded-[var(--radius-md)] border px-0 py-2 font-[var(--font-data)] text-[12px] ${
             source === 'curated'
-              ? 'border-[var(--accent)] text-[var(--accent)]'
+              ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
               : 'border-[var(--edge-hair)] text-[var(--ink-muted)]'
           }`}
         >
-          Curated photos
+          {source === 'curated' ? '✓ ' : ''}Curated photos
         </button>
         <button
           type="button"
@@ -64,11 +64,11 @@ export function PhotoPicker({ onPhotoChosen, error }: PhotoPickerProps): React.R
           onClick={() => setSource('upload')}
           className={`flex-1 rounded-[var(--radius-md)] border px-0 py-2 font-[var(--font-data)] text-[12px] ${
             source === 'upload'
-              ? 'border-[var(--accent)] text-[var(--accent)]'
+              ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
               : 'border-[var(--edge-hair)] text-[var(--ink-muted)]'
           }`}
         >
-          + Upload Photo
+          {source === 'upload' ? '✓ ' : ''}+ Upload Photo
         </button>
       </div>
 

@@ -251,10 +251,11 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
             onClick={() => setAspectChoice(value)}
             className={`flex-1 rounded-[var(--radius-sm)] border py-2 font-[var(--font-data)] text-[11px] ${
               aspectChoice === value
-                ? 'border-[var(--accent)] text-[var(--accent)]'
+                ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
                 : 'border-[var(--edge-hair)] text-[var(--ink-muted)]'
             }`}
           >
+            {aspectChoice === value ? '✓ ' : ''}
             {label}
           </button>
         ))}

@@ -29,9 +29,50 @@ import type { PhotoChoice } from './PhotoPicker';
 import { PhotoCrop } from './PhotoCrop';
 import type { PhotoCropResult } from './PhotoCrop';
 import { renderCuratedPhoto } from '@/play/curated';
+import { downscaleTarget } from '@/play/photo';
 
 /** Step 5b brings a real difficulty/size picker; until then the cut needs *a* count. */
 const TARGET_COUNT = 200;
+
+/**
+ * Reads a File's natural pixel size without allocating a persistent
+ * ImageBitmap — used only to size the resize options passed to the real
+ * decode in `handlePhotoChosen`. `Image.decode()` still rasterises once, but
+ * nothing keeps that decode alive: the object URL is revoked and the
+ * `Image` dropped immediately after, unlike an undisposed `createImageBitmap`
+ * result.
+ */
+async function probeImageSize(file: File): Promise<{ width: number; height: number }> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return { width: img.naturalWidth, height: img.naturalHeight };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/**
+ * CLAUDE.md "Hard numbers": source downscale, max 2560px long edge. Applied
+ * at decode time for uploads so `PhotoCrop`'s live-preview canvas and its
+ * `rasterizeCrop` pass never allocate multiple full-resolution (12MP+)
+ * surfaces at once — the final cut output was already capped later in the
+ * pipeline, but the intermediate canvases were not.
+ */
+async function decodeUpload(file: File): Promise<ImageBitmap> {
+  const size = await probeImageSize(file);
+  const target = downscaleTarget(size.width, size.height);
+  if (target.width === size.width && target.height === size.height) {
+    return createImageBitmap(file);
+  }
+  return createImageBitmap(file, {
+    resizeWidth: target.width,
+    resizeHeight: target.height,
+    resizeQuality: 'high',
+  });
+}
 
 export function App(): React.ReactElement {
   const boardRef = useRef<HTMLDivElement>(null);
@@ -127,21 +168,36 @@ export function App(): React.ReactElement {
   const handlePhotoChosen = useCallback(async (choice: PhotoChoice): Promise<void> => {
     try {
       const bitmap =
-        choice.kind === 'curated'
-          ? await renderCuratedPhoto(choice.id)
-          : await createImageBitmap(choice.file);
-      setSetupPhase({ kind: 'cropping', source: bitmap });
+        choice.kind === 'curated' ? await renderCuratedPhoto(choice.id) : await decodeUpload(choice.file);
+      // A previous round trip through crop (picker -> crop -> picker -> pick
+      // again) would otherwise leak that bitmap's off-heap backing store —
+      // GC does not reliably reclaim ImageBitmaps promptly. `onBack` already
+      // closes it on the normal path; this is the defensive twin for any
+      // other route back into this handler while a cropping phase exists.
+      setSetupPhase((prev) => {
+        if (prev.kind === 'cropping') prev.source.close();
+        return { kind: 'cropping', source: bitmap };
+      });
     } catch {
-      setSetupPhase({
-        kind: 'picker',
-        error: "Couldn't open that photo. Try a different file.",
+      setSetupPhase((prev) => {
+        if (prev.kind === 'cropping') prev.source.close();
+        return { kind: 'picker', error: "Couldn't open that photo. Try a different file." };
       });
     }
   }, []);
 
-  const handleCropConfirm = useCallback((result: PhotoCropResult): void => {
-    setPlayConfig({ source: result.source, seed: result.seed });
-  }, []);
+  const handleCropConfirm = useCallback(
+    (result: PhotoCropResult): void => {
+      // `result.source` is a fresh bitmap `rasterizeCrop` produced via
+      // `transferToImageBitmap` — always a distinct instance from the
+      // uncropped original below, so this can never double-close the same
+      // object. Only the cropped result is needed from here on; the
+      // full-resolution original is not used again once the crop is confirmed.
+      if (setupPhase.kind === 'cropping') setupPhase.source.close();
+      setPlayConfig({ source: result.source, seed: result.seed });
+    },
+    [setupPhase],
+  );
 
   // -- the runtime, mounted once the crop is confirmed -------------------------
 
@@ -173,7 +229,26 @@ export function App(): React.ReactElement {
     updateInsets();
     void instance.start();
 
+    // §08: unlock the audio context on the first deliberate tap after the
+    // board exists, and never before — iOS leaves it suspended otherwise and
+    // the first snap of the session is silent. Registered here rather than
+    // in a mount-time effect: the picker/crop screens render before
+    // `playConfig` is set and before `instance` exists, so a listener
+    // registered on the app's first mount would fire on the picker's first
+    // tap, no-op through the optional chain (`runtime.current` still null),
+    // and remove itself — permanently losing the unlock for the whole
+    // session. Tying registration to this effect means the listener is only
+    // ever added once a real runtime exists to unlock, added at most once
+    // per mounted instance, and always torn down alongside it, so remount
+    // cycles cannot accumulate duplicate listeners.
+    const unlock = (): void => {
+      instance?.unlockAudio();
+      window.removeEventListener('pointerdown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+
     return () => {
+      window.removeEventListener('pointerdown', unlock);
       instance?.destroy();
       runtime.current = null;
     };
@@ -193,6 +268,13 @@ export function App(): React.ReactElement {
   // that never touches the board container's size at all. Left at the default
   // zero, `safeWorldRect()` would deal every pulled-out piece behind the sheet,
   // where a drop returns it straight to the tray.
+  // `playConfig` is in the dependency array (even though the effect body
+  // never reads it) because the board `<div ref={boardRef}>` does not exist
+  // in the DOM until `playConfig` is set — on first mount `container` is
+  // null and the effect bails without ever creating the observer. Neither
+  // `docked` nor `updateInsets` changes on the picker->crop->playing
+  // transition, so without `playConfig` here React would never re-run this
+  // effect and the observer would never attach at all.
   useEffect(() => {
     const container = boardRef.current;
     if (!container) return;
@@ -205,19 +287,7 @@ export function App(): React.ReactElement {
     if (trayRef.current) observer.observe(trayRef.current);
     updateInsets();
     return () => observer.disconnect();
-  }, [docked, updateInsets]);
-
-  // §08: unlock the audio context on the first deliberate tap, and never before
-  // — iOS leaves it suspended otherwise and the first snap of the session is
-  // silent.
-  useEffect(() => {
-    const unlock = (): void => {
-      runtime.current?.unlockAudio();
-      window.removeEventListener('pointerdown', unlock);
-    };
-    window.addEventListener('pointerdown', unlock);
-    return () => window.removeEventListener('pointerdown', unlock);
-  }, []);
+  }, [docked, updateInsets, playConfig]);
 
   // §05: `interrupted` is a first-class state, not an error path.
   useEffect(() => {
@@ -292,7 +362,14 @@ export function App(): React.ReactElement {
       <PhotoCrop
         source={setupPhase.source}
         onConfirm={handleCropConfirm}
-        onBack={() => setSetupPhase({ kind: 'picker', error: null })}
+        onBack={() =>
+          setSetupPhase((prev) => {
+            // Leaving the crop screen for a different photo — the original
+            // bitmap it was cropping is no longer needed.
+            if (prev.kind === 'cropping') prev.source.close();
+            return { kind: 'picker', error: null };
+          })
+        }
       />
     );
   }
