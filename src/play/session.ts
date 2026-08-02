@@ -23,7 +23,7 @@ import type { Board } from '@/board/board';
 import { HitIndex, polygonFromPath } from '@/board/hit-test';
 import type { HitPiece } from '@/board/hit-test';
 import { SNAP_TOLERANCE, applySnap, resolveSnap } from '@/board/snap';
-import type { SnapDifficulty } from '@/board/snap';
+import type { SnapCandidate, SnapDifficulty } from '@/board/snap';
 import { createSettle } from '@/board/settle';
 import type { Pose, Settle } from '@/board/settle';
 import type { MatFinish, Scene, SceneGroup, ScenePiece } from '@/render/scene';
@@ -62,7 +62,20 @@ export type PieceLocation = 'tray' | 'mat' | 'placed';
 
 export type PlayEvent =
   | { type: 'grab'; clusterId: number }
-  | { type: 'snap'; placed: boolean; mergedSize: number; mergedClusters: number }
+  | {
+      type: 'snap';
+      placed: boolean;
+      mergedSize: number;
+      mergedClusters: number;
+      /**
+       * §07's merge-seam light, world units — the two resolved pieces'
+       * bounding box, or `null` when the candidate resolved against the
+       * board frame's own slot (§05's absolute-position exception) rather
+       * than a real neighbour, which leaves no second piece to draw a seam
+       * between.
+       */
+      seam: Rect | null;
+    }
   | { type: 'miss' }
   | { type: 'edgeFrame' }
   | { type: 'complete' }
@@ -536,8 +549,29 @@ export class PlaySession {
       placed: result.placed,
       mergedSize: result.mergedSize,
       mergedClusters: result.mergedClusters,
+      seam: this.seamOf(candidate),
     });
     this.announceMilestones();
+  }
+
+  /**
+   * The merge-seam light's target rect (§07): the two joined pieces'
+   * bounding box, read back post-align so it matches exactly where the
+   * settle is springing to. `null` for the board-frame exception, which has
+   * no second piece.
+   */
+  private seamOf(candidate: SnapCandidate): Rect | null {
+    if (candidate.neighbourId === null) return null;
+
+    const a = this.board.piece(candidate.pieceId);
+    const b = this.board.piece(candidate.neighbourId);
+    const aOrigin = this.board.worldOf(candidate.pieceId);
+    const bOrigin = this.board.worldOf(candidate.neighbourId);
+    const minX = Math.min(aOrigin.x, bOrigin.x);
+    const minY = Math.min(aOrigin.y, bOrigin.y);
+    const maxX = Math.max(aOrigin.x + a.w, bOrigin.x + b.w);
+    const maxY = Math.max(aOrigin.y + a.h, bOrigin.y + b.h);
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   }
 
   /**
@@ -663,6 +697,7 @@ export class PlaySession {
       held,
       heldLift: { offsetPx: LIFT_PX, scale: LIFT_SCALE },
       completion: this.summary.completion,
+      xray: this.held === null ? null : this.board.candidateSockets(this.held),
     };
   }
 

@@ -120,6 +120,15 @@ describe('scene composition', () => {
     expect(piece.y).toBe(5);
     expect(piece.rot).toBe(0);
   });
+
+  it('names X-Ray candidate sockets only while a cluster is held (§07)', () => {
+    const play = session();
+    place(play, id(0, 0));
+    expect(play.scene().xray).toBeNull();
+
+    play.grab(play.board.clusterIdOf(id(1, 0)));
+    expect(play.scene().xray).toEqual(new Set([id(0, 0)]));
+  });
 });
 
 describe('release', () => {
@@ -205,6 +214,38 @@ describe('events', () => {
 
     const snap = events.find((e) => e.type === 'snap')!;
     expect(snap).toMatchObject({ type: 'snap', placed: true, mergedSize: 2 });
+  });
+
+  it('carries a seam rect when the snap resolved against a real neighbour (§07)', () => {
+    const events: PlayEvent[] = [];
+    const play = session((event) => events.push(event));
+    place(play, id(0, 0));
+    const cluster = play.board.clusterIdOf(id(1, 0));
+    play.board.moveCluster(cluster, 1.05, 0);
+    play.release(cluster, { x: 0, y: 0 });
+
+    const snap = events.find((e) => e.type === 'snap')!;
+    expect(snap).toMatchObject({ type: 'snap' });
+    if (snap.type !== 'snap') throw new Error('unreachable');
+    expect(snap.seam).not.toBeNull();
+    expect(snap.seam!.w).toBeGreaterThan(0);
+    expect(snap.seam!.h).toBeGreaterThan(0);
+  });
+
+  it('carries no seam when the first piece resolves against the board frame itself', () => {
+    // The board-frame exception (§05) has no neighbour piece to draw a seam
+    // between — it is the one absolute-position test in the codebase, and it
+    // fires only because cluster 0 starts empty.
+    const events: PlayEvent[] = [];
+    const play = session((event) => events.push(event));
+    const cluster = play.board.clusterIdOf(id(0, 0));
+    play.board.moveCluster(cluster, 0.02, 0);
+    play.release(cluster, { x: 0, y: 0 });
+
+    const snap = events.find((e) => e.type === 'snap')!;
+    expect(snap).toMatchObject({ type: 'snap', placed: true });
+    if (snap.type !== 'snap') throw new Error('unreachable');
+    expect(snap.seam).toBeNull();
   });
 
   it('reports a miss, which is what resets the pitch ladder', () => {

@@ -239,6 +239,25 @@ export class Board {
     return survivor.id;
   }
 
+  /**
+   * Placed pieces (§05's neighbours, not §05's absolute-position exception)
+   * that a member of `clusterId` would actually connect to.
+   *
+   * X-Ray focus (§07/§09) dims every other placed piece while `clusterId` is
+   * in hand, so the player can tell "line up with these" from "irrelevant
+   * background." Graph-based, same as `resolveSnap` — it asks the same
+   * question snap resolution does, just for display rather than a merge.
+   */
+  candidateSockets(clusterId: number): Set<PieceId> {
+    const sockets = new Set<PieceId>();
+    for (const pieceId of this.cluster(clusterId).pieceIds) {
+      for (const link of this.piece(pieceId).neighbours) {
+        if (link && this.isPlaced(link.id)) sockets.add(link.id);
+      }
+    }
+    return sockets;
+  }
+
   private survivorOf(a: number, b: number): number {
     if (a === BOARD_CLUSTER || b === BOARD_CLUSTER) return BOARD_CLUSTER;
     const sizeA = this.cluster(a).pieceIds.length;

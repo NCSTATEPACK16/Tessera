@@ -10,6 +10,7 @@ import {
   COMPLETION_HOLD_MS,
   COMPLETION_RAMP_MS,
   COMPLETION_SETTLE_INTENSITY,
+  EDGE_FRAME_TRACE_MS,
   HINT_GLOW_BREATHE_END_MS,
   HINT_GLOW_BREATH_LOW,
   HINT_GLOW_DECAY_END_MS,
@@ -19,6 +20,7 @@ import {
   MERGE_SEAM_PEAK,
   PROGRESS_BLOOM_PEAK,
   completionIntensity,
+  edgeFrameProgress,
   hintGlowIntensity,
   mergeSeamIntensity,
   progressBloomIntensity,
@@ -99,6 +101,21 @@ describe('mergeSeamIntensity', () => {
     const peakIndex = samples.indexOf(peak);
     // Short-lived: it attacks fast and spends most of the duration feathering out.
     expect(peakIndex).toBeLessThan(samples.length / 2);
+  });
+});
+
+describe('edgeFrameProgress', () => {
+  it('has drawn nothing before it fires', () => {
+    expect(edgeFrameProgress(-1)).toBe(0);
+  });
+
+  it('reaches the full perimeter exactly at the trace duration, and stays there', () => {
+    expect(edgeFrameProgress(EDGE_FRAME_TRACE_MS)).toBeCloseTo(1, 5);
+    expect(edgeFrameProgress(EDGE_FRAME_TRACE_MS + 400)).toBeCloseTo(1, 5);
+  });
+
+  it('is linear, not eased — halfway through time is halfway around the border', () => {
+    expect(edgeFrameProgress(EDGE_FRAME_TRACE_MS / 2)).toBeCloseTo(0.5, 5);
   });
 });
 

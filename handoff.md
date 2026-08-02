@@ -122,7 +122,125 @@ a `useNeutral` parameter as the seam, and `PlayRuntimeOptions.difficulty` alread
 and no settings sheet exists yet. That's step 5's pause sheet, not a step-4 gap. Recorded here so
 it isn't mistaken for forgotten rather than blocked.
 
+## 1d. Step 4d landed: the remaining three light jobs
+
+Closes out §07's "one light system, four jobs" — hint glow and completion were the only two wired
+at 4a; X-Ray, merge seam, and the edge-frame beat are wired now, all through the same `drawBloom`
+primitive (or, for X-Ray and the trace, the same overlay layer) rather than one-off passes.
+
+- **`Board.candidateSockets(clusterId)`** (`src/board/board.ts`) is the new pure primitive: placed
+  pieces a held cluster's graph neighbours actually touch. Same question `resolveSnap` asks, for
+  display instead of a merge. Tested in `test/board/board.test.ts`.
+- **X-Ray focus.** `Scene.xray` is `ReadonlySet<PieceId> | null` — non-null (possibly empty)
+  whenever a cluster is held, computed by `PlaySession.scene()` from `candidateSockets`. The model
+  drops it straight to `null` on release; the 160ms restore in §09 is purely a `Renderer` concern,
+  the same division `settle.ts` already draws between the model and the spring. `Renderer.paintXray`
+  dims every placed piece not in the set to `--xray-dim` (0.35), via a bounding-box fill rather than
+  the cut silhouette — cheaper per frame, and close enough at drag zoom.
+- **Merge seam.** `PlayEvent.snap` gained `seam: Rect | null` — the two resolved pieces' bounding
+  box, computed post-align in `PlaySession.seamOf`, `null` when the candidate resolved against the
+  board frame's own slot (§05's absolute-position exception, which has no second piece to draw a
+  seam between). `PlayRuntime` fires `Renderer.fireMergeSeam` whenever it's present. **Scoped
+  deliberately to merges that land on the board** — `paintMergeSeam` sources from the static layer,
+  same as progress bloom and completion, so an island-to-island merge on the mat (no static-layer
+  pixels yet) has nowhere to source the glow from. Revisit if island merges turn out to need it too;
+  nothing in the model prevents computing the rect for those, only the renderer's current source.
+- **Edge-frame beat.** New pure function `edgeFrameProgress` in `light.ts` (linear, not eased — a
+  trace reads as constant motion, not an approach curve) drives `Renderer.paintEdgeFrame`: a single
+  growing dash around the board outline, 600ms, clockwise from the top-left corner because that's
+  the order `strokeRect` already draws in. Fired from `PlayRuntime` on `PlayEvent.edgeFrame`.
+- **Accent finally reaches the renderer.** `Renderer.setAccent(color)`, called once from
+  `PlayRuntime.build()` after `extractAccent` runs, replaces the hardcoded `HINT_OUTLINE_COLOR` and
+  feeds the edge-frame stroke too. Both bloom-style passes (hint/progress/completion/seam) still use
+  the photo's own colours per §07's literal description — only the two *stroke* passes (hint outline,
+  edge frame) use the extracted token, since a stroke has no photo pixels of its own to draw from.
+
+Not unit-tested beyond the two new pure functions (`candidateSockets`, `edgeFrameProgress`) — the
+paint passes are canvas code, in the same "thin enough to judge by hand" category as the rest of
+`renderer.ts`. `npm run test:browser` stayed at the branch's established 58/62 (4 viewport-conditional
+skips); the one intermittent failure (`drag-out.spec.ts`'s "Recent finds it again") reproduced 0/3 on
+a targeted rerun, so it's a pre-existing flake, not a regression from this pass.
+
+**Still open from §07/§09, not touched by this pass:** the group-merge outline flash (both clusters'
+containing outlines flashing at 40% for 120ms before the seam light-bleeds) — `paintMergeSeam` draws
+the seam glow but not the outline flash, which is a `drawGroupOutlines`-adjacent concern rather than
+the bloom primitive. Bugs A–D from section 3 below are also untouched; this pass was scoped to the
+light system only.
+
+## 1e. Step 5a landed: the photo picker and crop flow
+
+Replaces `App.tsx`'s hardcoded `createSyntheticImage()` mount with a real `picker → cropping →
+playing` flow: choose a curated or uploaded photo, crop/rotate under a live grid preview, hand a
+real `ImageBitmap` + seed to `PlayRuntime`. `npm test` 454/454 (32 files) · `npm run typecheck`
+clean · `npm run build` clean · `npm run test:browser` 66 passed / 4 skipped, both dock and phone,
+zero flakiness on a 20× targeted repeat of the two tests this pass touched most.
+
+- **`src/play/photo.ts`** — pure, DOM-free crop geometry (`effectiveSize`, `baseCropSize`,
+  `clampPan`, `computeCropRect`, `downscaleTarget`), same standard as `src/cut/grid.ts`. Tested.
+- **`src/play/curated.ts`** — six curated photos, **procedurally drawn with `OffscreenCanvas`, not
+  real photo files.** No licensed image assets exist in this repo or could be added sight-unseen by
+  an implementer following a text plan. **Flag this explicitly for before shipping**: swap in real
+  bundled images behind the same `CuratedPhoto`/`renderCuratedPhoto` interface — nothing downstream
+  needs to change to do that.
+- **`src/ui/PhotoPicker.tsx`** — curated grid + upload dropzone, both real `<button>`s, selection
+  shown by border-weight *and* a checkmark (never colour alone).
+- **`src/ui/PhotoCrop.tsx`** — aspect chips, pan/zoom/rotate (90° steps only — arbitrary angles
+  would fight the cutter's axis-aligned grid math and aren't EXIF-safe), live grid preview,
+  confirm → rasterizes and mints `puzzleId`/`seed` via `seedFromPuzzleId` (the one and only seeding
+  scheme, per `CLAUDE.md`). Task review caught the live preview never actually moving under drag
+  (the CSS transform read zoom but not `pan`), the zoom slider missing the 44pt touch floor, and a
+  per-drag-frame full-bitmap redecode from an inline canvas ref callback — all three were literally
+  the plan's own verbatim code block, fixed with the project owner's sign-off since they conflicted
+  with `CLAUDE.md`'s own invariants and the intended UX, not implementer error.
+- **`test/browser/board-page.ts`** — `open()` now drives the real picker → crop → confirm flow
+  before `waitForCut()`, so all ~60 pre-existing browser specs run through it unchanged.
+- **`test/browser/photo-picker.spec.ts`** — curated pick, upload, corrupt-upload inline error, and
+  rotate, all passing on both viewports.
+
+**Two second-order fixes, found only by actually running the full gate, not part of the original
+task list:**
+
+1. **The board's cut seed is now genuinely random** (`crypto.randomUUID()` → `seedFromPuzzleId`,
+   correct production behaviour), which means `BoardPage.open()` cuts a *different* board on every
+   test run. That silently flaked an existing regression test
+   (`tray-3b.spec.ts`'s group-label-rename case) about 1 run in 3. Fixed with a test-only
+   determinism hook: `BoardPage.open()` now stubs `window.crypto.randomUUID` via
+   `page.addInitScript()` before navigation, so the browser suite always cuts the same board.
+   Production is untouched — real users still get a real random seed per photo confirmed.
+2. Fixing the seed turned that occasional flake into a **100%-reproducible** failure, which is how
+   a second, previously-latent bug surfaced: `boardInk()`'s canvas-pixel chip-finder keyed off
+   "near-black = the label chip," true only of the old synthetic dev image
+   (`createSyntheticImage` kept every piece between 28–68% lightness). Real curated photos have
+   genuinely dark regions, and dark piece pixels were getting misclassified as chip pixels,
+   inflating the detected bounding box. Fixed by keying off the chip's actual distinguishing
+   property — its 86%-alpha translucent fill vs. every piece's full opacity — via an
+   alpha-band connected-component flood-fill rather than a raw min/max bounding box (a plain
+   threshold alone still misfired on anti-aliased piece-edge noise). Independently re-verified:
+   66/0/4 clean, 20/20 on a targeted 5×-repeat of both affected tests. Both fixes are confined to
+   `test/browser/board-page.ts` — no production file changed.
+
+**Still open, unchanged from before this pass:** EXIF orientation and HEIC upload handling
+(already tracked in `PLAN.md`'s Step 1 checklist, not newly deferred here). `TARGET_COUNT`, mode,
+and rotation-in-play remain hardcoded in `App.tsx` pending step 5b's setup screen.
+
+**Real-device check (§ "Step 2" of this step's plan): not performed in this session.** Per
+`CLAUDE.md`'s testing posture this is a real gate, not a formality — upload from a device's photo
+library, pan/zoom gesture feel with a finger rather than a mouse, and the 44pt floor on the aspect
+chips/rotate/zoom-slider all need judging on an iPad and/or iPhone before this is truly done.
+Flagging here rather than silently skipping it.
+
+**Deferred minors, not blocking, parked in the step's SDD ledger** (full detail there —
+`.superpowers/sdd/2026-08-01-step-5a-photo-picker-crop/progress.md` before it's cleaned up):
+a stale test-description comment inherited verbatim from the plan (says pan range "shrinks" as
+zoom increases; it grows); `let instance` in `App.tsx`'s mount effect could be `const` now that the
+async IIFE it needed is gone; the crop preview's on-screen scale still mixes unrotated
+`source.width` with rotated-space `rect.width` at 90°/270° rotation (direction of drag stays
+correct, only magnitude is off — pre-existing in the plan's own code, not touched by this pass).
+
 ## 2. What's next — Step 4: Hints and light
+
+**Superseded by sections 1a–1d above** — every item this section describes has landed. Left in place
+as the original scoping note rather than deleted, per this file's own convention elsewhere.
 
 Full detail in `PLAN.md` §"Step 4 — Hints and light" (gitignored, local only). The shape:
 
