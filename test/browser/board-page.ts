@@ -358,11 +358,37 @@ export interface InkBox {
  *
  *   `all`     every visible pixel, group outline included. "Is the group on mat
  *             the player can see, or behind the sheet?"
- *   `chip`    the label chip. Found by colour: it is drawn at 86% alpha over
- *             `rgba(20,20,22)`, and `createSyntheticImage` keeps every piece
- *             between 28% and 68% lightness so nothing else here is near-black.
- *   `pieces`  the pulled-out pieces, chip excluded. The chip's own label text is
- *             white at 82% alpha and would otherwise drag this box upward.
+ *   `chip`    the label chip. Found by *alpha*, not colour: real curated photos
+ *             (`src/play/curated.ts`) have genuinely dark gradient regions, so a
+ *             darkness test misclassifies piece pixels as chip.
+ *
+ *             The chip fill is `rgba(20,20,22,0.86)`, which over a transparent
+ *             canvas composites to a≈219 — measured live, it lands a sharp,
+ *             dominant spike at 219-220. But a live alpha histogram also showed
+ *             piece *edges* are anti-aliased (curved tab/socket paths), scattering
+ *             low-count noise pixels across the *entire* 0-255 alpha range,
+ *             including right through the chip's band — a plain "is alpha in
+ *             range" test over the whole canvas lets a handful of those stray
+ *             edge pixels, wherever on the mat they land, blow the chip's
+ *             bounding box out to cover the pieces underneath it too. What
+ *             distinguishes the real chip is not just its alpha but that it is a
+ *             large *contiguous* block of matching pixels, where edge noise is
+ *             isolated single pixels along a curve. So this floods the narrow
+ *             band around that spike (`CHIP_ALPHA_MIN`..`CHIP_ALPHA_MAX`) and
+ *             keeps only the largest connected component — noise pixels never
+ *             chain into anything bigger than a few px and lose every time.
+ *             (The fill alone reconstructs the full rect: text sits inside the
+ *             chip's padding, so the top/bottom rows and left/right columns of
+ *             the fill are never touched by a glyph, and the component's bbox
+ *             already spans the whole chip without needing to also classify the
+ *             text-on-fill pixels, whose composited alpha — ≈249, `0.82 +
+ *             0.86·(1-0.82)` — sits in its own, noisier band anyway.)
+ *   `pieces`  the pulled-out pieces, chip excluded. Coordinates already subtract
+ *             the chip's whole rectangle. Piece interiors are opaque (a=255,
+ *             dominant in the same histogram); the boundary is `a ≥ PIECE_ALPHA_MIN`
+ *             instead of `=== 255` only to tolerate rounding at the piece's own
+ *             anti-aliased edge, which is what `pieces` is also the fallback box
+ *             for when no chip is on screen.
  *
  * Null when nothing is drawn at all, which is what an untouched board looks
  * like: every piece starts in the tray, so the mat is genuinely empty.
@@ -406,9 +432,20 @@ export async function boardInk(page: Page): Promise<{
             h: (b.maxY - b.minY + 1) / dpr,
           };
 
+    // The chip fill's own composited alpha, `0.86 * 255` rounded, ± the small
+    // spread the histogram showed at the chip's anti-aliased rounded corners.
+    const CHIP_ALPHA_MIN = 210;
+    const CHIP_ALPHA_MAX = 230;
+    // Below this, treat a pixel as "not really opaque" — an anti-aliased piece
+    // edge or the chip itself, never a piece's solid interior.
+    const PIECE_ALPHA_MIN = 253;
+    // A real chip's fill is hundreds of contiguous pixels; edge-antialiasing
+    // noise never chains past a handful. Anything under this is noise, not chip.
+    const MIN_CHIP_CLUSTER = 20;
+
     const all = fresh();
-    const chip = fresh();
     const bright = fresh();
+    const inBand = new Uint8Array(width * height);
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -417,28 +454,85 @@ export async function boardInk(page: Page): Promise<{
         // Above the group outline's 3%-alpha fill, so a faint wash still counts.
         if (a <= 8) continue;
         grow(all, x, y);
-        if (a < 200) continue;
-        const r = data[i]!;
-        const g = data[i + 1]!;
-        const b = data[i + 2]!;
-        if (r < 60 && g < 60 && b < 60) grow(chip, x, y);
-        else grow(bright, x, y);
+        if (a >= CHIP_ALPHA_MIN && a <= CHIP_ALPHA_MAX) inBand[y * width + x] = 1;
+        else if (a >= PIECE_ALPHA_MIN) grow(bright, x, y);
       }
     }
 
-    // The chip's text is bright and sits inside the chip, so subtract the chip's
-    // whole rectangle rather than trusting colour twice.
+    // Flood-fill the band mask (4-connectivity) and keep only the largest
+    // component — see the doc comment above for why size, not just alpha,
+    // is what tells the chip's fill apart from scattered piece-edge noise.
+    const visited = new Uint8Array(width * height);
+    const qx = new Int32Array(width * height);
+    const qy = new Int32Array(width * height);
+    const chip = fresh();
+    let bestSize = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const start = y * width + x;
+        if (!inBand[start] || visited[start]) continue;
+
+        let head = 0;
+        let tail = 0;
+        qx[tail] = x;
+        qy[tail] = y;
+        tail++;
+        visited[start] = 1;
+        let size = 0;
+        const bounds = fresh();
+
+        while (head < tail) {
+          const cx = qx[head]!;
+          const cy = qy[head]!;
+          head++;
+          size++;
+          grow(bounds, cx, cy);
+
+          const neighbours: Array<[number, number]> = [
+            [cx - 1, cy],
+            [cx + 1, cy],
+            [cx, cy - 1],
+            [cx, cy + 1],
+          ];
+          for (const [nx, ny] of neighbours) {
+            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+            const np = ny * width + nx;
+            if (inBand[np] && !visited[np]) {
+              visited[np] = 1;
+              qx[tail] = nx;
+              qy[tail] = ny;
+              tail++;
+            }
+          }
+        }
+
+        if (size > bestSize) {
+          bestSize = size;
+          chip.minX = bounds.minX;
+          chip.minY = bounds.minY;
+          chip.maxX = bounds.maxX;
+          chip.maxY = bounds.maxY;
+        }
+      }
+    }
+    const hasChip = bestSize >= MIN_CHIP_CLUSTER;
+    if (!hasChip) {
+      chip.minX = Infinity;
+      chip.minY = Infinity;
+      chip.maxX = -1;
+      chip.maxY = -1;
+    }
+
+    // The chip's text sits inside the chip's own footprint, so subtract the
+    // chip's whole rectangle rather than trusting the alpha band twice.
     const pieces = fresh();
-    if (chip.maxX >= 0) {
+    if (hasChip) {
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           if (x >= chip.minX && x <= chip.maxX && y >= chip.minY && y <= chip.maxY) continue;
           const i = (y * width + x) * 4;
-          if (data[i + 3]! < 200) continue;
-          const r = data[i]!;
-          const g = data[i + 1]!;
-          const b = data[i + 2]!;
-          if (r < 60 && g < 60 && b < 60) continue;
+          if (data[i + 3]! < PIECE_ALPHA_MIN) continue;
           grow(pieces, x, y);
         }
       }
