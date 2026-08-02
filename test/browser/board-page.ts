@@ -63,6 +63,14 @@ export class BoardPage {
 
   static async open(page: Page): Promise<BoardPage> {
     const board = new BoardPage(page);
+    await page.addInitScript(() => {
+      // Deterministic seed for the browser suite: PhotoCrop.tsx mints a random
+      // puzzle id via crypto.randomUUID() on every confirm, which would make
+      // every test's cut geometry different and cause geometry-dependent
+      // assertions (e.g. tray-3b.spec.ts's group-chip position) to flake.
+      window.crypto.randomUUID = () =>
+        'ffffffff-ffff-4fff-8fff-ffffffffffff' as `${string}-${string}-${string}-${string}-${string}`;
+    });
     await page.goto('/', { waitUntil: 'load' });
     await page.getByRole('button', { name: 'Choose this photo' }).click();
     await page.getByRole('button', { name: 'Use this photo' }).click();
