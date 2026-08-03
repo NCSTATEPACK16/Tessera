@@ -59,6 +59,23 @@ test.describe('photo picker and crop', () => {
     await expect(page.getByRole('button', { name: 'Curated photos' })).toBeVisible();
   });
 
+  test('a HEIC upload gets the HEIC-specific error, not the generic one', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'load' });
+    await page.getByRole('button', { name: 'Upload photo' }).click();
+
+    const input = page.getByLabel('Upload a photo');
+    await input.setInputFiles({
+      name: 'photo.heic',
+      mimeType: 'image/heic',
+      buffer: Buffer.from('not a real heic file'),
+    });
+
+    // The whole point: an iPhone's default format deserves a message that
+    // tells the player what to do, not "try a different file".
+    await expect(page.getByRole('alert')).toContainText(/HEIC photos aren/);
+    await expect(page.getByRole('button', { name: 'Curated photos' })).toBeVisible();
+  });
+
   test('rotate cycles in 90-degree steps without breaking the crop', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
     await page.getByRole('button', { name: 'Choose this photo' }).click();

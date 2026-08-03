@@ -60,17 +60,44 @@ async function probeImageSize(file: File): Promise<{ width: number; height: numb
  * surfaces at once — the final cut output was already capped later in the
  * pipeline, but the intermediate canvases were not.
  */
+/**
+ * Step 5c: HEIC is what an iPhone shoots by default and what no browser
+ * decodes, so "couldn't open that photo" is technically true and useless.
+ */
+const HEIC_MESSAGE =
+  "HEIC photos aren’t supported directly here — try ‘Most Compatible’ in Settings → Photos, or export as JPEG.";
+
+function looksLikeHeic(file: File): boolean {
+  const type = file.type.toLowerCase();
+  const name = file.name.toLowerCase();
+  return (
+    type.includes('heic') ||
+    type.includes('heif') ||
+    name.endsWith('.heic') ||
+    name.endsWith('.heif')
+  );
+}
+
 async function decodeUpload(file: File): Promise<ImageBitmap> {
-  const size = await probeImageSize(file);
-  const target = downscaleTarget(size.width, size.height);
-  if (target.width === size.width && target.height === size.height) {
-    return createImageBitmap(file);
+  try {
+    const size = await probeImageSize(file);
+    const target = downscaleTarget(size.width, size.height);
+    // `imageOrientation: 'from-image'` explicitly, on both branches: the
+    // default has varied across engines, and a portrait photo landing
+    // sideways is a whole puzzle cut wrong.
+    if (target.width === size.width && target.height === size.height) {
+      return await createImageBitmap(file, { imageOrientation: 'from-image' });
+    }
+    return await createImageBitmap(file, {
+      resizeWidth: target.width,
+      resizeHeight: target.height,
+      resizeQuality: 'high',
+      imageOrientation: 'from-image',
+    });
+  } catch (error) {
+    if (looksLikeHeic(file)) throw new Error(HEIC_MESSAGE);
+    throw error;
   }
-  return createImageBitmap(file, {
-    resizeWidth: target.width,
-    resizeHeight: target.height,
-    resizeQuality: 'high',
-  });
 }
 
 export function App(): React.ReactElement {
@@ -180,10 +207,14 @@ export function App(): React.ReactElement {
         if (prev.kind === 'cropping') prev.source.close();
         return { kind: 'cropping', source: bitmap };
       });
-    } catch {
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message === HEIC_MESSAGE
+          ? HEIC_MESSAGE
+          : "Couldn't open that photo. Try a different file.";
       setSetupPhase((prev) => {
         if (prev.kind === 'cropping') prev.source.close();
-        return { kind: 'picker', error: "Couldn't open that photo. Try a different file." };
+        return { kind: 'picker', error: message };
       });
     }
   }, []);
