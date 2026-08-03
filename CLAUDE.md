@@ -78,6 +78,14 @@ Break any of these and something downstream breaks in a way that looks like a di
   numeral alongside the swatch.
 - **There is no lose state anywhere in this app**, and no bounce-back on a failed drop. A dropped
   cluster stays exactly where it was dropped.
+- **The daily is an ordinary puzzle with a deterministic id** — `daily-YYYY-MM-DD`, seeded through
+  `seedFromPuzzleId` like every other puzzle. That is what lets step 5c's autosave, `Board.restore`,
+  thumbnails, and photo blobs all apply to it with no daily-specific persistence anywhere. If a
+  second save path for dailies ever appears, something has been misunderstood.
+- **`localDateKey` is the only place a local `Date` is read.** The daily resets at 00:00 *local*
+  (`PLAN.md` §6), and the usual shortcut — `toISOString().slice(0, 10)` — is UTC, which flips the
+  daily over at 19:00 for a player at UTC-5. All arithmetic on date keys is done in UTC on whole
+  days, because a local `setDate(+1)` across a DST boundary is 23 or 25 hours and rounds wrong.
 
 ## Coordinate spaces
 
@@ -119,6 +127,9 @@ src/
             workset.ts                pull-out groups — not clusters, see above
             layout.ts                 the pull-out grid, on the safe rect
             runtime.ts                the whole board, mounted and pumped
+  daily/    dates.ts                  local day keys, UTC arithmetic
+            daily.ts                  date → (photo, count, seed), closed form
+            streak.ts                 freezes, repair, pips, month grid
   render/   renderer.ts               draw(scene, camera) — the whole surface
             frame-scheduler.ts        invalidation; "idle draws nothing"
             camera.ts camera-controls.ts scene.ts mat.ts
@@ -126,6 +137,7 @@ src/
   ui/       App.tsx store.ts          React chrome; board never renders through it
             Tray Sheet PieceGrid PieceChip LensChips TopBar ProgressRing
             Shelf SelectionBar        the pinned row, and the pull-out bar
+            DailyHub StreakFlame MonthCalendar   the daily hub and its streak (step 6)
             theme.css                 §13 tokens, once, for both consumers
   main.tsx                            the product entry — index.html
 test/                                 mirrors src/ — vitest, *.test.ts
