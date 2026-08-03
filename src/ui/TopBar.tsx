@@ -18,9 +18,17 @@ export interface TopBarProps {
   total: number;
   cut: { done: number; total: number; cols: number; rows: number };
   onFit: () => void;
+  onPause: () => void;
 }
 
-export function TopBar({ status, placed, total, cut, onFit }: TopBarProps): React.ReactElement {
+export function TopBar({
+  status,
+  placed,
+  total,
+  cut,
+  onFit,
+  onPause,
+}: TopBarProps): React.ReactElement {
   const completion = total === 0 ? 0 : placed / total;
 
   return (
@@ -46,13 +54,23 @@ export function TopBar({ status, placed, total, cut, onFit }: TopBarProps): Reac
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={onFit}
-        className="pointer-events-auto rounded-[14px] border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-[14px] text-[var(--ink-primary)] backdrop-blur-[12px]"
-      >
-        Fit
-      </button>
+      <div className="flex items-center gap-[8px]">
+        <button
+          type="button"
+          onClick={onFit}
+          className="pointer-events-auto min-h-[44px] rounded-[14px] border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-[14px] text-[var(--ink-primary)] backdrop-blur-[12px]"
+        >
+          Fit
+        </button>
+        <button
+          type="button"
+          aria-label="Pause"
+          onClick={onPause}
+          className="pointer-events-auto min-h-[44px] rounded-[14px] border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-[14px] text-[var(--ink-primary)] backdrop-blur-[12px]"
+        >
+          Pause
+        </button>
+      </div>
     </header>
   );
 }
