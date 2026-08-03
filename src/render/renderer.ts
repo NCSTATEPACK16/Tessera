@@ -18,6 +18,7 @@
  */
 
 import type { Rect, Size } from '@/core/geom';
+import { toPath2D } from '@/core/geom';
 import type { Camera } from './camera';
 import { visibleWorldBounds, worldToScreen } from './camera';
 import { FrameScheduler } from './frame-scheduler';
@@ -47,6 +48,8 @@ const DEFAULT_ACCENT = 'rgba(111, 168, 255, 0.9)';
 const XRAY_CONTRAST = 0.35;
 /** How long the dim takes to lift once the cluster is released. */
 const XRAY_RESTORE_MS = 160;
+/** World-space stroke weight for the edge-highlight assist, before the /zoom conversion. */
+const EDGE_HIGHLIGHT_WIDTH = 2;
 
 export interface RendererStats {
   frames: number;
@@ -105,6 +108,12 @@ export class Renderer {
    */
   private xrayCandidates: ReadonlySet<number> | null = null;
   private xrayFadeStartMs: number | null = null;
+  /** Step 5b's ghost-underlay assist: the source photo, drawn under placed pieces. */
+  private ghostBitmap: ImageBitmap | null = null;
+  private ghostOpacity = 0;
+  /** Step 5b's edge-highlight assist, and its lazily built per-piece outline cache. */
+  private edgeHighlightEnabled = false;
+  private readonly edgePaths = new Map<number, Path2D>();
 
   readonly stats: RendererStats = {
     frames: 0,
@@ -228,6 +237,21 @@ export class Renderer {
     this.accentColor = color;
   }
 
+  /**
+   * Step 5b's ghost-underlay assist: a dimmed copy of the source photo, drawn
+   * inside `paintStatic` under the placed pieces so it pans and zooms with the
+   * board. Pass `null` (or opacity 0) to turn it off.
+   */
+  setGhostUnderlay(bitmap: ImageBitmap | null, opacity: number): void {
+    this.ghostBitmap = bitmap;
+    this.ghostOpacity = opacity;
+  }
+
+  /** Step 5b's edge-highlight assist: stroke every piece's cut silhouette. */
+  setEdgeHighlight(enabled: boolean): void {
+    this.edgeHighlightEnabled = enabled;
+  }
+
   /** §07: the newly joined seam, light-bleeding outward. Call from `PlayEvent.snap`. */
   fireMergeSeam(worldRect: Rect, nowMs: number = performance.now()): void {
     this.mergeSeamRect = worldRect;
@@ -304,6 +328,12 @@ export class Renderer {
     const ctx = this.layerContext('static');
     ctx.clearRect(0, 0, this.viewport.w, this.viewport.h);
     this.applyCamera(ctx);
+    if (this.ghostBitmap && this.ghostOpacity > 0) {
+      ctx.save();
+      ctx.globalAlpha = this.ghostOpacity;
+      ctx.drawImage(this.ghostBitmap, 0, 0, this.scene.boardW, this.scene.boardH);
+      ctx.restore();
+    }
     this.drawBoardOutline(ctx);
     this.stats.lastStaticCount = this.drawPieces(ctx, this.scene.placed);
 
@@ -689,6 +719,31 @@ export class Renderer {
         ctx.translate(piece.x + piece.w / 2, piece.y + piece.h / 2);
         ctx.rotate(piece.rot);
         ctx.drawImage(piece.bitmap, -w / 2, -h / 2, w, h);
+        ctx.restore();
+      }
+
+      // Step 5b's edge-highlight assist. The path is bitmap-local image pixels,
+      // so it strokes under the same transform the bitmap was drawn with, then
+      // 1/pathScale into world units — the same conversion `polygonFromPath`
+      // does for hit-testing, which is why the stroke lands exactly on the cut.
+      if (this.edgeHighlightEnabled) {
+        let path2d = this.edgePaths.get(piece.id);
+        if (!path2d) {
+          path2d = toPath2D(piece.path);
+          this.edgePaths.set(piece.id, path2d);
+        }
+        ctx.save();
+        if (piece.rot === 0) {
+          ctx.translate(piece.x, piece.y);
+        } else {
+          ctx.translate(piece.x + piece.w / 2, piece.y + piece.h / 2);
+          ctx.rotate(piece.rot);
+          ctx.translate(-piece.w / 2, -piece.h / 2);
+        }
+        ctx.scale(1 / piece.pathScale, 1 / piece.pathScale);
+        ctx.lineWidth = (EDGE_HIGHLIGHT_WIDTH * piece.pathScale) / this.camera.zoom;
+        ctx.strokeStyle = this.accentColor;
+        ctx.stroke(path2d);
         ctx.restore();
       }
       drawn++;
