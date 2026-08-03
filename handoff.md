@@ -237,6 +237,108 @@ async IIFE it needed is gone; the crop preview's on-screen scale still mixes unr
 `source.width` with rotated-space `rect.width` at 90°/270° rotation (direction of drag stays
 correct, only magnitude is off — pre-existing in the plan's own code, not touched by this pass).
 
+## 1f. Step 5b landed: the puzzle setup screen
+
+**Branch `step-5b-puzzle-setup`, pushed to origin, PR not yet opened** — the PAT in this
+environment cannot create pull requests (`gh` CLI and the GitHub MCP both return
+"Resource not accessible by personal access token"). See §1f.3 below. Gates at the branch head:
+`npm test` 469/469 (33 files) · `npm run typecheck` clean · `npm run build` clean ·
+`npm run test:browser` 78 passed / 4 skipped, both dock and phone.
+
+Inserts a `configuring` phase between crop-confirm and the board mount. `App.tsx`'s
+`TARGET_COUNT = 200` and the implicit hardcoded mode/difficulty/rotation are **deleted**, not
+overridden — every one of those is now a player choice.
+
+- **`src/play/setup.ts`** — pure, tested: `PIECE_COUNT_LADDER` (50/100/150/200/250),
+  `pieceScreenSize` (the actual-size swatch math — `chooseGrid` → world-unit board size →
+  `fitScale`, which *is* the piece's screen pixel width because a world unit is one piece width),
+  `clampGhostOpacity`, and the `PuzzleConfig`/`PuzzleAssists` types.
+- **`src/ui/PuzzleSetup.tsx`** — count ladder with swatches, Classic/Zen, rotation toggle, and the
+  four assists. Shaped after `TesseraV3Figma`'s `NewPuzzleScreen` step 2, on real `theme.css`
+  tokens.
+- **The four assists.** Snap tolerance and rotation were pure wiring — `PlayRuntime` already took
+  both. Ghost underlay and edge highlight are new paint passes in `renderer.ts`. Large-piece mode
+  is a floor on the *existing* zoom clamp: `clampZoom`/`zoomAbout` gained an optional
+  `minRelativeZoom`, threaded through `camera-controls.ts` → `board-controls.ts` → `runtime.ts`,
+  set to `REGION_LENS_ZOOM` (1.5×). It changes what the player sees and never `SnapDifficulty`'s
+  tolerances — snap stays world-space, so zoom still never changes difficulty.
+
+**Two defects the browser spec caught, both live in the plan as written and neither with any
+unit-test surface:**
+
+1. **The ghost underlay drew a detached `ImageBitmap`.** `cutInWorker` *transfers*
+   `options.source` to the worker, so drawing it later in `paintStatic` threw
+   `InvalidStateError` — which took the whole static paint down with it and left a blank board
+   with nothing on screen to explain it. `PlayRuntime.start()` now copies the source
+   (`OffscreenCanvas` → `transferToImageBitmap`, synchronous by necessity) *before* the transfer
+   and only when the assist is on, and closes the copy in `destroy()`. **Anything else that wants
+   to draw the source photo after the cut starts — the pause sheet's reference image, 5c's library
+   thumbnails — hits exactly this and needs the same treatment.**
+2. **Mode was chosen and then dropped.** `PlayRuntime.mode` was hardcoded `'classic'`, so picking
+   Zen did nothing to the hint budget. Now a `PlayRuntimeOptions` field — the "one line that moves
+   when step 5 adds real mode selection" its own comment had predicted.
+
+**`BoardPage.open()` changed again, same as 5a:** it clicks "Start cutting" on defaults
+(`DEFAULT_PUZZLE_CONFIG` — 150 pieces, Classic, every assist off) before `waitForCut()`.
+`photo-picker.spec.ts` drives the flow itself in two tests and needed the same click — **any spec
+that does its own `page.goto('/')` must click through this screen too.**
+
+**Real-device check: not performed in this session.** The piece-count swatches ("a piece next to a
+thumb") and the large-piece zoom floor both want judging by eye on an iPad; Chromium cannot answer
+either question. Same standing gate as 5a's, still open.
+
+### 1f.1. What step 5c is
+
+The next slice of `PLAN.md`'s Step 5, and the one 5b's assists have nowhere to live without:
+
+- **Library screen** — in-progress cards whose **thumbnails show the actual current board, not the
+  source photo**, with a % ring in the session accent. Empty state is an invitation, not an
+  apology. Needs the save format below to exist first, or there is nothing to list.
+- **Pause sheet** — resume, reference image (full-bleed, tap to dismiss), restart confirm,
+  settings, leave. **This is where assists become reachable mid-puzzle**; today they are
+  set-once-at-setup because §4c's handoff recorded there being nowhere else to reach them from,
+  and 5b did not change that.
+- **Save/resume — `SessionSnapshot`** (`PLAN.md` §14, format spec is already written there):
+  ~6 KB for 250 pieces because the cut is seeded and **no geometry and no piece images are ever
+  stored**. IndexedDB, debounced 800ms plus a **synchronous write on `visibilitychange`**. No
+  `localStorage`. Note the snapshot's fields already include `mode` and `assists` — 5b is what
+  finally makes both of those real values worth persisting.
+- **"Puzzle this again, harder"** — same photo at the next count up. `PLAN.md` is emphatic that
+  this gets built *here*, not later: it is nearly free once 5b's ladder exists and it is the
+  cheapest repeat session in the product (§15).
+
+Whether that is one sub-step or two (5c library+save, 5d pause sheet) is a scoping call for the
+brainstorm; save/resume is the dependency under everything else in it.
+
+### 1f.2. What is left in Step 5 after 5b
+
+`PLAN.md`'s Step 5 checklist, current state:
+
+| Item | State |
+|---|---|
+| Photo import, crop & frame, live piece-grid overlay | **done** (5a) |
+| Puzzle setup: count ladder at actual size, mode, rotation, assists, cutting progress | **done** (5b) — cutting progress already existed in `TopBar` |
+| Library screen | open (5c) |
+| Pause sheet | open (5c) |
+| "Puzzle this again, harder" | open (5c) |
+| `SessionSnapshot` save format, IndexedDB, 800ms debounce + `visibilitychange` | open (5c) |
+
+Also still open and **not owned by any Step 5 sub-step so far**: EXIF orientation and HEIC upload
+handling (tracked in `PLAN.md`'s Step 1 checklist), the curated photos being procedurally drawn
+rather than real bundled images (§1e), and `dev.html` / the step-2 harness, which `CLAUDE.md` says
+is deleted at step 5 and which is **still present**.
+
+### 1f.3. Opening 5b's PR
+
+The branch is pushed and tracking `origin/step-5b-puzzle-setup`. The token needs
+`pull_requests: write` (fine-grained PAT) or the `repo` scope (classic), after which:
+
+```
+gh pr create --base main --title "Step 5b: puzzle setup screen" --body-file <body>
+```
+
+Or open it in the browser: https://github.com/NCSTATEPACK16/Tessera/pull/new/step-5b-puzzle-setup
+
 ## 2. What's next — Step 4: Hints and light
 
 **Superseded by sections 1a–1d above** — every item this section describes has landed. Left in place
