@@ -18,8 +18,8 @@
 import type { CubicPath, Point, Rect } from '@/core/geom';
 import { rotateVector } from '@/core/geom';
 import type { NeighbourLink, PieceId } from '@/cut/types';
-import { BOARD_CLUSTER, createBoard } from '@/board/board';
-import type { Board } from '@/board/board';
+import { BOARD_CLUSTER, Board, createBoard } from '@/board/board';
+import type { BoardSnapshot } from '@/board/board';
 import { HitIndex, polygonFromPath } from '@/board/hit-test';
 import type { HitPiece } from '@/board/hit-test';
 import { SNAP_TOLERANCE, applySnap, resolveSnap } from '@/board/snap';
@@ -119,6 +119,20 @@ export interface PlaySessionOptions {
    * pause/resume across `interrupted` is step 5's save-format territory.
    */
   startedAtMs?: number;
+  /**
+   * Step 5c: seed the board from saved state instead of a fresh cut. The cut
+   * still runs in full — only the post-cut cluster/piece state diverges.
+   */
+  restoreBoard?: BoardSnapshot;
+  /**
+   * Step 5c: seed tray membership from saved state instead of the
+   * `startInTray` default. When present, overrides `startInTray` entirely —
+   * `Board` has no notion of the tray, so a returned-to-tray piece is
+   * indistinguishable from a fresh one without this.
+   */
+  restoreInTray?: readonly PieceId[];
+  restoreHintsUsed?: number;
+  restoreCleanRun?: boolean;
   onEvent?: (event: PlayEvent) => void;
 }
 
@@ -129,6 +143,11 @@ export interface PlaySummary {
   completion: number;
   /** §07/§15: a completion is "clean" only when this stays 0. */
   hintsUsed: number;
+  /**
+   * §15's clean-run badge. False once a *placement-affecting* hint (tier 2 or
+   * 3) has fired — tier 1 only breathes a region, so it costs nothing.
+   */
+  cleanRun: boolean;
 }
 
 /**
@@ -182,25 +201,36 @@ export class PlaySession {
   private edgeFrameAnnounced = false;
   private completionAnnounced = false;
   private hintsUsed = 0;
+  private cleanRun_ = true;
+  private difficulty: SnapDifficulty;
   private readonly startedAtMs: number;
 
   constructor(private readonly options: PlaySessionOptions) {
     this.startedAtMs = options.startedAtMs ?? 0;
-    this.board = createBoard(
-      options.pieces.map((piece) => ({
-        id: piece.id,
-        targetX: piece.targetX,
-        targetY: piece.targetY,
-        w: piece.worldW,
-        h: piece.worldH,
-        neighbours: piece.neighbours,
-      })),
-    );
+    this.hintsUsed = options.restoreHintsUsed ?? 0;
+    this.cleanRun_ = options.restoreCleanRun ?? true;
+    this.difficulty = options.difficulty ?? 'standard';
+
+    const boardInput = options.pieces.map((piece) => ({
+      id: piece.id,
+      targetX: piece.targetX,
+      targetY: piece.targetY,
+      w: piece.worldW,
+      h: piece.worldH,
+      neighbours: piece.neighbours,
+    }));
+    this.board = options.restoreBoard
+      ? Board.restore(boardInput, options.restoreBoard)
+      : createBoard(boardInput);
 
     for (const piece of options.pieces) {
       this.source.set(piece.id, piece);
       this.polygons.set(piece.id, polygonFromPath(piece.path, options.pathScale));
-      if (options.startInTray !== false) this.inTray.add(piece.id);
+    }
+    if (options.restoreInTray) {
+      for (const id of options.restoreInTray) this.inTray.add(id);
+    } else if (options.startInTray !== false) {
+      for (const piece of options.pieces) this.inTray.add(piece.id);
     }
     this.assertPathScale();
     this.rebuild();
@@ -252,6 +282,18 @@ export class PlaySession {
     return this.held;
   }
 
+  get cleanRun(): boolean {
+    return this.cleanRun_;
+  }
+
+  /**
+   * Step 5c: the pause sheet's live snap-tolerance control. Tolerance is
+   * world-space, so this changes difficulty and never zoom.
+   */
+  setDifficulty(difficulty: SnapDifficulty): void {
+    this.difficulty = difficulty;
+  }
+
   get summary(): PlaySummary {
     const total = this.board.pieceCount;
     return {
@@ -259,6 +301,7 @@ export class PlaySession {
       total,
       completion: total === 0 ? 0 : this.board.placedCount / total,
       hintsUsed: this.hintsUsed,
+      cleanRun: this.cleanRun_,
     };
   }
 
@@ -590,6 +633,10 @@ export class PlaySession {
     if (!canAffordTier(tier, this.hintsUsed, this.elapsedMs(nowMs), mode)) return false;
 
     this.hintsUsed = spendTier(tier, this.hintsUsed, mode);
+    // Tier 1 breathes a 3x3 region and never touches placement, so it costs
+    // no cleanliness. Tiers 2 and 3 reveal or place — that is the help a
+    // clean run is defined against.
+    if (tier >= 2) this.cleanRun_ = false;
     if (tier === 3) this.placeHint(pieceId);
     this.emit({ type: 'hint', tier });
     return true;
@@ -705,7 +752,7 @@ export class PlaySession {
 
   private snapOptions() {
     return {
-      tolerance: SNAP_TOLERANCE[this.options.difficulty ?? 'standard'],
+      tolerance: SNAP_TOLERANCE[this.difficulty],
       rotation: this.options.rotation ?? false,
       // Tray pieces are parked on their own slots and would otherwise be the
       // best neighbour on the board. See `SnapOptions.eligible`.
