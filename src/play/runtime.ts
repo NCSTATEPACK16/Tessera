@@ -42,6 +42,7 @@ import { GROUP_CHIP, groupChipRect } from '@/render/group-chip';
 import { Renderer } from '@/render/renderer';
 import { emptyScene } from '@/render/scene';
 import type { Scene, ScenePiece } from '@/render/scene';
+import type { PuzzleAssists } from '@/play/setup';
 
 /**
  * How long the camera must be still before the Region lens re-reads it.
@@ -76,6 +77,8 @@ export interface PlayRuntimeOptions {
   targetCount: number;
   difficulty?: SnapDifficulty;
   rotation?: boolean;
+  /** Step 5b's four assists, chosen on the setup screen. Every field defaults off. */
+  assists?: PuzzleAssists;
   reducedMotion?: boolean;
   sound?: boolean;
   /** Viewport coordinates over the tray, so a drop there goes back into it. */
@@ -491,6 +494,8 @@ export class PlayRuntime {
       locationOf: (id) => session.locationOf(id),
     });
 
+    const assists = this.options.assists;
+
     this.controls = new BoardControls({
       element: this.options.container,
       session,
@@ -502,6 +507,7 @@ export class PlayRuntime {
         this.scheduleRegion();
       },
       getBoard: () => ({ w: this.boardW, h: this.boardH }),
+      minRelativeZoom: assists?.largePieceMode ? REGION_LENS_ZOOM : undefined,
       onChange: () => this.wake(),
       interceptRelease: ({ clusterId, client }) => {
         this.options.onDragStateChange?.(false);
@@ -525,6 +531,11 @@ export class PlayRuntime {
     // purpose — a broken accent is a wrong colour, never a blocked puzzle.
     const accent = extractAccent(cut, this.options.seed);
     this.renderer.setAccent(accent.accent);
+    this.renderer.setGhostUnderlay(
+      assists && assists.ghostOpacity > 0 ? this.options.source : null,
+      assists?.ghostOpacity ?? 0,
+    );
+    this.renderer.setEdgeHighlight(assists?.edgeHighlight ?? false);
     this.patch({ status: 'playing', placed: 0, total: session.summary.total, accent });
     this.frameContent();
     this.render();
@@ -620,7 +631,11 @@ export class PlayRuntime {
     const framed = fitCameraToBounds(this.viewport, bounds);
     this.camera = {
       ...framed,
-      zoom: clampZoom(framed.zoom, fitScale(this.viewport, this.boardW, this.boardH)),
+      zoom: clampZoom(
+        framed.zoom,
+        fitScale(this.viewport, this.boardW, this.boardH),
+        this.options.assists?.largePieceMode ? REGION_LENS_ZOOM : undefined,
+      ),
     };
   }
 
