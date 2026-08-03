@@ -12,12 +12,18 @@
 
 import { useEffect, useState } from 'react';
 import { ProgressRing } from './ProgressRing';
+import { StreakFlame } from './StreakFlame';
+import type { StreakTone } from './StreakFlame';
 import type { LibraryEntry } from '@/persist/library';
 
 export interface LibraryProps {
   entries: readonly LibraryEntry[];
   onOpen: (puzzleId: string) => void;
   onNewPuzzle: () => void;
+  /** Step 6: the hub is a peer screen, reached from here. */
+  onDaily?: () => void;
+  streak?: number;
+  streakTone?: StreakTone;
 }
 
 function relativeTime(updatedAt: number): string {
@@ -75,21 +81,40 @@ function LibraryCard({
   );
 }
 
-export function Library({ entries, onOpen, onNewPuzzle }: LibraryProps): React.ReactElement {
+export function Library({
+  entries,
+  onOpen,
+  onNewPuzzle,
+  onDaily,
+  streak = 0,
+  streakTone = 'none',
+}: LibraryProps): React.ReactElement {
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
           Your Puzzles
         </div>
-        <button
-          type="button"
-          aria-label="New puzzle"
-          onClick={onNewPuzzle}
-          className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--accent)] px-4 text-[14px] text-[var(--mat-void)]"
-        >
-          New Puzzle
-        </button>
+        <div className="flex gap-2">
+          {onDaily && (
+            <button
+              type="button"
+              aria-label="Daily"
+              onClick={onDaily}
+              className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+            >
+              <StreakFlame streak={streak} freezes={0} tone={streakTone} compact />
+            </button>
+          )}
+          <button
+            type="button"
+            aria-label="New puzzle"
+            onClick={onNewPuzzle}
+            className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--accent)] px-4 text-[14px] text-[var(--mat-void)]"
+          >
+            New Puzzle
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {entries.map((entry) => (

@@ -17,11 +17,16 @@ export interface PhotoPickerProps {
   onPhotoChosen: (choice: PhotoChoice) => void;
   /** Surfaced by `App.tsx` when a previously chosen upload failed to decode. */
   error?: string | null;
+  /**
+   * Step 6: a first-run player never sees the library, so this is their only
+   * route to the daily.
+   */
+  onDaily?: () => void;
 }
 
 type Source = 'curated' | 'upload';
 
-export function PhotoPicker({ onPhotoChosen, error }: PhotoPickerProps): React.ReactElement {
+export function PhotoPicker({ onPhotoChosen, error, onDaily }: PhotoPickerProps): React.ReactElement {
   const [source, setSource] = useState<Source>('curated');
   const [selectedId, setSelectedId] = useState<string>(CURATED_PHOTOS[0]!.id);
   const [dragOver, setDragOver] = useState(false);
@@ -34,13 +39,25 @@ export function PhotoPicker({ onPhotoChosen, error }: PhotoPickerProps): React.R
 
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-5">
-      <div>
-        <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
-          New Puzzle
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
+            New Puzzle
+          </div>
+          <div className="mt-1 font-[var(--font-data)] text-[12px] text-[var(--ink-muted)]">
+            Step 1 of 2 — Pick a photo
+          </div>
         </div>
-        <div className="mt-1 font-[var(--font-data)] text-[12px] text-[var(--ink-muted)]">
-          Step 1 of 2 — Pick a photo
-        </div>
+        {onDaily && (
+          <button
+            type="button"
+            aria-label="Today’s puzzle"
+            onClick={onDaily}
+            className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+          >
+            Today’s puzzle
+          </button>
+        )}
       </div>
 
       <div className="flex gap-2">
