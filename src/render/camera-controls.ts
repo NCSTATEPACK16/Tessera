@@ -11,7 +11,7 @@
 
 import type { Point, Rect, Size } from '@/core/geom';
 import type { Camera } from './camera';
-import { clampZoom, fitCamera, fitCameraToBounds, fitScale, zoomAbout } from './camera';
+import { clampZoom, fitCamera, fitCameraToBounds, fitScale, MIN_ZOOM, zoomAbout } from './camera';
 
 export interface CameraControlsOptions {
   element: HTMLElement;
@@ -25,6 +25,11 @@ export interface CameraControlsOptions {
    * the board plus everything scattered around it. Falls back to the board.
    */
   getFitBounds?: () => Rect;
+  /**
+   * Raise the zoom floor above the default 0.5× — large-piece mode passes
+   * `REGION_LENS_ZOOM`. Defaults to `MIN_ZOOM`.
+   */
+  minRelativeZoom?: number | undefined;
   /**
    * Listen to the element directly. Set false when something upstream — the
    * pointer machine — owns arbitration and forwards only the camera gestures.
@@ -45,8 +50,10 @@ export class CameraControls {
   private lastTapPoint: Point = { x: 0, y: 0 };
 
   private readonly attached: boolean;
+  private readonly minRelativeZoom: number;
 
   constructor(private readonly options: CameraControlsOptions) {
+    this.minRelativeZoom = options.minRelativeZoom ?? MIN_ZOOM;
     this.attached = options.attach ?? true;
     if (!this.attached) return;
 
@@ -93,7 +100,10 @@ export class CameraControls {
     }
 
     const framed = fitCameraToBounds(viewport, bounds);
-    this.options.setCamera({ ...framed, zoom: clampZoom(framed.zoom, this.fitScale()) });
+    this.options.setCamera({
+      ...framed,
+      zoom: clampZoom(framed.zoom, this.fitScale(), this.minRelativeZoom),
+    });
   }
 
   /** Pixels per world unit at 1×. The reference every clamp here measures against. */
@@ -152,6 +162,7 @@ export class CameraControls {
         centroid,
         next.zoom * (spread / this.lastSpread),
         this.fitScale(),
+        this.minRelativeZoom,
       );
     }
 
@@ -177,8 +188,9 @@ export class CameraControls {
         camera,
         this.options.getViewport(),
         point,
-        clampZoom(camera.zoom * factor, fit),
+        clampZoom(camera.zoom * factor, fit, this.minRelativeZoom),
         fit,
+        this.minRelativeZoom,
       ),
     );
   };

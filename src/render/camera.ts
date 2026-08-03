@@ -62,10 +62,16 @@ export function fitScale(viewport: Size, boardW: number, boardH: number, margin 
   return Math.min(viewport.w / boardW, viewport.h / boardH) * margin;
 }
 
-/** Clamp to 0.5×–4× of the fitted board. */
-export function clampZoom(zoom: number, fit: number): number {
+/**
+ * Clamp to 0.5×–4× of the fitted board.
+ *
+ * `minRelativeZoom` raises that floor — large-piece mode (step 5b) passes
+ * `REGION_LENS_ZOOM`, so pieces never render below 1.5×. It changes what the
+ * player sees, never snap tolerance, which stays world-space.
+ */
+export function clampZoom(zoom: number, fit: number, minRelativeZoom = MIN_ZOOM): number {
   const base = fit > 0 ? fit : NO_BOARD_SCALE;
-  return Math.min(MAX_ZOOM * base, Math.max(MIN_ZOOM * base, zoom));
+  return Math.min(MAX_ZOOM * base, Math.max(minRelativeZoom * base, zoom));
 }
 
 /** Zoom as the player understands it: 1× is the whole board on screen. */
@@ -149,9 +155,10 @@ export function zoomAbout(
   screenPoint: Point,
   nextZoom: number,
   fit: number,
+  minRelativeZoom = MIN_ZOOM,
 ): Camera {
   const before = screenToWorld(camera, viewport, screenPoint);
-  const zoom = clampZoom(nextZoom, fit);
+  const zoom = clampZoom(nextZoom, fit, minRelativeZoom);
   const after = screenToWorld({ ...camera, zoom }, viewport, screenPoint);
   return {
     x: camera.x + (before.x - after.x),

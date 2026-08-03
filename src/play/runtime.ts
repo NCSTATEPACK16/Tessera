@@ -42,6 +42,7 @@ import { GROUP_CHIP, groupChipRect } from '@/render/group-chip';
 import { Renderer } from '@/render/renderer';
 import { emptyScene } from '@/render/scene';
 import type { Scene, ScenePiece } from '@/render/scene';
+import type { PuzzleAssists } from '@/play/setup';
 
 /**
  * How long the camera must be still before the Region lens re-reads it.
@@ -76,6 +77,10 @@ export interface PlayRuntimeOptions {
   targetCount: number;
   difficulty?: SnapDifficulty;
   rotation?: boolean;
+  /** Classic or Zen, from step 5b's setup screen. Drives the hint budget. */
+  mode?: 'classic' | 'zen';
+  /** Step 5b's four assists, chosen on the setup screen. Every field defaults off. */
+  assists?: PuzzleAssists;
   reducedMotion?: boolean;
   sound?: boolean;
   /** Viewport coordinates over the tray, so a drop there goes back into it. */
@@ -149,22 +154,36 @@ export class PlayRuntime {
   /** §07: the loose mat piece the last tap selected, or null. */
   private hintTarget: PieceId | null = null;
   /**
-   * No mode-select screen exists yet (step 5), so there is nowhere for a
-   * player to reach Zen or Daily from. Hardcoded rather than plumbed through
-   * `PlayRuntimeOptions` on a guess at that screen's shape — `hints.ts`
-   * already takes `mode` as a parameter, so this is the one line that moves
-   * when step 5 adds real mode selection.
+   * Step 5b's setup screen chooses this. Daily is unreachable from the generic
+   * "new puzzle" flow — it gets its own hub in step 6 — so the option is
+   * narrower than `hints.ts`'s `PuzzleMode`, which still accepts all three.
    */
-  private readonly mode: PuzzleMode = 'classic';
+  private readonly mode: PuzzleMode;
+  /**
+   * The ghost underlay's own copy of the source photo.
+   *
+   * `cutInWorker` *transfers* `options.source` to the worker, which detaches it
+   * on this thread — drawing it afterwards throws `InvalidStateError` and takes
+   * the whole static paint down with it, leaving a blank board. So the copy is
+   * taken in `start()`, before the transfer, and only when the assist is on.
+   */
+  private ghostSource: ImageBitmap | null = null;
 
   constructor(private readonly options: PlayRuntimeOptions) {
     this.renderer = new Renderer({ container: options.container });
+    this.mode = options.mode ?? 'classic';
   }
 
   // -------------------------------------------------------------------------
 
   async start(): Promise<void> {
     try {
+      // Before the transfer below detaches it. Costs one full-size bitmap, and
+      // only when the player asked for the ghost.
+      if ((this.options.assists?.ghostOpacity ?? 0) > 0) {
+        this.ghostSource = this.copySource(this.options.source);
+      }
+
       const result = await cutInWorker({
         source: this.options.source,
         seed: this.options.seed,
@@ -200,8 +219,33 @@ export class PlayRuntime {
     this.destroyed = true;
     if (this.regionTimer !== null) clearTimeout(this.regionTimer);
     this.controls?.destroy();
+    this.renderer.setGhostUnderlay(null, 0);
     this.renderer.destroy();
+    this.ghostSource?.close();
+    this.ghostSource = null;
     this.audio.suspend();
+  }
+
+  /**
+   * A detached-proof duplicate of the source photo, for the ghost underlay.
+   *
+   * `transferToImageBitmap` rather than `createImageBitmap` because this has to
+   * be synchronous: the copy must exist before `cutInWorker` transfers the
+   * original away, and awaiting here would put the transfer first.
+   */
+  private copySource(source: ImageBitmap): ImageBitmap | null {
+    try {
+      const canvas = new OffscreenCanvas(source.width, source.height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.drawImage(source, 0, 0);
+      return canvas.transferToImageBitmap();
+    } catch (error) {
+      // A missing ghost is a missing assist, never a blocked puzzle (§13's
+      // same posture as `extractAccent`).
+      console.error('[ghost]', error);
+      return null;
+    }
   }
 
   /** §08: unlock on the first deliberate tap, never before. */
@@ -491,6 +535,8 @@ export class PlayRuntime {
       locationOf: (id) => session.locationOf(id),
     });
 
+    const assists = this.options.assists;
+
     this.controls = new BoardControls({
       element: this.options.container,
       session,
@@ -502,6 +548,7 @@ export class PlayRuntime {
         this.scheduleRegion();
       },
       getBoard: () => ({ w: this.boardW, h: this.boardH }),
+      minRelativeZoom: assists?.largePieceMode ? REGION_LENS_ZOOM : undefined,
       onChange: () => this.wake(),
       interceptRelease: ({ clusterId, client }) => {
         this.options.onDragStateChange?.(false);
@@ -525,6 +572,8 @@ export class PlayRuntime {
     // purpose — a broken accent is a wrong colour, never a blocked puzzle.
     const accent = extractAccent(cut, this.options.seed);
     this.renderer.setAccent(accent.accent);
+    this.renderer.setGhostUnderlay(this.ghostSource, assists?.ghostOpacity ?? 0);
+    this.renderer.setEdgeHighlight(assists?.edgeHighlight ?? false);
     this.patch({ status: 'playing', placed: 0, total: session.summary.total, accent });
     this.frameContent();
     this.render();
@@ -620,7 +669,11 @@ export class PlayRuntime {
     const framed = fitCameraToBounds(this.viewport, bounds);
     this.camera = {
       ...framed,
-      zoom: clampZoom(framed.zoom, fitScale(this.viewport, this.boardW, this.boardH)),
+      zoom: clampZoom(
+        framed.zoom,
+        fitScale(this.viewport, this.boardW, this.boardH),
+        this.options.assists?.largePieceMode ? REGION_LENS_ZOOM : undefined,
+      ),
     };
   }
 
