@@ -82,11 +82,11 @@ export function App(): React.ReactElement {
   type SetupPhase =
     | { kind: 'picker'; error: string | null }
     | { kind: 'cropping'; source: ImageBitmap }
-    | { kind: 'configuring'; source: ImageBitmap; seed: number };
+    | { kind: 'configuring'; source: ImageBitmap; seed: number; puzzleId: string };
 
   const [setupPhase, setSetupPhase] = useState<SetupPhase>({ kind: 'picker', error: null });
   const [playConfig, setPlayConfig] = useState<
-    ({ source: ImageBitmap; seed: number } & PuzzleConfig) | null
+    ({ source: ImageBitmap; seed: number; puzzleId: string } & PuzzleConfig) | null
   >(null);
 
   // Human-speed, not per-frame: flips once when a chip leaves or returns to the
@@ -196,7 +196,12 @@ export function App(): React.ReactElement {
       // object. Only the cropped result is needed from here on; the
       // full-resolution original is not used again once the crop is confirmed.
       if (setupPhase.kind === 'cropping') setupPhase.source.close();
-      setSetupPhase({ kind: 'configuring', source: result.source, seed: result.seed });
+      setSetupPhase({
+        kind: 'configuring',
+        source: result.source,
+        seed: result.seed,
+        puzzleId: result.puzzleId,
+      });
     },
     [setupPhase],
   );
@@ -204,7 +209,12 @@ export function App(): React.ReactElement {
   const handleSetupConfirm = useCallback(
     (config: PuzzleConfig): void => {
       if (setupPhase.kind !== 'configuring') return;
-      setPlayConfig({ source: setupPhase.source, seed: setupPhase.seed, ...config });
+      setPlayConfig({
+        source: setupPhase.source,
+        seed: setupPhase.seed,
+        puzzleId: setupPhase.puzzleId,
+        ...config,
+      });
     },
     [setupPhase],
   );
@@ -221,6 +231,7 @@ export function App(): React.ReactElement {
       container,
       source: playConfig.source,
       seed: playConfig.seed,
+      puzzleId: playConfig.puzzleId,
       targetCount: playConfig.targetCount,
       difficulty: playConfig.difficulty,
       rotation: playConfig.rotation,

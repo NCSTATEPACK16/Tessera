@@ -43,6 +43,16 @@ import { Renderer } from '@/render/renderer';
 import { emptyScene } from '@/render/scene';
 import type { Scene, ScenePiece } from '@/render/scene';
 import type { PuzzleAssists } from '@/play/setup';
+import { packPieces } from '@/persist/snapshot';
+import type { SessionSnapshot } from '@/persist/snapshot';
+import type { Lens } from '@/tray/lenses';
+
+/** Every assist off — what a puzzle configured without them saves as. */
+const DEFAULT_ASSISTS: PuzzleAssists = {
+  ghostOpacity: 0,
+  edgeHighlight: false,
+  largePieceMode: false,
+};
 
 /**
  * How long the camera must be still before the Region lens re-reads it.
@@ -54,7 +64,7 @@ import type { PuzzleAssists } from '@/play/setup';
 const REGION_SETTLE_MS = 160;
 
 export interface RuntimeSummary {
-  status: 'cutting' | 'playing' | 'failed';
+  status: 'cutting' | 'playing' | 'complete' | 'failed';
   cut: { done: number; total: number; cols: number; rows: number };
   placed: number;
   total: number;
@@ -74,6 +84,8 @@ export interface PlayRuntimeOptions {
   container: HTMLElement;
   source: ImageBitmap;
   seed: number;
+  /** Step 5c: the library/save key for this puzzle instance. */
+  puzzleId: string;
   targetCount: number;
   difficulty?: SnapDifficulty;
   rotation?: boolean;
@@ -94,6 +106,14 @@ export interface PlayRuntimeOptions {
   isOverShelf?: (client: Point) => boolean;
   /** The tray collapses to peek while a piece is out of it (§06). */
   onDragStateChange?: (dragging: boolean) => void;
+  /**
+   * Step 5c autosave. Called on every debounced tick and on `interrupt()`.
+   *
+   * `runtime` is `this` — passed rather than a pre-built snapshot so the
+   * caller can supply live chrome state (lens/lensArg/scroll) at the exact
+   * moment of saving. This class has no reason to know a lens exists.
+   */
+  onSave?: (runtime: PlayRuntime, canvas: HTMLCanvasElement | OffscreenCanvas) => void;
   notify: (summary: RuntimeSummary) => void;
 }
 
@@ -117,6 +137,7 @@ export class PlayRuntime {
   private pumping = false;
   private lastFrameMs = 0;
   private regionTimer: ReturnType<typeof setTimeout> | null = null;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 
   /**
@@ -217,6 +238,7 @@ export class PlayRuntime {
 
   destroy(): void {
     this.destroyed = true;
+    if (this.saveTimer !== null) clearTimeout(this.saveTimer);
     if (this.regionTimer !== null) clearTimeout(this.regionTimer);
     this.controls?.destroy();
     this.renderer.setGhostUnderlay(null, 0);
@@ -255,6 +277,10 @@ export class PlayRuntime {
 
   /** §05: `interrupted` is a first-class state, not an error path. */
   interrupt(): void {
+    // `PLAN.md`: a synchronous write on `visibilitychange`, which is the one
+    // caller of this method — the debounce cannot be trusted once the tab is
+    // on its way to being backgrounded.
+    this.saveNow();
     this.controls?.interrupt();
     this.audio.suspend();
   }
@@ -273,6 +299,81 @@ export class PlayRuntime {
 
   bitmapOf(pieceId: PieceId): ImageBitmap | null {
     return this.pieces.get(pieceId)?.bitmap ?? null;
+  }
+
+  get cameraState(): { x: number; y: number; zoom: number } {
+    return { x: this.camera.x, y: this.camera.y, zoom: this.camera.zoom };
+  }
+
+  /**
+   * Everything this class owns, assembled into the save format. `chrome` is
+   * the lens/scroll state this class has no reason to know about — the
+   * caller (`App.tsx`) supplies it live at the moment of saving.
+   *
+   * Required parameters, not optional: a silent "saved with the wrong lens"
+   * is exactly the kind of bug an optional argument invites.
+   *
+   * Returns null while still cutting — there is no session yet to save.
+   */
+  snapshot(chrome: { lens: Lens; lensArg: number | null; scroll: number }): SessionSnapshot | null {
+    const session = this.session;
+    const tray = this.tray;
+    if (!session || !tray) return null;
+
+    // `inTray` is not derivable from the board — see `SessionSnapshot.tray`.
+    const trayIds = session.board.pieces
+      .filter((piece) => session.locationOf(piece.id) === 'tray')
+      .map((piece) => piece.id);
+
+    return {
+      version: 1,
+      puzzleId: this.options.puzzleId,
+      seed: this.options.seed,
+      cols: this.summary.cut.cols,
+      rows: this.summary.cut.rows,
+      targetCount: this.options.targetCount,
+      // `this.mode` is the *hint* mode, which is a wider union ('daily' is
+      // step 8's). The save format records the setup mode it was built from.
+      mode: this.options.mode ?? 'classic',
+      rotation: this.options.rotation ?? false,
+      difficulty: this.options.difficulty ?? 'standard',
+      assists: this.options.assists ?? DEFAULT_ASSISTS,
+      pieces: packPieces(session.board),
+      pieceCount: session.board.pieceCount,
+      clusters: [...session.board.clusters.values()].map((c) => ({
+        id: c.id,
+        x: c.x,
+        y: c.y,
+        rot: c.rot,
+        kind: c.kind,
+        label: c.label,
+        collapsed: c.collapsed,
+      })),
+      worksets: session.worksets.all().map((w) => ({
+        id: w.id,
+        label: w.label,
+        collapsed: w.collapsed,
+        pieceIds: [...w.pieceIds],
+      })),
+      camera: this.cameraState,
+      tray: {
+        order: [...tray.order],
+        pinned: [...tray.pinnedIds],
+        trayIds,
+        lens: chrome.lens,
+        lensArg: chrome.lensArg,
+        scroll: chrome.scroll,
+      },
+      timer: {
+        elapsedMs: session.elapsedMs(performance.now()),
+        running: this.summary.status === 'playing',
+      },
+      hintsUsed: session.summary.hintsUsed,
+      cleanRun: session.summary.cleanRun,
+      placed: session.summary.placed,
+      total: session.summary.total,
+      updatedAt: Date.now(),
+    };
   }
 
   /** The visible world rectangle, or null while the Region lens is locked (§06). */
@@ -618,7 +719,10 @@ export class PlayRuntime {
 
     // Not gated on `sound`: the light payoff is a separate channel from audio,
     // and muting one has no reason to mute the other (§07/§08 are independent).
-    if (event.type === 'complete') this.renderer.completePuzzle(now);
+    if (event.type === 'complete') {
+      this.renderer.completePuzzle(now);
+      this.patch({ status: 'complete' });
+    }
     if (event.type === 'snap' && event.seam) this.renderer.fireMergeSeam(event.seam, now);
     if (event.type === 'edgeFrame') this.renderer.fireEdgeFrame(now);
 
@@ -636,6 +740,26 @@ export class PlayRuntime {
       const { placed, total, hintsUsed } = this.session.summary;
       this.patch({ placed, total, hintsUsed });
     }
+
+    // Autosave lives here, inside the runtime, rather than as a React effect
+    // keyed on summary state — the board never re-renders through React, and
+    // a per-tick subscription would be exactly that.
+    this.scheduleSave();
+  }
+
+  /** `PLAN.md`: IndexedDB, debounced 800ms. */
+  private scheduleSave(): void {
+    if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => this.saveNow(), 800);
+  }
+
+  private saveNow(): void {
+    if (this.saveTimer !== null) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    if (!this.session || !this.options.onSave) return;
+    this.options.onSave(this, this.renderer.getStaticCanvas());
   }
 
   private materialise(batch: CutPiece[]): void {

@@ -238,6 +238,19 @@ export class Renderer {
   }
 
   /**
+   * Step 5c: the static layer's canvas, for the library thumbnail.
+   *
+   * The static layer specifically, because that is where placed pieces are
+   * baked — a thumbnail of the board is a thumbnail of what has been solved,
+   * which is exactly what a library card wants to show.
+   */
+  getStaticCanvas(): HTMLCanvasElement {
+    const layer = this.byName.get('static');
+    if (!layer) throw new Error('Renderer: no static layer');
+    return layer.canvas;
+  }
+
+  /**
    * Step 5b's ghost-underlay assist: a dimmed copy of the source photo, drawn
    * inside `paintStatic` under the placed pieces so it pans and zooms with the
    * board. Pass `null` (or opacity 0) to turn it off.

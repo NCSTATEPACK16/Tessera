@@ -13,7 +13,7 @@
 import { ProgressRing } from './ProgressRing';
 
 export interface TopBarProps {
-  status: 'cutting' | 'playing' | 'failed';
+  status: 'cutting' | 'playing' | 'complete' | 'failed';
   placed: number;
   total: number;
   cut: { done: number; total: number; cols: number; rows: number };
