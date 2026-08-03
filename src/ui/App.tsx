@@ -894,6 +894,7 @@ export function App(): React.ReactElement {
         {summary.status === 'complete' ? (
           <CompletionBanner
             canGoHarder={nextHarderCount(playConfig.targetCount) !== null}
+            {...(isDailyPuzzleId(playConfig.puzzleId) && dailyResult ? { daily: dailyResult } : {})}
             onAgainHarder={() => {
               void handleAgainHarder();
             }}
