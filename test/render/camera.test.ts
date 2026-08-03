@@ -117,6 +117,40 @@ describe('zoomAbout', () => {
   });
 });
 
+describe('clampZoom with a custom floor', () => {
+  it('raises the lower bound when minRelativeZoom is given', () => {
+    const fit = 100;
+    // Default floor (0.5x) would allow 40; a 1.5x floor must not.
+    expect(clampZoom(40, fit)).toBe(50);
+    expect(clampZoom(40, fit, 1.5)).toBe(150);
+  });
+
+  it('leaves values above the custom floor unchanged', () => {
+    const fit = 100;
+    expect(clampZoom(300, fit, 1.5)).toBe(300);
+  });
+
+  it('still respects MAX_ZOOM with a custom floor in effect', () => {
+    const fit = 100;
+    expect(clampZoom(10_000, fit, 1.5)).toBe(MAX_ZOOM * fit);
+  });
+
+  it('defaults to todays MIN_ZOOM when omitted', () => {
+    const fit = 100;
+    expect(clampZoom(1, fit)).toBe(MIN_ZOOM * fit);
+  });
+});
+
+describe('zoomAbout with a custom floor', () => {
+  it('threads minRelativeZoom into its internal clamp', () => {
+    const camera = { x: 0, y: 0, zoom: 100 };
+    const viewport = { w: 800, h: 600 };
+    const point = { x: 400, y: 300 };
+    const result = zoomAbout(camera, viewport, point, 40, 100, 1.5);
+    expect(result.zoom).toBe(150);
+  });
+});
+
 describe('fitCamera', () => {
   it('centres the board and fits it inside the viewport', () => {
     const camera = fitCamera(VIEWPORT, 20, 15);
