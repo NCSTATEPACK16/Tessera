@@ -57,6 +57,28 @@ export interface Cluster {
   collapsed?: boolean;
 }
 
+export interface BoardClusterSnapshot {
+  id: number;
+  x: number;
+  y: number;
+  rot: number;
+  kind: ClusterKind;
+  label?: string | undefined;
+  collapsed?: boolean | undefined;
+}
+
+export interface BoardPieceSnapshot {
+  id: PieceId;
+  clusterId: number;
+  localX: number;
+  localY: number;
+}
+
+export interface BoardSnapshot {
+  clusters: BoardClusterSnapshot[];
+  pieces: BoardPieceSnapshot[];
+}
+
 export class Board {
   readonly pieces: BoardPiece[];
   readonly clusters = new Map<number, Cluster>();
@@ -95,6 +117,57 @@ export class Board {
         anchored: false,
       });
     }
+  }
+
+  /**
+   * A second entry point into the same data — nothing about union-find,
+   * merge, or snap changes. They only ever read `this.clusters`/
+   * `piece.clusterId`, and don't care how that state was populated.
+   *
+   * Cluster 0's `anchored`/`kind` are never taken from the snapshot — those
+   * are structural invariants, not saved state, and trusting a corrupt or
+   * hand-edited snapshot on them would let the board become un-anchored.
+   */
+  static restore(input: readonly BoardInput[], snapshot: BoardSnapshot): Board {
+    const board = new Board(input);
+    board.clusters.clear();
+
+    let maxClusterId = BOARD_CLUSTER;
+    for (const saved of snapshot.clusters) {
+      board.clusters.set(saved.id, {
+        id: saved.id,
+        pieceIds: [],
+        x: saved.x,
+        y: saved.y,
+        rot: saved.id === BOARD_CLUSTER ? 0 : saved.rot,
+        kind: saved.id === BOARD_CLUSTER ? 'board' : saved.kind,
+        anchored: saved.id === BOARD_CLUSTER,
+        ...(saved.label !== undefined ? { label: saved.label } : {}),
+        ...(saved.collapsed !== undefined ? { collapsed: saved.collapsed } : {}),
+      });
+      if (saved.id > maxClusterId) maxClusterId = saved.id;
+    }
+
+    const byId = new Map(snapshot.pieces.map((p) => [p.id, p]));
+    for (const piece of board.pieces) {
+      const saved = byId.get(piece.id);
+      if (!saved) {
+        throw new Error(`Board.restore: snapshot is missing piece ${piece.id}`);
+      }
+      const cluster = board.clusters.get(saved.clusterId);
+      if (!cluster) {
+        throw new Error(
+          `Board.restore: piece ${piece.id} references missing cluster ${saved.clusterId}`,
+        );
+      }
+      piece.clusterId = saved.clusterId;
+      piece.localX = saved.localX;
+      piece.localY = saved.localY;
+      cluster.pieceIds.push(piece.id);
+    }
+
+    board.nextClusterId = maxClusterId + 1;
+    return board;
   }
 
   get pieceCount(): number {
