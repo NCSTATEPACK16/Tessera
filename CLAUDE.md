@@ -128,16 +128,14 @@ src/
             Shelf SelectionBar        the pinned row, and the pull-out bar
             theme.css                 §13 tokens, once, for both consumers
   main.tsx                            the product entry — index.html
-  dev/      harness.ts                steps 1-2 — dev.html, deleted at step 5
 test/                                 mirrors src/ — vitest, *.test.ts
   browser/  *.spec.ts board-page.ts   playwright, the app in a real browser
 docs/                                 the three sources of truth are gitignored, local only;
                                        docs/superpowers/ (plans, specs) is committed
 ```
 
-Two pages. `index.html` is the product; `dev.html` keeps the step-2 harness with every snap-tuning
-dial on it, because §17 budgets a week on that tuning and chrome existing is no reason to throw it
-away. It goes at step 5.
+One page. `index.html` is the product. `dev.html` and the step-2 harness were deleted at step 5c —
+the setup screen and the pause sheet's live settings now carry the snap-tuning dials it existed for.
 
 All cutting logic lives in `cutter.ts`, not the worker, so it stays testable off-thread. The same
 split runs through steps 2 and 3: everything with a decision in it is DOM-free and tested, and the
@@ -174,9 +172,7 @@ Do not drift from these without changing the design doc first.
 ## Commands
 
 ```
-npm run dev          # host-exposed for real-device testing
-                     #   /          the product — board and tray
-                     #   /dev.html  the step-2 harness and its tuning dials
+npm run dev          # host-exposed for real-device testing — the product at /
 npm test             # vitest — pure functions, node environment
 npm run test:browser # playwright — the app, in a browser, dock and phone
 npm run typecheck

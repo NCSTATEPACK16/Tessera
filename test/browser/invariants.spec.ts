@@ -68,32 +68,6 @@ test.describe('the board never re-renders through React', () => {
   });
 });
 
-test.describe('the dev harness', () => {
-  test.skip(({ viewport }) => (viewport?.width ?? 0) < 768, 'the harness assumes a desk');
-
-  test('still cuts, still solves, and still goes still', async ({ page }) => {
-    await page.goto('/dev.html', { waitUntil: 'load' });
-    await page.waitForFunction(() => document.getElementById('status')?.textContent === 'ready', null, {
-      timeout: 30_000,
-    });
-
-    // §03: "on an idle board with no finger down the app draws nothing at all."
-    // That is how the iPad stays cool for a sixty-minute session.
-    await expect(page.locator('#sched')).toHaveText('no');
-
-    await page.locator('#solve').click();
-    await page.waitForTimeout(1500);
-
-    const solved = await page.locator('#placed').innerText();
-    const [placed, total] = solved.split('/').map((n) => Number(n.trim()));
-    expect(total).toBeGreaterThan(0);
-    expect(placed).toBe(total);
-
-    await page.waitForTimeout(800);
-    await expect(page.locator('#sched')).toHaveText('no');
-  });
-});
-
 test.describe('nothing is broken on the console', () => {
   test('a full session start raises no errors', async ({ page }) => {
     const errors: string[] = [];

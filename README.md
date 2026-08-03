@@ -18,8 +18,8 @@ onto the mat, and they snap with the step-2 spring and audio intact.
 
 Step 2 is still not *finished* until it has been tuned by hand on an iPad, which the design doc
 budgets a week for and treats as a real gate: **the snap must feel complete with the device on
-silent and no vibration.** The code is in place and the dials are on screen at `/dev.html`; the
-judging has not happened yet.
+silent and no vibration.** The code is in place and the dials are on screen — on the setup screen
+and in the pause sheet, since step 5c retired the harness — but the judging has not happened yet.
 
 - [x] **Step 1** — the cut (grid, jittered lattice, interlocking edges, baked bevel, adjacency
       graph) in a worker, and the Canvas 2D layer stack behind `draw(scene, camera)`
@@ -48,14 +48,9 @@ npm run dev
 The dev server is host-exposed, so the printed network URL works from an iPad or iPhone on the same
 network. Real-hardware testing is a gate at every step.
 
-Two pages:
+One page, `/` — the product: board and tray.
 
-| | |
-|---|---|
-| `/` | the product — board and tray |
-| `/dev.html` | the step-2 harness, with every snap-tuning dial and the frame-scheduler HUD |
-
-Both cut a synthetic validation target — numbered cells, a hue sweep across x, a value sweep down y,
+The curated photos cut a synthetic validation target — numbered cells, a hue sweep across x, a value sweep down y,
 and a 1px hairline grid — chosen because a photo hides exactly the bugs these steps can produce. A
 misplaced piece or a misaligned tab is obvious against it and invisible against foliage. The hue and
 value sweeps also give the Colour lens something real to bin. The real photo picker arrives at
@@ -71,11 +66,10 @@ canonical order — they never re-sort it, so turning a filter off leaves every 
 exactly where you left it. Region unlocks past 1.5× zoom and shows the pieces belonging in what you
 are looking at. Recent finds the ones you pulled out and did not place.
 
-**The harness** (`/dev.html`) keeps the step-2 dials: snap tolerance (Precise / Standard /
-Generous), rotation, reduced motion, and sound, each re-cutting on change. **Solve** drops every
-remaining piece into its slot so the seams can be inspected; **Re-cut** reseeds. Its HUD reports the
-real grid, the cut time against the 1.2s budget, and whether the renderer has a frame scheduled —
-with no finger down and nothing springing, an idle board must read `scheduled: no`.
+**The dials.** Snap tolerance (Precise / Standard / Generous), rotation, reduced motion, and the
+four assists are set on the setup screen before the cut, and tolerance plus the assists can be
+changed mid-session from the pause sheet. Step 5c deleted `dev.html` and the step-2 harness that
+used to carry them.
 
 ```bash
 npm test             # 319 unit tests, node environment

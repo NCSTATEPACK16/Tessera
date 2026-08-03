@@ -4,8 +4,8 @@
  * Procedurally drawn rather than real image files — see the plan note in
  * docs/superpowers/plans/2026-08-01-step-5a-photo-picker-crop.md, Task 2, for
  * why. `CURATED_PHOTOS` and `curatedPhotoById` are pure and tested;
- * `renderCuratedPhoto` touches `OffscreenCanvas` and is judged by hand, same
- * as `src/dev/synthetic-image.ts`.
+ * `renderCuratedPhoto` touches `OffscreenCanvas` and is judged by hand, the
+ * same category `CLAUDE.md`'s testing posture puts `renderer.ts` in.
  */
 
 export interface CuratedPhoto {
