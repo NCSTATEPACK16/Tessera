@@ -28,11 +28,10 @@ import { PhotoPicker } from './PhotoPicker';
 import type { PhotoChoice } from './PhotoPicker';
 import { PhotoCrop } from './PhotoCrop';
 import type { PhotoCropResult } from './PhotoCrop';
+import { PuzzleSetup } from './PuzzleSetup';
+import type { PuzzleConfig } from '@/play/setup';
 import { renderCuratedPhoto } from '@/play/curated';
 import { downscaleTarget } from '@/play/photo';
-
-/** Step 5b brings a real difficulty/size picker; until then the cut needs *a* count. */
-const TARGET_COUNT = 200;
 
 /**
  * Reads a File's natural pixel size without allocating a persistent
@@ -82,10 +81,13 @@ export function App(): React.ReactElement {
 
   type SetupPhase =
     | { kind: 'picker'; error: string | null }
-    | { kind: 'cropping'; source: ImageBitmap };
+    | { kind: 'cropping'; source: ImageBitmap }
+    | { kind: 'configuring'; source: ImageBitmap; seed: number };
 
   const [setupPhase, setSetupPhase] = useState<SetupPhase>({ kind: 'picker', error: null });
-  const [playConfig, setPlayConfig] = useState<{ source: ImageBitmap; seed: number } | null>(null);
+  const [playConfig, setPlayConfig] = useState<
+    ({ source: ImageBitmap; seed: number } & PuzzleConfig) | null
+  >(null);
 
   // Human-speed, not per-frame: flips once when a chip leaves or returns to the
   // tray, never during the drag itself. Drives the shelf's dashed placeholder.
@@ -194,7 +196,15 @@ export function App(): React.ReactElement {
       // object. Only the cropped result is needed from here on; the
       // full-resolution original is not used again once the crop is confirmed.
       if (setupPhase.kind === 'cropping') setupPhase.source.close();
-      setPlayConfig({ source: result.source, seed: result.seed });
+      setSetupPhase({ kind: 'configuring', source: result.source, seed: result.seed });
+    },
+    [setupPhase],
+  );
+
+  const handleSetupConfirm = useCallback(
+    (config: PuzzleConfig): void => {
+      if (setupPhase.kind !== 'configuring') return;
+      setPlayConfig({ source: setupPhase.source, seed: setupPhase.seed, ...config });
     },
     [setupPhase],
   );
@@ -211,7 +221,10 @@ export function App(): React.ReactElement {
       container,
       source: playConfig.source,
       seed: playConfig.seed,
-      targetCount: TARGET_COUNT,
+      targetCount: playConfig.targetCount,
+      difficulty: playConfig.difficulty,
+      rotation: playConfig.rotation,
+      assists: playConfig.assists,
       isOverTray: (client) => overTray.current(client),
       isOverShelf: (client) => overShelf.current(client),
       onDragStateChange: (isDragging) => {
@@ -356,20 +369,32 @@ export function App(): React.ReactElement {
   const groupTapOrigin = useRef<{ x: number; y: number } | null>(null);
 
   if (!playConfig) {
-    return setupPhase.kind === 'picker' ? (
-      <PhotoPicker onPhotoChosen={handlePhotoChosen} error={setupPhase.error} />
-    ) : (
-      <PhotoCrop
+    if (setupPhase.kind === 'picker') {
+      return <PhotoPicker onPhotoChosen={handlePhotoChosen} error={setupPhase.error} />;
+    }
+    if (setupPhase.kind === 'cropping') {
+      return (
+        <PhotoCrop
+          source={setupPhase.source}
+          onConfirm={handleCropConfirm}
+          onBack={() =>
+            setSetupPhase((prev) => {
+              // Leaving the crop screen for a different photo — the original
+              // bitmap it was cropping is no longer needed.
+              if (prev.kind === 'cropping') prev.source.close();
+              return { kind: 'picker', error: null };
+            })
+          }
+        />
+      );
+    }
+    return (
+      <PuzzleSetup
         source={setupPhase.source}
-        onConfirm={handleCropConfirm}
-        onBack={() =>
-          setSetupPhase((prev) => {
-            // Leaving the crop screen for a different photo — the original
-            // bitmap it was cropping is no longer needed.
-            if (prev.kind === 'cropping') prev.source.close();
-            return { kind: 'picker', error: null };
-          })
-        }
+        onConfirm={handleSetupConfirm}
+        // Back re-enters crop on the already-cropped bitmap, not the original —
+        // the pre-crop source was released when the crop was confirmed.
+        onBack={() => setSetupPhase({ kind: 'cropping', source: setupPhase.source })}
       />
     );
   }
