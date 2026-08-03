@@ -9,10 +9,16 @@
  */
 
 const DB_NAME = 'tessera';
-const DB_VERSION = 1;
+// Bumped to 2 at step 6 for the `daily` store. The upgrade below guards every
+// `createObjectStore` with a `contains` check, so a bump is purely additive —
+// an existing player's sessions, photos and thumbnails survive it. Getting
+// that wrong deletes every in-progress puzzle a real player has, which is why
+// `daily.spec.ts` asserts it directly rather than trusting this comment.
+const DB_VERSION = 2;
 export const STORE_SESSIONS = 'sessions';
 export const STORE_PHOTOS = 'photos';
 export const STORE_THUMBNAILS = 'thumbnails';
+export const STORE_DAILY = 'daily';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -30,6 +36,9 @@ export function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_THUMBNAILS)) {
         db.createObjectStore(STORE_THUMBNAILS, { keyPath: 'puzzleId' });
+      }
+      if (!db.objectStoreNames.contains(STORE_DAILY)) {
+        db.createObjectStore(STORE_DAILY, { keyPath: 'key' });
       }
     };
     request.onsuccess = () => resolve(request.result);
