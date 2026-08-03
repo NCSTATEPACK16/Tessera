@@ -61,7 +61,14 @@ export class BoardPage {
     this.cancelButton = page.locator('[aria-label="Pieces"] button:has-text("Cancel")');
   }
 
-  static async open(page: Page): Promise<BoardPage> {
+  /**
+   * Options for the setup screen `open()` walks through. Everything defaults
+   * to `DEFAULT_PUZZLE_CONFIG`, which is what the rest of the suite assumes.
+   */
+  static async open(
+    page: Page,
+    options: { pieceCount?: number; mode?: 'Classic' | 'Zen' } = {},
+  ): Promise<BoardPage> {
     const board = new BoardPage(page);
     await page.addInitScript(() => {
       // Deterministic seed for the browser suite: PhotoCrop.tsx mints a random
@@ -72,11 +79,35 @@ export class BoardPage {
         'ffffffff-ffff-4fff-8fff-ffffffffffff' as `${string}-${string}-${string}-${string}-${string}`;
     });
     await page.goto('/', { waitUntil: 'load' });
+    // Step 5c: the app checks the library on mount and lands on it rather
+    // than the picker whenever a saved session exists. Every spec that is not
+    // *about* the library needs the deterministic empty-library entry flow —
+    // cleared once per `open()` call, not once per page, so a test that opens
+    // twice for two independent runs (e.g. puzzle-setup.spec.ts's large-piece
+    // comparison) gets a fresh picker both times. A caller that wants a save
+    // to survive — `persistence.spec.ts` — calls `page.reload()` directly
+    // rather than `open()` again, so this never runs a second time for it.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const request = indexedDB.deleteDatabase('tessera');
+          request.onsuccess = () => resolve();
+          request.onerror = () => resolve();
+          request.onblocked = () => resolve();
+        }),
+    );
+    await page.reload({ waitUntil: 'load' });
     await page.getByRole('button', { name: 'Choose this photo' }).click();
     await page.getByRole('button', { name: 'Use this photo' }).click();
     // Step 5b's setup screen sits between the crop and the cut. Every default
     // is accepted here — `DEFAULT_PUZZLE_CONFIG`, 150 pieces, Classic, every
     // assist off — which is the configuration the rest of the suite assumes.
+    if (options.pieceCount !== undefined) {
+      await page.getByLabel(`Piece count: ${options.pieceCount}`).click();
+    }
+    if (options.mode !== undefined) {
+      await page.getByLabel(`Mode: ${options.mode}`).click();
+    }
     await page.getByRole('button', { name: 'Start cutting' }).click();
     await board.waitForCut();
     return board;
@@ -301,6 +332,38 @@ export class BoardPage {
       const el = document.querySelector('[aria-label="Pieces"] .overflow-y-auto');
       return el ? el.scrollTop : -1;
     });
+  }
+
+  /**
+   * Actually *place* a piece — pull it onto the mat, tap to target it, then
+   * hold the hint button past both escalation thresholds so Tier 3 drops it
+   * into its slot through the real `release()` path (§07).
+   *
+   * The only way a spec can place a specific piece without the app growing a
+   * test-only hook: a drag would have to land inside snap tolerance of a slot
+   * whose world position nothing in the DOM reports.
+   *
+   * Zen mode makes every tier free, which is what makes a full solve possible.
+   */
+  async placeViaHint(pieceId: number): Promise<void> {
+    const dropPoint = await this.matPoint();
+    await this.dragOut(pieceId, dropPoint);
+
+    await this.page.mouse.move(dropPoint.x, dropPoint.y);
+    await this.page.mouse.down();
+    await this.page.mouse.up();
+
+    const hintButton = this.page.locator('button[aria-label^="Hint"]');
+    await expect(hintButton).toBeEnabled();
+    const box = await hintButton.boundingBox();
+    expect(box, 'hint button has no box').not.toBeNull();
+
+    await this.page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await this.page.mouse.down();
+    // Past both escalation thresholds (§07, `src/play/hints.ts`).
+    await this.page.waitForTimeout(1300);
+    await this.page.mouse.up();
+    await this.page.waitForTimeout(250);
   }
 
   async zoom(steps: number): Promise<void> {

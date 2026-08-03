@@ -18,6 +18,21 @@ async function toSetupScreen(page: Page): Promise<void> {
       'ffffffff-ffff-4fff-8fff-ffffffffffff' as `${string}-${string}-${string}-${string}-${string}`;
   });
   await page.goto('/', { waitUntil: 'load' });
+  // Step 5c: the app lands on the library rather than the picker whenever a
+  // saved session exists — and this helper is called twice inside one test
+  // (e.g. the large-piece-mode comparison), by which point the first run has
+  // already autosaved one. Cleared on every call, matching `BoardPage.open`,
+  // so each call gets a fresh picker rather than only the first.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const request = indexedDB.deleteDatabase('tessera');
+        request.onsuccess = () => resolve();
+        request.onerror = () => resolve();
+        request.onblocked = () => resolve();
+      }),
+  );
+  await page.reload({ waitUntil: 'load' });
   await page.getByRole('button', { name: 'Choose this photo' }).click();
   await page.getByRole('button', { name: 'Use this photo' }).click();
   await expect(page.getByRole('button', { name: 'Start cutting' })).toBeVisible();

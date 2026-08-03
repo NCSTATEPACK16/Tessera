@@ -140,6 +140,17 @@ export function App(): React.ReactElement {
   const trayScrollRef = useRef(0);
   /** The photo blob is written exactly once per puzzle, not every 800ms. */
   const photoSavedRef = useRef(false);
+  /**
+   * The autosave currently in flight.
+   *
+   * Anything that reads or deletes the library has to wait on it first: a
+   * `listLibrary()` that overtakes the save shows stale progress, and a
+   * `deleteLibraryEntry()` overtaken by one resurrects the entry it just
+   * removed.
+   */
+  const saveInFlight = useRef<Promise<void>>(Promise.resolve());
+  /** The one-time photo write, so anything needing a fresh decode can wait. */
+  const photoWrite = useRef<Promise<void>>(Promise.resolve());
 
   const [setupPhase, setSetupPhase] = useState<SetupPhase>({ kind: 'picker', error: null });
   const [playConfig, setPlayConfig] = useState<
@@ -344,40 +355,39 @@ export function App(): React.ReactElement {
         thumbnailBlob,
         updatedAt: snapshot.updatedAt,
       });
-
-      // The photo never changes across a session; only the board does. So it
-      // is written on the first save and never again.
-      if (!photoSavedRef.current && playConfig) {
-        photoSavedRef.current = true;
-        const offscreen = new OffscreenCanvas(playConfig.source.width, playConfig.source.height);
-        const ctx = offscreen.getContext('2d');
-        ctx?.drawImage(playConfig.source, 0, 0);
-        const photoBlob = await offscreen.convertToBlob({ type: 'image/jpeg', quality: 0.9 });
-        await savePhoto(snapshot.puzzleId, photoBlob);
-      }
     },
-    [playConfig],
+    [],
   );
 
   // -- pause, restart, leave, completion --------------------------------------
 
-  const handleRestart = useCallback((): void => {
-    // A fresh runtime on the same config: `restartKey` is in the mount
-    // effect's dependency array, so bumping it tears the old one down and
-    // builds an identical puzzle from zero.
+  const handleRestart = useCallback(async (): Promise<void> => {
+    if (!playConfig) return;
+    setPauseOpen(false);
+    // A *fresh* source bitmap, decoded from the stored photo. The one in
+    // `playConfig` was transferred to the cutter worker on the first start
+    // and is detached — reusing it makes the second cut fail outright.
+    await photoWrite.current;
+    const source = await loadPhoto(playConfig.puzzleId);
     setRestoreSnapshot(null);
+    setPlayConfig({ ...playConfig, source });
     setRestartKey((k) => k + 1);
-    setPauseOpen(false);
-  }, []);
+  }, [playConfig]);
 
-  const handleLeave = useCallback((): void => {
-    // One last synchronous save through the machinery `visibilitychange`
-    // already uses, so the card the player is about to see is current.
+  const handleLeave = useCallback(async (): Promise<void> => {
+    // One last save through the machinery `visibilitychange` already uses,
+    // then wait for it — otherwise the card the player is about to see was
+    // read out of IndexedDB before this write landed in it.
     runtime.current?.interrupt();
+    // Batched together, for the same reason `handleDone` batches: a frame in
+    // which `playConfig` is null and `setupPhase` still holds a detached
+    // source would render `PuzzleSetup` and throw.
     setPauseOpen(false);
-    setPlayConfig(null);
+    setSetupPhase({ kind: 'picker', error: null });
     setScreen('library');
-    void listLibrary().then(setLibraryEntries);
+    setPlayConfig(null);
+    await saveInFlight.current.catch(() => {});
+    setLibraryEntries(await listLibrary());
   }, []);
 
   const handleAgainHarder = useCallback(async (): Promise<void> => {
@@ -387,8 +397,10 @@ export function App(): React.ReactElement {
     // A genuinely new puzzle instance, so a new id and a new seed — the same
     // photo cut again, differently.
     const newPuzzleId = crypto.randomUUID();
+    await photoWrite.current;
     const bitmap = await loadPhoto(playConfig.puzzleId);
     const seed = seedFromPuzzleId(newPuzzleId);
+    await saveInFlight.current;
     await deleteLibraryEntry(playConfig.puzzleId);
     setRestoreSnapshot(null);
     photoSavedRef.current = false;
@@ -406,13 +418,20 @@ export function App(): React.ReactElement {
 
   const handleDone = useCallback(async (): Promise<void> => {
     if (!playConfig) return;
-    // A completed puzzle simply leaves the library.
+    // A completed puzzle simply leaves the library. After the in-flight save,
+    // or the write that lost the race would put it straight back.
+    await saveInFlight.current.catch(() => {});
     await deleteLibraryEntry(playConfig.puzzleId);
-    setPlayConfig(null);
     const entries = await listLibrary();
+
+    // Every await is done, so these four commit in one batch. That matters:
+    // clearing `playConfig` while `setupPhase` was still `'configuring'`
+    // renders `PuzzleSetup` for one frame against a source bitmap the cutter
+    // worker detached long ago, and it throws on the spot.
+    setSetupPhase({ kind: 'picker', error: null });
     setLibraryEntries(entries);
     setScreen(entries.length > 0 ? 'library' : 'setup');
-    setSetupPhase({ kind: 'picker', error: null });
+    setPlayConfig(null);
   }, [playConfig]);
 
   // -- the runtime, mounted once the crop is confirmed -------------------------
@@ -435,7 +454,8 @@ export function App(): React.ReactElement {
       assists: playConfig.assists,
       ...(restoreSnapshot ? { restore: { snapshot: restoreSnapshot } } : {}),
       onSave: (rt, canvas) => {
-        void handleAutosave(rt, canvas);
+        saveInFlight.current = handleAutosave(rt, canvas);
+        void saveInFlight.current;
       },
       isOverTray: (client) => overTray.current(client),
       isOverShelf: (client) => overShelf.current(client),
@@ -452,6 +472,22 @@ export function App(): React.ReactElement {
 
     runtime.current = instance;
     updateInsets();
+
+    // **Before** `start()`, which hands `source` to the cutter worker and
+    // detaches it on this thread — a copy taken after that point throws, and
+    // the library entry would be left with no photo to reopen from. Written
+    // exactly once per puzzle: the photo never changes, only the board does.
+    if (!photoSavedRef.current) {
+      photoSavedRef.current = true;
+      const puzzleId = playConfig.puzzleId;
+      const offscreen = new OffscreenCanvas(playConfig.source.width, playConfig.source.height);
+      offscreen.getContext('2d')?.drawImage(playConfig.source, 0, 0);
+      photoWrite.current = offscreen
+        .convertToBlob({ type: 'image/jpeg', quality: 0.9 })
+        .then((blob) => savePhoto(puzzleId, blob));
+      void photoWrite.current;
+    }
+
     void instance.start();
 
     // §08: unlock the audio context on the first deliberate tap after the
@@ -753,8 +789,12 @@ export function App(): React.ReactElement {
         <PauseSheet
           puzzleId={playConfig.puzzleId}
           onResume={() => setPauseOpen(false)}
-          onRestart={handleRestart}
-          onLeave={handleLeave}
+          onRestart={() => {
+            void handleRestart();
+          }}
+          onLeave={() => {
+            void handleLeave();
+          }}
           assists={liveAssists ?? playConfig.assists}
           difficulty={liveDifficulty ?? playConfig.difficulty}
           onAssistsChange={(assists) => {
