@@ -37,9 +37,9 @@ export interface PieceGridProps {
   /** A tap while `selecting`. */
   onChipClick?: (id: PieceId) => void;
   /** Step 5c: fired on every scroll, human-speed only — not a per-frame hook. */
-  onScroll?: (top: number) => void;
+  onScroll?: ((top: number) => void) | undefined;
   /** Step 5c: applied once, before the first virtualisation pass. */
-  initialScrollTop?: number;
+  initialScrollTop?: number | undefined;
 }
 
 export function PieceGrid({

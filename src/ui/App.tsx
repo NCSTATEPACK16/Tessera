@@ -30,8 +30,20 @@ import { PhotoCrop } from './PhotoCrop';
 import type { PhotoCropResult } from './PhotoCrop';
 import { PuzzleSetup } from './PuzzleSetup';
 import type { PuzzleConfig } from '@/play/setup';
+import { nextHarderCount } from '@/play/setup';
+import type { PuzzleAssists } from '@/play/setup';
+import type { SnapDifficulty } from '@/board/snap';
 import { renderCuratedPhoto } from '@/play/curated';
 import { downscaleTarget } from '@/play/photo';
+import { seedFromPuzzleId } from '@/core/rng';
+import { deleteLibraryEntry, listLibrary, saveLibraryEntry } from '@/persist/library';
+import type { LibraryEntry } from '@/persist/library';
+import { loadPhoto, savePhoto } from '@/persist/photos';
+import { captureThumbnail } from '@/persist/thumbnail';
+import type { SessionSnapshot } from '@/persist/snapshot';
+import { Library } from './Library';
+import { PauseSheet } from './PauseSheet';
+import { CompletionBanner } from './CompletionBanner';
 
 /**
  * Reads a File's natural pixel size without allocating a persistent
@@ -110,6 +122,24 @@ export function App(): React.ReactElement {
     | { kind: 'picker'; error: string | null }
     | { kind: 'cropping'; source: ImageBitmap }
     | { kind: 'configuring'; source: ImageBitmap; seed: number; puzzleId: string };
+
+  /**
+   * Where the app is, above `setupPhase`. `'checking'` is the single
+   * IndexedDB read on mount that decides between the library and the picker —
+   * a first-time player must never see an empty library apologising to them.
+   */
+  type Screen = 'checking' | 'library' | 'setup' | 'playing';
+  const [screen, setScreen] = useState<Screen>('checking');
+  const [libraryEntries, setLibraryEntries] = useState<readonly LibraryEntry[]>([]);
+  const [restoreSnapshot, setRestoreSnapshot] = useState<SessionSnapshot | null>(null);
+  const [pauseOpen, setPauseOpen] = useState(false);
+  const [restartKey, setRestartKey] = useState(0);
+  const [liveAssists, setLiveAssists] = useState<PuzzleAssists | null>(null);
+  const [liveDifficulty, setLiveDifficulty] = useState<SnapDifficulty | null>(null);
+  /** Read at save time, never subscribed to — a scroll must not re-render. */
+  const trayScrollRef = useRef(0);
+  /** The photo blob is written exactly once per puzzle, not every 800ms. */
+  const photoSavedRef = useRef(false);
 
   const [setupPhase, setSetupPhase] = useState<SetupPhase>({ kind: 'picker', error: null });
   const [playConfig, setPlayConfig] = useState<
@@ -192,6 +222,16 @@ export function App(): React.ReactElement {
     }
   }, [docked]);
 
+  // The one read that decides the entry screen. Resolves in a single
+  // IndexedDB round trip, fast enough that `'checking'` renders nothing
+  // rather than a spinner that would flash for one frame.
+  useEffect(() => {
+    void listLibrary().then((entries) => {
+      setLibraryEntries(entries);
+      setScreen(entries.length > 0 ? 'library' : 'setup');
+    });
+  }, []);
+
   // -- the setup flow: picker -> crop -> playConfig ---------------------------
 
   const handlePhotoChosen = useCallback(async (choice: PhotoChoice): Promise<void> => {
@@ -240,15 +280,140 @@ export function App(): React.ReactElement {
   const handleSetupConfirm = useCallback(
     (config: PuzzleConfig): void => {
       if (setupPhase.kind !== 'configuring') return;
+      setRestoreSnapshot(null);
+      photoSavedRef.current = false;
+      setLiveAssists(config.assists);
+      setLiveDifficulty(config.difficulty);
       setPlayConfig({
         source: setupPhase.source,
         seed: setupPhase.seed,
         puzzleId: setupPhase.puzzleId,
         ...config,
       });
+      setScreen('playing');
     },
     [setupPhase],
   );
+
+  // -- the library -----------------------------------------------------------
+
+  const handleOpenLibraryEntry = useCallback(
+    async (puzzleId: string): Promise<void> => {
+      const entry = libraryEntries.find((e) => e.puzzleId === puzzleId);
+      if (!entry) return;
+      // A fresh working copy from the stored blob — the original was
+      // transferred to the cutter worker and detached long ago.
+      const bitmap = await loadPhoto(puzzleId);
+      setRestoreSnapshot(entry.snapshot);
+      setLiveAssists(entry.snapshot.assists);
+      setLiveDifficulty(entry.snapshot.difficulty);
+      useChrome.getState().setLens(entry.snapshot.tray.lens, entry.snapshot.tray.lensArg);
+      // Already stored — never rewrite it.
+      photoSavedRef.current = true;
+      setPlayConfig({
+        source: bitmap,
+        seed: entry.snapshot.seed,
+        puzzleId,
+        targetCount: entry.snapshot.targetCount,
+        mode: entry.snapshot.mode,
+        rotation: entry.snapshot.rotation,
+        difficulty: entry.snapshot.difficulty,
+        assists: entry.snapshot.assists,
+      });
+      setScreen('playing');
+    },
+    [libraryEntries],
+  );
+
+  // -- autosave --------------------------------------------------------------
+
+  const handleAutosave = useCallback(
+    async (rt: PlayRuntime, canvas: HTMLCanvasElement | OffscreenCanvas): Promise<void> => {
+      const chromeState = useChrome.getState();
+      const snapshot = rt.snapshot({
+        lens: chromeState.lens,
+        lensArg: chromeState.lensArg,
+        scroll: trayScrollRef.current,
+      });
+      if (!snapshot) return;
+
+      const thumbnailBlob = await captureThumbnail(canvas);
+      await saveLibraryEntry({
+        puzzleId: snapshot.puzzleId,
+        snapshot,
+        thumbnailBlob,
+        updatedAt: snapshot.updatedAt,
+      });
+
+      // The photo never changes across a session; only the board does. So it
+      // is written on the first save and never again.
+      if (!photoSavedRef.current && playConfig) {
+        photoSavedRef.current = true;
+        const offscreen = new OffscreenCanvas(playConfig.source.width, playConfig.source.height);
+        const ctx = offscreen.getContext('2d');
+        ctx?.drawImage(playConfig.source, 0, 0);
+        const photoBlob = await offscreen.convertToBlob({ type: 'image/jpeg', quality: 0.9 });
+        await savePhoto(snapshot.puzzleId, photoBlob);
+      }
+    },
+    [playConfig],
+  );
+
+  // -- pause, restart, leave, completion --------------------------------------
+
+  const handleRestart = useCallback((): void => {
+    // A fresh runtime on the same config: `restartKey` is in the mount
+    // effect's dependency array, so bumping it tears the old one down and
+    // builds an identical puzzle from zero.
+    setRestoreSnapshot(null);
+    setRestartKey((k) => k + 1);
+    setPauseOpen(false);
+  }, []);
+
+  const handleLeave = useCallback((): void => {
+    // One last synchronous save through the machinery `visibilitychange`
+    // already uses, so the card the player is about to see is current.
+    runtime.current?.interrupt();
+    setPauseOpen(false);
+    setPlayConfig(null);
+    setScreen('library');
+    void listLibrary().then(setLibraryEntries);
+  }, []);
+
+  const handleAgainHarder = useCallback(async (): Promise<void> => {
+    if (!playConfig) return;
+    const next = nextHarderCount(playConfig.targetCount);
+    if (next === null) return;
+    // A genuinely new puzzle instance, so a new id and a new seed — the same
+    // photo cut again, differently.
+    const newPuzzleId = crypto.randomUUID();
+    const bitmap = await loadPhoto(playConfig.puzzleId);
+    const seed = seedFromPuzzleId(newPuzzleId);
+    await deleteLibraryEntry(playConfig.puzzleId);
+    setRestoreSnapshot(null);
+    photoSavedRef.current = false;
+    setPlayConfig({
+      source: bitmap,
+      seed,
+      puzzleId: newPuzzleId,
+      targetCount: next,
+      mode: playConfig.mode,
+      rotation: playConfig.rotation,
+      difficulty: playConfig.difficulty,
+      assists: playConfig.assists,
+    });
+  }, [playConfig]);
+
+  const handleDone = useCallback(async (): Promise<void> => {
+    if (!playConfig) return;
+    // A completed puzzle simply leaves the library.
+    await deleteLibraryEntry(playConfig.puzzleId);
+    setPlayConfig(null);
+    const entries = await listLibrary();
+    setLibraryEntries(entries);
+    setScreen(entries.length > 0 ? 'library' : 'setup');
+    setSetupPhase({ kind: 'picker', error: null });
+  }, [playConfig]);
 
   // -- the runtime, mounted once the crop is confirmed -------------------------
 
@@ -268,6 +433,10 @@ export function App(): React.ReactElement {
       rotation: playConfig.rotation,
       mode: playConfig.mode,
       assists: playConfig.assists,
+      ...(restoreSnapshot ? { restore: { snapshot: restoreSnapshot } } : {}),
+      onSave: (rt, canvas) => {
+        void handleAutosave(rt, canvas);
+      },
       isOverTray: (client) => overTray.current(client),
       isOverShelf: (client) => overShelf.current(client),
       onDragStateChange: (isDragging) => {
@@ -311,7 +480,7 @@ export function App(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `updateInsets`
     // is called for its side effect on the runtime it just created, not
     // watched for change here; see the original comment this replaces.
-  }, [playConfig]);
+  }, [playConfig, restartKey]);
 
   // The dock's inner edge changes the board's viewport, and a window resize
   // event never fires for it. Without this the camera silently stops matching
@@ -411,6 +580,24 @@ export function App(): React.ReactElement {
   // 250-piece/60fps budget every frame of every gesture on the board.
   const groupTapOrigin = useRef<{ x: number; y: number } | null>(null);
 
+  // A blank frame while the one IndexedDB read resolves.
+  if (screen === 'checking') return <div className="h-full w-full bg-[var(--mat-void)]" />;
+
+  if (screen === 'library') {
+    return (
+      <Library
+        entries={libraryEntries}
+        onOpen={(puzzleId) => {
+          void handleOpenLibraryEntry(puzzleId);
+        }}
+        onNewPuzzle={() => {
+          setSetupPhase({ kind: 'picker', error: null });
+          setScreen('setup');
+        }}
+      />
+    );
+  }
+
   if (!playConfig) {
     if (setupPhase.kind === 'picker') {
       return <PhotoPicker onPhotoChosen={handlePhotoChosen} error={setupPhase.error} />;
@@ -471,13 +658,26 @@ export function App(): React.ReactElement {
           }}
         />
 
-        <TopBar
-          status={summary.status}
-          placed={summary.placed}
-          total={summary.total}
-          cut={summary.cut}
-          onFit={() => runtime.current?.fit()}
-        />
+        {summary.status === 'complete' ? (
+          <CompletionBanner
+            canGoHarder={nextHarderCount(playConfig.targetCount) !== null}
+            onAgainHarder={() => {
+              void handleAgainHarder();
+            }}
+            onDone={() => {
+              void handleDone();
+            }}
+          />
+        ) : (
+          <TopBar
+            status={summary.status}
+            placed={summary.placed}
+            total={summary.total}
+            cut={summary.cut}
+            onFit={() => runtime.current?.fit()}
+            onPause={() => setPauseOpen(true)}
+          />
+        )}
 
         {summary.status === 'playing' && (
           <HintButton
@@ -541,7 +741,32 @@ export function App(): React.ReactElement {
         onPullSelection={(pieceIds) => {
           runtime.current?.pullOut(pieceIds);
         }}
+        onScroll={(top) => {
+          trayScrollRef.current = top;
+        }}
+        initialScrollTop={restoreSnapshot?.tray.scroll}
       />
+
+      {/* An overlay, never a replacement: the board stays mounted underneath,
+          so pausing does not tear down `PlayRuntime` and re-cut on resume. */}
+      {pauseOpen && (
+        <PauseSheet
+          puzzleId={playConfig.puzzleId}
+          onResume={() => setPauseOpen(false)}
+          onRestart={handleRestart}
+          onLeave={handleLeave}
+          assists={liveAssists ?? playConfig.assists}
+          difficulty={liveDifficulty ?? playConfig.difficulty}
+          onAssistsChange={(assists) => {
+            setLiveAssists(assists);
+            runtime.current?.setAssists(assists);
+          }}
+          onDifficultyChange={(difficulty) => {
+            setLiveDifficulty(difficulty);
+            runtime.current?.setDifficulty(difficulty);
+          }}
+        />
+      )}
     </div>
   );
 }
