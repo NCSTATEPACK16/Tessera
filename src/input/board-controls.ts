@@ -36,6 +36,8 @@ export interface BoardControlsOptions {
   getCamera: () => Camera;
   setCamera: (camera: Camera) => void;
   getBoard: () => { w: number; h: number };
+  /** Zoom floor, in multiples of the fitted board. Large-piece mode raises it. */
+  minRelativeZoom?: number | undefined;
   /** Something changed that the renderer should hear about. */
   onChange: () => void;
   /**
@@ -67,6 +69,7 @@ export class BoardControls {
       getCamera: options.getCamera,
       setCamera: options.setCamera,
       getBoard: options.getBoard,
+      minRelativeZoom: options.minRelativeZoom,
       getFitBounds: () => options.session.contentBounds(),
       attach: false,
     });
