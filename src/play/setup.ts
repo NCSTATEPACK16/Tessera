@@ -10,6 +10,22 @@ import type { SnapDifficulty } from '@/board/snap';
 export const PIECE_COUNT_LADDER = [50, 100, 150, 200, 250] as const;
 export type PieceCount = (typeof PIECE_COUNT_LADDER)[number];
 
+/**
+ * The next rung up, or null once already at (or past) the top of the ladder —
+ * what "puzzle this again, harder" offers.
+ *
+ * Defensive about off-ladder input: it works off the *target* count a puzzle
+ * was configured with, which is always one of the five, but §04's "show the
+ * real computed number" means a realised `cols × rows` could reach here by
+ * mistake, and returning the first rung above it is the sane answer.
+ */
+export function nextHarderCount(current: number): number | null {
+  for (const count of PIECE_COUNT_LADDER) {
+    if (count > current) return count;
+  }
+  return null;
+}
+
 export interface PhotoSize {
   width: number;
   height: number;

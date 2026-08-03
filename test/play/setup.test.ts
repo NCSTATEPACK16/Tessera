@@ -3,6 +3,7 @@ import {
   clampGhostOpacity,
   DEFAULT_PUZZLE_CONFIG,
   GHOST_OPACITY_MAX,
+  nextHarderCount,
   PIECE_COUNT_LADDER,
   pieceScreenSize,
 } from '@/play/setup';
@@ -68,5 +69,34 @@ describe('DEFAULT_PUZZLE_CONFIG', () => {
   it('defaults rotation off and mode classic', () => {
     expect(DEFAULT_PUZZLE_CONFIG.rotation).toBe(false);
     expect(DEFAULT_PUZZLE_CONFIG.mode).toBe('classic');
+  });
+});
+
+describe('nextHarderCount', () => {
+  it('steps to the next rung', () => {
+    expect(nextHarderCount(50)).toBe(100);
+    expect(nextHarderCount(150)).toBe(200);
+  });
+
+  it('returns null once already at the max', () => {
+    expect(nextHarderCount(250)).toBeNull();
+  });
+
+  it('returns null for a value above the max', () => {
+    expect(nextHarderCount(999)).toBeNull();
+  });
+
+  it('finds the first rung above an off-ladder value', () => {
+    expect(nextHarderCount(120)).toBe(150);
+  });
+
+  it('walks the whole ladder and then stops', () => {
+    const walked: number[] = [];
+    let current: number | null = PIECE_COUNT_LADDER[0];
+    while (current !== null) {
+      walked.push(current);
+      current = nextHarderCount(current);
+    }
+    expect(walked).toEqual([...PIECE_COUNT_LADDER]);
   });
 });
