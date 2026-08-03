@@ -35,6 +35,8 @@ test.describe('photo picker and crop', () => {
 
     await expect(page.getByRole('button', { name: 'Use this photo' })).toBeVisible();
     await page.getByRole('button', { name: 'Use this photo' }).click();
+    // Step 5b's setup screen, accepting every default.
+    await page.getByRole('button', { name: 'Start cutting' }).click();
 
     const board = new BoardPage(page);
     await board.waitForCut();
@@ -68,6 +70,7 @@ test.describe('photo picker and crop', () => {
     await rotate.click(); // back to 0 degrees
 
     await page.getByRole('button', { name: 'Use this photo' }).click();
+    await page.getByRole('button', { name: 'Start cutting' }).click();
     const board = new BoardPage(page);
     await board.waitForCut();
     await expect(board.chips.first()).toBeVisible();

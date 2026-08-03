@@ -74,6 +74,10 @@ export class BoardPage {
     await page.goto('/', { waitUntil: 'load' });
     await page.getByRole('button', { name: 'Choose this photo' }).click();
     await page.getByRole('button', { name: 'Use this photo' }).click();
+    // Step 5b's setup screen sits between the crop and the cut. Every default
+    // is accepted here — `DEFAULT_PUZZLE_CONFIG`, 150 pieces, Classic, every
+    // assist off — which is the configuration the rest of the suite assumes.
+    await page.getByRole('button', { name: 'Start cutting' }).click();
     await board.waitForCut();
     return board;
   }

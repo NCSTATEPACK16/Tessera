@@ -224,6 +224,7 @@ export function App(): React.ReactElement {
       targetCount: playConfig.targetCount,
       difficulty: playConfig.difficulty,
       rotation: playConfig.rotation,
+      mode: playConfig.mode,
       assists: playConfig.assists,
       isOverTray: (client) => overTray.current(client),
       isOverShelf: (client) => overShelf.current(client),
