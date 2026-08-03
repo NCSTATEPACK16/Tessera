@@ -26,6 +26,7 @@ import type { AccentTokens } from '@/render/accent';
 import { extractAccent, fallbackAccentTokens } from '@/render/accent';
 import { TrayModel } from '@/tray/tray';
 import {
+  MIN_ZOOM,
   REGION_LENS_ZOOM,
   clampZoom,
   createCamera,
@@ -43,7 +44,7 @@ import { Renderer } from '@/render/renderer';
 import { emptyScene } from '@/render/scene';
 import type { Scene, ScenePiece } from '@/render/scene';
 import type { PuzzleAssists } from '@/play/setup';
-import { packPieces } from '@/persist/snapshot';
+import { packPieces, unpackPieces } from '@/persist/snapshot';
 import type { SessionSnapshot } from '@/persist/snapshot';
 import type { Lens } from '@/tray/lenses';
 
@@ -86,6 +87,14 @@ export interface PlayRuntimeOptions {
   seed: number;
   /** Step 5c: the library/save key for this puzzle instance. */
   puzzleId: string;
+  /**
+   * Step 5c: reopen a saved session instead of starting fresh.
+   *
+   * The cut still runs in full — piece bitmaps are never stored, only
+   * geometry-independent state is. Only the post-cut board/tray/workset/hint
+   * construction diverges.
+   */
+  restore?: { snapshot: SessionSnapshot };
   targetCount: number;
   difficulty?: SnapDifficulty;
   rotation?: boolean;
@@ -190,9 +199,36 @@ export class PlayRuntime {
    */
   private ghostSource: ImageBitmap | null = null;
 
+  /**
+   * The pause sheet changes assists and tolerance mid-session, and
+   * `options` is readonly. These are the live values every read site in this
+   * file uses; `options.assists`/`options.difficulty` are only ever the seed.
+   */
+  private liveAssists: PuzzleAssists;
+  private liveDifficulty: SnapDifficulty;
+
   constructor(private readonly options: PlayRuntimeOptions) {
     this.renderer = new Renderer({ container: options.container });
     this.mode = options.mode ?? 'classic';
+    this.liveAssists = options.assists ?? DEFAULT_ASSISTS;
+    this.liveDifficulty = options.difficulty ?? 'standard';
+  }
+
+  /** Step 5c: the pause sheet's live settings. */
+  setAssists(assists: PuzzleAssists): void {
+    this.liveAssists = assists;
+    // Known gap: `ghostSource` is only copied in `start()`, and only when the
+    // assist was already on, so turning the ghost on mid-session has nothing
+    // to draw. Re-decoding the stored photo here is the follow-up.
+    this.renderer.setGhostUnderlay(this.ghostSource, assists.ghostOpacity);
+    this.renderer.setEdgeHighlight(assists.edgeHighlight);
+    this.controls?.setMinRelativeZoom(assists.largePieceMode ? REGION_LENS_ZOOM : MIN_ZOOM);
+    this.render();
+  }
+
+  setDifficulty(difficulty: SnapDifficulty): void {
+    this.liveDifficulty = difficulty;
+    this.session?.setDifficulty(difficulty);
   }
 
   // -------------------------------------------------------------------------
@@ -201,7 +237,7 @@ export class PlayRuntime {
     try {
       // Before the transfer below detaches it. Costs one full-size bitmap, and
       // only when the player asked for the ghost.
-      if ((this.options.assists?.ghostOpacity ?? 0) > 0) {
+      if (this.liveAssists.ghostOpacity > 0) {
         this.ghostSource = this.copySource(this.options.source);
       }
 
@@ -336,8 +372,8 @@ export class PlayRuntime {
       // step 8's). The save format records the setup mode it was built from.
       mode: this.options.mode ?? 'classic',
       rotation: this.options.rotation ?? false,
-      difficulty: this.options.difficulty ?? 'standard',
-      assists: this.options.assists ?? DEFAULT_ASSISTS,
+      difficulty: this.liveDifficulty,
+      assists: this.liveAssists,
       pieces: packPieces(session.board),
       pieceCount: session.board.pieceCount,
       clusters: [...session.board.clusters.values()].map((c) => ({
@@ -616,15 +652,29 @@ export class PlayRuntime {
   private build(cut: CutPiece[]): void {
     for (const piece of cut) this.pieces.set(piece.id, piece);
 
+    const restore = this.options.restore;
+
     const session = new PlaySession({
       pieces: cut,
       boardW: this.boardW,
       boardH: this.boardH,
       pathScale: this.pathScale,
-      ...(this.options.difficulty ? { difficulty: this.options.difficulty } : {}),
+      difficulty: this.liveDifficulty,
       ...(this.options.rotation !== undefined ? { rotation: this.options.rotation } : {}),
       ...(this.options.reducedMotion !== undefined
         ? { reducedMotion: this.options.reducedMotion }
+        : {}),
+      ...(restore
+        ? {
+            restoreBoard: {
+              clusters: restore.snapshot.clusters,
+              pieces: unpackPieces(restore.snapshot.pieces, restore.snapshot.pieceCount),
+            },
+            restoreInTray: restore.snapshot.tray.trayIds,
+            restoreHintsUsed: restore.snapshot.hintsUsed,
+            restoreCleanRun: restore.snapshot.cleanRun,
+            startedAtMs: performance.now() - restore.snapshot.timer.elapsedMs,
+          }
         : {}),
       onEvent: (event) => this.onPlayEvent(event),
     });
@@ -636,7 +686,19 @@ export class PlayRuntime {
       locationOf: (id) => session.locationOf(id),
     });
 
-    const assists = this.options.assists;
+    if (restore) {
+      this.tray.restoreOrder(restore.snapshot.tray.order);
+      this.tray.restorePinned(restore.snapshot.tray.pinned);
+      // A Workset is not a cluster, so it is replayed rather than restored —
+      // `create` is the only way in, and membership rules apply as they would
+      // have on the original pull-out.
+      for (const workset of restore.snapshot.worksets) {
+        const id = session.worksets.create(workset.pieceIds, workset.label);
+        if (id !== -1 && workset.collapsed) session.worksets.setCollapsed(id, true);
+      }
+    }
+
+    const assists = this.liveAssists;
 
     this.controls = new BoardControls({
       element: this.options.container,
@@ -649,7 +711,7 @@ export class PlayRuntime {
         this.scheduleRegion();
       },
       getBoard: () => ({ w: this.boardW, h: this.boardH }),
-      minRelativeZoom: assists?.largePieceMode ? REGION_LENS_ZOOM : undefined,
+      minRelativeZoom: assists.largePieceMode ? REGION_LENS_ZOOM : undefined,
       onChange: () => this.wake(),
       interceptRelease: ({ clusterId, client }) => {
         this.options.onDragStateChange?.(false);
@@ -673,12 +735,25 @@ export class PlayRuntime {
     // purpose — a broken accent is a wrong colour, never a blocked puzzle.
     const accent = extractAccent(cut, this.options.seed);
     this.renderer.setAccent(accent.accent);
-    this.renderer.setGhostUnderlay(this.ghostSource, assists?.ghostOpacity ?? 0);
-    this.renderer.setEdgeHighlight(assists?.edgeHighlight ?? false);
-    this.patch({ status: 'playing', placed: 0, total: session.summary.total, accent });
+    this.renderer.setGhostUnderlay(this.ghostSource, assists.ghostOpacity);
+    this.renderer.setEdgeHighlight(assists.edgeHighlight);
+    this.patch({
+      status: 'playing',
+      placed: session.summary.placed,
+      total: session.summary.total,
+      hintsUsed: session.summary.hintsUsed,
+      accent,
+    });
     this.frameContent();
     this.render();
     this.scheduleRegion();
+
+    // After `frameContent`, deliberately: a restore should reopen exactly
+    // where the player left it, not on a freshly fitted view.
+    if (restore) {
+      this.camera = { ...restore.snapshot.camera };
+      this.render();
+    }
   }
 
   private onPlayEvent(event: PlayEvent): void {
@@ -796,7 +871,7 @@ export class PlayRuntime {
       zoom: clampZoom(
         framed.zoom,
         fitScale(this.viewport, this.boardW, this.boardH),
-        this.options.assists?.largePieceMode ? REGION_LENS_ZOOM : undefined,
+        this.liveAssists.largePieceMode ? REGION_LENS_ZOOM : undefined,
       ),
     };
   }

@@ -50,7 +50,7 @@ export class CameraControls {
   private lastTapPoint: Point = { x: 0, y: 0 };
 
   private readonly attached: boolean;
-  private readonly minRelativeZoom: number;
+  private minRelativeZoom: number;
 
   constructor(private readonly options: CameraControlsOptions) {
     this.minRelativeZoom = options.minRelativeZoom ?? MIN_ZOOM;
@@ -63,6 +63,15 @@ export class CameraControls {
     el.addEventListener('pointerup', this.onPointerUp);
     el.addEventListener('pointercancel', this.onPointerUp);
     el.addEventListener('wheel', this.onWheel, { passive: false });
+  }
+
+  /**
+   * Step 5c: the pause sheet's Large piece mode, changed mid-session. The
+   * floor applies from the next clamp — nothing re-clamps the live camera
+   * here, so turning it on never yanks the view out from under a drag.
+   */
+  setMinRelativeZoom(value: number): void {
+    this.minRelativeZoom = value;
   }
 
   destroy(): void {
