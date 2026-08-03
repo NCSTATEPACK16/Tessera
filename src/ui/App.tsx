@@ -44,6 +44,24 @@ import type { SessionSnapshot } from '@/persist/snapshot';
 import { Library } from './Library';
 import { PauseSheet } from './PauseSheet';
 import { CompletionBanner } from './CompletionBanner';
+import { dailyFor, dailyPuzzleId, isDailyPuzzleId } from '@/daily/daily';
+import { localDateKey, monthKeyOf } from '@/daily/dates';
+import {
+  canRepair as canRepairStreak,
+  emptyStreak,
+  isDone,
+  monthGrid,
+  recordCompletion,
+  repair as repairStreak,
+  settle,
+  streakLength,
+  weekPips,
+} from '@/daily/streak';
+import type { StreakState } from '@/daily/streak';
+import { loadStreak, saveStreak } from '@/persist/daily';
+import { DailyHub } from './DailyHub';
+import type { StreakTone } from './StreakFlame';
+import { DEFAULT_PUZZLE_CONFIG } from '@/play/setup';
 
 /**
  * Reads a File's natural pixel size without allocating a persistent
@@ -112,6 +130,20 @@ async function decodeUpload(file: File): Promise<ImageBitmap> {
   }
 }
 
+/**
+ * The daily's fixed configuration. Everyone plays the same puzzle, so there is
+ * no setup screen in the daily flow and nothing here is a player choice.
+ * Classic (the hint economy is part of the shared challenge), rotation off
+ * (`PLAN.md`: rotation must never be the default), standard tolerance, no
+ * assists.
+ */
+const DAILY_CONFIG = {
+  mode: 'classic',
+  rotation: false,
+  difficulty: DEFAULT_PUZZLE_CONFIG.difficulty,
+  assists: DEFAULT_PUZZLE_CONFIG.assists,
+} as const;
+
 export function App(): React.ReactElement {
   const boardRef = useRef<HTMLDivElement>(null);
   const trayRef = useRef<HTMLDivElement>(null);
@@ -128,8 +160,22 @@ export function App(): React.ReactElement {
    * IndexedDB read on mount that decides between the library and the picker —
    * a first-time player must never see an empty library apologising to them.
    */
-  type Screen = 'checking' | 'library' | 'setup' | 'playing';
+  type Screen = 'checking' | 'daily' | 'library' | 'setup' | 'playing';
   const [screen, setScreen] = useState<Screen>('checking');
+  /**
+   * Read once per mount. A session that survives local midnight keeps
+   * yesterday's key until the next load, which is correct: the daily the
+   * player is holding is the one they started.
+   */
+  const [today] = useState(() => localDateKey(new Date()));
+  const [streak, setStreak] = useState<StreakState>(() => emptyStreak());
+  /** Where "Done" and "Leave" go back to. */
+  const originScreen = useRef<'daily' | 'library' | 'setup'>('setup');
+  /** Guards the completion recording against re-firing on every render. */
+  const recordedDaily = useRef<string | null>(null);
+  const [dailyResult, setDailyResult] = useState<{ streak: number; freezeEarned: boolean } | null>(
+    null,
+  );
   const [libraryEntries, setLibraryEntries] = useState<readonly LibraryEntry[]>([]);
   const [restoreSnapshot, setRestoreSnapshot] = useState<SessionSnapshot | null>(null);
   const [pauseOpen, setPauseOpen] = useState(false);
@@ -243,6 +289,21 @@ export function App(): React.ReactElement {
     });
   }, []);
 
+  // Settle on open, once: `settle` walks up to yesterday, spending banked
+  // freezes on gaps, and is idempotent within a day. The write-back only
+  // happens when it actually changed something, so a player who opens the app
+  // ten times writes once.
+  useEffect(() => {
+    void (async () => {
+      const loaded = await loadStreak();
+      const settled = settle(loaded, today);
+      setStreak(settled.state);
+      if (settled.freezesSpent > 0 || settled.state.settledThrough !== loaded.settledThrough) {
+        await saveStreak(settled.state);
+      }
+    })();
+  }, [today]);
+
   // -- the setup flow: picker -> crop -> playConfig ---------------------------
 
   const handlePhotoChosen = useCallback(async (choice: PhotoChoice): Promise<void> => {
@@ -293,6 +354,7 @@ export function App(): React.ReactElement {
       if (setupPhase.kind !== 'configuring') return;
       setRestoreSnapshot(null);
       photoSavedRef.current = false;
+      setDailyResult(null);
       setLiveAssists(config.assists);
       setLiveDifficulty(config.difficulty);
       setPlayConfig({
@@ -301,6 +363,7 @@ export function App(): React.ReactElement {
         puzzleId: setupPhase.puzzleId,
         ...config,
       });
+      originScreen.current = 'setup';
       setScreen('playing');
     },
     [setupPhase],
@@ -318,9 +381,12 @@ export function App(): React.ReactElement {
       setRestoreSnapshot(entry.snapshot);
       setLiveAssists(entry.snapshot.assists);
       setLiveDifficulty(entry.snapshot.difficulty);
+      setDailyResult(null);
       useChrome.getState().setLens(entry.snapshot.tray.lens, entry.snapshot.tray.lensArg);
       // Already stored — never rewrite it.
       photoSavedRef.current = true;
+      // A daily opened from a library card still belongs to the library.
+      if (originScreen.current !== 'daily') originScreen.current = 'library';
       setPlayConfig({
         source: bitmap,
         seed: entry.snapshot.seed,
@@ -335,6 +401,50 @@ export function App(): React.ReactElement {
     },
     [libraryEntries],
   );
+
+  // -- the daily -------------------------------------------------------------
+
+  const daily = useMemo(() => dailyFor(today), [today]);
+
+  /**
+   * Straight from the hub onto a board: no picker, no crop, no setup screen.
+   * Resumes an in-progress daily when one is saved, exactly as a library card
+   * does, because a daily *is* a library entry — same stores, same
+   * `Board.restore`, same snapshot.
+   */
+  const handleStartDaily = useCallback(async (): Promise<void> => {
+    const existing = libraryEntries.find((entry) => entry.puzzleId === daily.puzzleId);
+    originScreen.current = 'daily';
+
+    if (existing) {
+      await handleOpenLibraryEntry(daily.puzzleId);
+      return;
+    }
+
+    const source = await renderCuratedPhoto(daily.photoId);
+    setRestoreSnapshot(null);
+    photoSavedRef.current = false;
+    setDailyResult(null);
+    setLiveAssists(DAILY_CONFIG.assists);
+    setLiveDifficulty(DAILY_CONFIG.difficulty);
+    setPlayConfig({
+      source,
+      seed: daily.seed,
+      puzzleId: daily.puzzleId,
+      targetCount: daily.targetCount,
+      mode: DAILY_CONFIG.mode,
+      rotation: DAILY_CONFIG.rotation,
+      difficulty: DAILY_CONFIG.difficulty,
+      assists: DAILY_CONFIG.assists,
+    });
+    setScreen('playing');
+  }, [daily, libraryEntries, handleOpenLibraryEntry]);
+
+  const handleRepair = useCallback((): void => {
+    const repaired = repairStreak(streak, today);
+    setStreak(repaired);
+    void saveStreak(repaired);
+  }, [streak, today]);
 
   // -- autosave --------------------------------------------------------------
 
@@ -384,7 +494,7 @@ export function App(): React.ReactElement {
     // source would render `PuzzleSetup` and throw.
     setPauseOpen(false);
     setSetupPhase({ kind: 'picker', error: null });
-    setScreen('library');
+    setScreen(originScreen.current === 'daily' ? 'daily' : 'library');
     setPlayConfig(null);
     await saveInFlight.current.catch(() => {});
     setLibraryEntries(await listLibrary());
@@ -404,6 +514,8 @@ export function App(): React.ReactElement {
     await deleteLibraryEntry(playConfig.puzzleId);
     setRestoreSnapshot(null);
     photoSavedRef.current = false;
+    setDailyResult(null);
+    recordedDaily.current = null;
     setPlayConfig({
       source: bitmap,
       seed,
@@ -430,7 +542,9 @@ export function App(): React.ReactElement {
     // worker detached long ago, and it throws on the spot.
     setSetupPhase({ kind: 'picker', error: null });
     setLibraryEntries(entries);
-    setScreen(entries.length > 0 ? 'library' : 'setup');
+    setScreen(
+      originScreen.current === 'daily' ? 'daily' : entries.length > 0 ? 'library' : 'setup',
+    );
     setPlayConfig(null);
   }, [playConfig]);
 
@@ -570,6 +684,24 @@ export function App(): React.ReactElement {
     useChrome.getState().setShelf(runtime.current?.tray?.pinned ?? []);
   }, [summary]);
 
+  // The streak is credited at the moment of completion, not on "Done": a
+  // player who finishes and then backgrounds the tab has still played today.
+  // Guarded by a ref rather than by state so a re-render cannot double-count.
+  useEffect(() => {
+    if (summary.status !== 'complete') return;
+    const puzzleId = playConfig?.puzzleId;
+    if (!puzzleId || !isDailyPuzzleId(puzzleId)) return;
+    if (recordedDaily.current === puzzleId) return;
+    recordedDaily.current = puzzleId;
+
+    const dateKey = puzzleId.slice('daily-'.length);
+    const result = recordCompletion(streak, dateKey);
+    if (result.alreadyDone) return;
+    setStreak(result.state);
+    void saveStreak(result.state);
+    setDailyResult({ streak: result.streak, freezeEarned: result.freezeEarned });
+  }, [summary.status, playConfig, streak]);
+
   // §13: the extracted accent replaces the fallback wherever chrome reads
   // `var(--accent)`/`var(--color-accent)`. Set on the root rather than baked
   // into `theme.css`'s `@theme` block, which is a build-time constant — this
@@ -619,14 +751,73 @@ export function App(): React.ReactElement {
   // A blank frame while the one IndexedDB read resolves.
   if (screen === 'checking') return <div className="h-full w-full bg-[var(--mat-void)]" />;
 
+  const streakCount = streakLength(streak, today);
+  const streakTone: StreakTone =
+    streak.completed.length === 0
+      ? 'none'
+      : streakCount === 0
+        ? 'broken'
+        : isDone(streak, today)
+          ? 'alive'
+          : 'at-risk';
+
+  if (screen === 'daily') {
+    const todaysEntry = libraryEntries.find((entry) => entry.puzzleId === daily.puzzleId);
+    return (
+      <DailyHub
+        daily={daily}
+        dateLabel={new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        })}
+        monthLabel={new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
+          month: 'long',
+          year: 'numeric',
+        })}
+        streak={streakCount}
+        freezes={streak.freezes}
+        tone={streakTone}
+        pips={weekPips(streak, today)}
+        grid={monthGrid(streak, monthKeyOf(today), today)}
+        progress={
+          todaysEntry
+            ? { placed: todaysEntry.snapshot.placed, total: todaysEntry.snapshot.total }
+            : null
+        }
+        progressThumbnail={todaysEntry?.thumbnailBlob ?? null}
+        doneToday={isDone(streak, today)}
+        canRepair={canRepairStreak(streak, today)}
+        onRepair={handleRepair}
+        onStart={() => {
+          void handleStartDaily();
+        }}
+        onLibrary={() => setScreen('library')}
+        onNewPuzzle={() => {
+          originScreen.current = 'setup';
+          setSetupPhase({ kind: 'picker', error: null });
+          setScreen('setup');
+        }}
+      />
+    );
+  }
+
   if (screen === 'library') {
+    // Today's daily is offered on the hub, not here — one puzzle, one place to
+    // start it. Yesterday's unfinished daily is no longer "today's" and shows
+    // as an ordinary card, which is why nothing is ever deleted to achieve this.
+    const shelved = libraryEntries.filter((entry) => entry.puzzleId !== dailyPuzzleId(today));
     return (
       <Library
-        entries={libraryEntries}
+        entries={shelved}
+        streak={streakCount}
+        streakTone={streakTone}
+        onDaily={() => setScreen('daily')}
         onOpen={(puzzleId) => {
           void handleOpenLibraryEntry(puzzleId);
         }}
         onNewPuzzle={() => {
+          originScreen.current = 'setup';
           setSetupPhase({ kind: 'picker', error: null });
           setScreen('setup');
         }}
@@ -636,7 +827,13 @@ export function App(): React.ReactElement {
 
   if (!playConfig) {
     if (setupPhase.kind === 'picker') {
-      return <PhotoPicker onPhotoChosen={handlePhotoChosen} error={setupPhase.error} />;
+      return (
+        <PhotoPicker
+          onPhotoChosen={handlePhotoChosen}
+          error={setupPhase.error}
+          onDaily={() => setScreen('daily')}
+        />
+      );
     }
     if (setupPhase.kind === 'cropping') {
       return (
