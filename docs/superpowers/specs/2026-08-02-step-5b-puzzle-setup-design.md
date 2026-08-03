@@ -42,8 +42,8 @@ an undefined assist can't be built or tested.
 - **Snap tolerance selector** — Precise / Standard / Generous. Zero new engine work: `difficulty:
   SnapDifficulty` is already a `PlaySession`/`PlayRuntimeOptions` field, consumed by
   `resolveSnap`'s `SNAP_TOLERANCE` lookup. This control is UI-only.
-- **Ghost underlay (0–30%)** — a dimmed full copy of the source photo, composited into the mat
-  layer beneath every piece, at a slider-controlled opacity. Off (0%) by default.
+- **Ghost underlay (0–30%)** — a dimmed full copy of the source photo, drawn beneath the placed
+  pieces at a slider-controlled opacity. Off (0%) by default.
 - **Edge highlight** — every loose and placed piece's cut-edge silhouette is stroked more crisply,
   making tab/socket shapes easier to read for matching. (Not to be confused with the existing
   corner-notch glyph that marks border/frame pieces in the tray — unrelated, untouched.)
@@ -110,15 +110,25 @@ New screen, styled like `PhotoPicker.tsx`/`PhotoCrop.tsx` (existing `theme.css` 
 ### `src/render/renderer.ts`
 
 - `setGhostUnderlay(bitmap: ImageBitmap | null, opacity: number)` — mirrors `setAccent`'s call
-  shape. `paintMat` composites the bitmap at `opacity` when set; redrawn only on resize or when
-  this setter is called again (mat's existing "redrawn on resize" cadence, per §03), never per
-  frame.
-- Edge-highlight stroke pass: a boolean flag consulted in the existing per-piece draw code. Loose
-  pieces (dynamic layer, every frame while active, typically <20 objects) get the stroke added
-  directly in that loop using the piece's already-cached `Path2D` — no new geometry. Placed pieces
-  (baked into the static-layer bitmap) get the stroke added at the same trigger the static layer
-  already redraws on — piece placement — so no per-frame cost is added, only marginally more work
-  at the (infrequent) placement event.
+  shape. Drawn inside `paintStatic`, camera-transformed, **before** `drawBoardOutline`/`drawPieces`
+  so it sits under placed pieces — not in `paintMat`, which never applies the camera transform and
+  has no notion of where the board sits on screen (it's a viewport-filling texture, unaware of pan
+  or zoom). `paintStatic` already re-invalidates on every camera move and on placement (`draw()`'s
+  `placedChanged || cameraMoved || boardChanged` check), which is exactly the cadence a
+  camera-tracking ghost image needs — no new invalidation trigger required.
+- Edge-highlight stroke pass: **there is no pre-cached `Path2D` anywhere in the renderer today** —
+  pieces are drawn with `ctx.drawImage(piece.bitmap, ...)` in the shared `drawPieces` loop, and
+  `piece.path` (a plain-data `CubicPath`, in bitmap-local image-pixel space) is otherwise only
+  consumed by `session.ts` for hit-test polygons. The stroke pass converts `piece.path` via the
+  existing `toPath2D()` helper (`@/core/geom`, already used by `raster.ts` for the baked bevel), and
+  caches the result in a new `Map<PieceId, Path2D>` on the `Renderer` (built lazily on first draw
+  per piece — the path never changes for a piece's lifetime, so the cache never invalidates within
+  a puzzle). Stroked with the same translate/rotate transform `drawPieces`' rotated branch already
+  uses, scaled by `1 / pathScale` (the same conversion `polygonFromPath` uses for hit-testing) so
+  the stroke aligns exactly with the drawn bitmap, and `ctx.lineWidth` divided by `camera.zoom` so
+  the stroke reads as a constant screen-space width regardless of zoom. Applied in both
+  `paintDynamic` (loose pieces, every frame, typically <20 objects — cheap) and `paintStatic`
+  (placed pieces — costs nothing extra per frame since it only redraws when static already does).
 
 ### `src/render/camera.ts`
 
