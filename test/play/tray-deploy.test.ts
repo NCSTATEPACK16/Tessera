@@ -254,16 +254,6 @@ describe('worksets', () => {
     expect(play.worksets.get(group)?.pieceIds).toEqual(expect.arrayContaining([c, d, e]));
   });
 
-  it('a collapsed workset draws nothing and cannot be picked up', () => {
-    const play = session();
-    const group = play.pullOut(pulled(), spread);
-    play.setWorksetCollapsed(group, true);
-
-    const [a] = pulled();
-    expect(play.scene().loose.map((p) => p.id)).not.toContain(a);
-    expect(play.pickCluster({ x: 20.5, y: 20.5 })).toBeNull();
-  });
-
   it('a piece released well clear of its group leaves it (the miss branch)', () => {
     const play = session();
     const group = play.pullOut(pulled(), spread);

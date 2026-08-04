@@ -182,9 +182,9 @@ export class PlaySession {
    * puzzle appears to solve itself. `rebuild`, `scene`, and `contentBounds` all
    * consult this set, and a test asserts a full tray renders nothing.
    *
-   * Two predicates gate the mat: `inTray` and `worksets.isHidden`. Both are
-   * consulted in `rebuild`, `scene`, and `contentBounds`, and honouring one
-   * without the other is how the board comes to disagree with itself.
+   * `inTray` is the mat's one gate, consulted in `rebuild`, `scene`, and
+   * `contentBounds`. If a second predicate is ever added, it must be honoured
+   * in all three places or the board comes to disagree with itself.
    */
   private readonly inTray = new Set<PieceId>();
 
@@ -328,7 +328,6 @@ export class PlaySession {
       // nothing — but it would also make a *full* tray read as "the board is the
       // content", which is right by accident rather than by decision.
       if (this.inTray.has(piece.id)) continue;
-      if (this.worksets.isHidden(piece.id)) continue;
       const origin = this.board.worldOf(piece.id);
       if (origin.x < minX) minX = origin.x;
       if (origin.y < minY) minY = origin.y;
@@ -348,9 +347,6 @@ export class PlaySession {
       if (this.board.isPlaced(piece.id)) continue;
       // Tray pieces likewise — they are not on the mat to be touched.
       if (this.inTray.has(piece.id)) continue;
-      // A collapsed group's members are not drawn, so they must not be pickable
-      // either — index one without drawing it and the player grabs thin air.
-      if (this.worksets.isHidden(piece.id)) continue;
       targets.push(this.hitPiece(piece.id));
     }
     this.index.rebuild(targets);
@@ -432,12 +428,6 @@ export class PlaySession {
     return id;
   }
 
-  setWorksetCollapsed(worksetId: number, collapsed: boolean): void {
-    this.worksets.setCollapsed(worksetId, collapsed);
-    this.rebuild();
-    this.emit({ type: 'worksetChanged' });
-  }
-
   /** A piece's world box — what the group outline is built from. */
   boxOf(pieceId: PieceId): Rect | null {
     if (this.inTray.has(pieceId)) return null;
@@ -450,26 +440,6 @@ export class PlaySession {
     const group = this.worksets.get(worksetId);
     if (!group) return null;
     return worksetBounds(group.pieceIds, (id) => this.boxOf(id));
-  }
-
-  /**
-   * Drag a whole group by its label chip.
-   *
-   * A loop over members and nothing else, because a Workset stores no position
-   * of its own. There is no group frame to keep in step.
-   */
-  moveWorksetBy(worksetId: number, dx: number, dy: number): void {
-    const group = this.worksets.get(worksetId);
-    if (!group) return;
-
-    const moved = new Set<number>();
-    for (const pieceId of group.pieceIds) {
-      const clusterId = this.board.clusterIdOf(pieceId);
-      if (moved.has(clusterId)) continue;
-      moved.add(clusterId);
-      this.board.moveClusterBy(clusterId, dx, dy);
-      this.syncCluster(clusterId);
-    }
   }
 
   /**
@@ -705,10 +675,7 @@ export class PlaySession {
       groups.push({
         id: group.id,
         label: group.label,
-        collapsed: group.collapsed,
-        // A collapsed group has no drawn members, so its box is the chip's
-        // anchor and nothing more — the outline shrinks to the label.
-        bounds: group.collapsed ? { ...bounds, w: 0, h: 0 } : bounds,
+        bounds,
         kind: 'workset',
       });
     }
@@ -719,8 +686,6 @@ export class PlaySession {
       // The tray is not the mat. A piece here would draw itself sitting in its
       // own slot, and the board would look solved before it was touched.
       if (this.inTray.has(piece.id)) continue;
-      // Collapsed to the chip, to reclaim mat space (§05).
-      if (this.worksets.isHidden(piece.id)) continue;
 
       const scenePiece = posed.get(piece.id) ?? this.scenePiece(piece.id);
       if (this.held !== null && this.board.clusterIdOf(piece.id) === this.held) {

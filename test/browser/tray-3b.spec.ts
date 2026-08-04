@@ -398,10 +398,6 @@ test('an idle board carrying a group draws nothing at all', async ({ page }) => 
   // readout, so `watchBoardPaints` counts the clears that begin every layer
   // repaint instead. A group on the mat must not hold the loop open — its
   // outline and its label chip are drawn once and then left alone.
-  //
-  // A *collapsed* group is deliberately not covered: `toggleGroupCollapsed` is
-  // reachable from no gesture in the app, and a spec that reached past the UI to
-  // call it would be testing the runtime rather than the product.
   await watchBoardPaints(page);
   const board = await BoardPage.open(page);
   await pullOut(board, page, 5);

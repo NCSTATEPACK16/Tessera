@@ -10,6 +10,8 @@ import { describe, expect, it } from 'vitest';
 import { Board, createBoard } from '@/board/board';
 import type { BoardInput } from '@/board/board';
 import { packPieces, unpackPieces } from '@/persist/snapshot';
+import type { SessionSnapshot } from '@/persist/snapshot';
+import { WorksetStore } from '@/play/workset';
 
 function threePieceInput(): BoardInput[] {
   return [
@@ -79,5 +81,36 @@ describe('packPieces / unpackPieces', () => {
     const packed = packPieces(board);
     expect(packed).not.toMatch(/[{[]/);
     expect(typeof packed).toBe('string');
+  });
+});
+
+describe('worksets in the save format', () => {
+  it('restores a snapshot written before collapse was removed', () => {
+    // Exactly the shape 5c and step 6 wrote. `PlayRuntime.restore` replays a
+    // workset with `WorksetStore.create(pieceIds, label)` — it never reads
+    // `collapsed` off the saved entry, so the extra key must be ignored, not
+    // rejected: §14, "losing progress is unforgivable."
+    const legacy = {
+      id: 1,
+      label: 'the roof',
+      collapsed: true,
+      pieceIds: [3, 4],
+    } as unknown as SessionSnapshot['worksets'][number];
+
+    const store = new WorksetStore();
+    const id = store.create(legacy.pieceIds, legacy.label);
+
+    expect(store.get(id)?.label).toBe('the roof');
+    expect(store.get(id)?.pieceIds).toEqual([3, 4]);
+    expect(store.get(id)).not.toHaveProperty('collapsed');
+  });
+
+  it('the type carries no collapsed field', () => {
+    const written: SessionSnapshot['worksets'][number] = {
+      id: 1,
+      label: 'the roof',
+      pieceIds: [3, 4],
+    };
+    expect(written).not.toHaveProperty('collapsed');
   });
 });

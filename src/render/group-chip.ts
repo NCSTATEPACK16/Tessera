@@ -33,22 +33,17 @@ export const GROUP_CHIP = {
   font: '11px ui-monospace, monospace',
 } as const;
 
-/** What the chip reads. A collapsed group is *only* its chip, so it says so. */
-export function groupChipText(label: string, collapsed: boolean): string {
-  return collapsed ? `${label} ⌄` : label;
+/** What the chip reads. */
+export function groupChipText(label: string): string {
+  return label;
 }
 
 /** The chip's screen rect, anchored to the top-left of the group's bounds. */
-export function groupChipRect(
-  label: string,
-  collapsed: boolean,
-  anchor: Point,
-  measure: (text: string) => number,
-): Rect {
+export function groupChipRect(label: string, anchor: Point, measure: (text: string) => number): Rect {
   return {
     x: anchor.x,
     y: anchor.y - GROUP_CHIP.height - GROUP_CHIP.gap,
-    w: measure(groupChipText(label, collapsed)) + GROUP_CHIP.padX * 2,
+    w: measure(groupChipText(label)) + GROUP_CHIP.padX * 2,
     h: GROUP_CHIP.height,
   };
 }

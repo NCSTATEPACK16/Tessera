@@ -59,13 +59,11 @@ Break any of these and something downstream breaks in a way that looks like a di
   `workset.ts` exists. **A Workset stores no position** — its bounds derive from its members every
   frame, because a stored one would disagree with the pieces the first time a member moved.
 - **A piece is in at most one Workset**, and membership ends on merge, on return to tray, or on
-  proximity drop. Two predicates gate the mat — `inTray` and `worksets.isHidden` — and both are
-  consulted in `rebuild`, `scene`, and `contentBounds`. Honour one without the other and the player
-  grabs invisible pieces.
-- **Group collapse is designed-and-deferred, not abandoned.** `PlaySession.moveWorksetBy`,
-  `PlayRuntime.toggleGroupCollapsed`, `Renderer.drawGroupChips`'s collapsed branch, and
-  `WorksetStore.isHidden` have no gesture wired to them yet — the only tap a group chip answers is
-  rename. See `PLAN.md`'s 3b entry for what's carried forward.
+  proximity drop. `inTray` is the mat's one gate, consulted in `rebuild`, `scene`, and
+  `contentBounds`. If a second predicate is ever added, it must be honoured in all three places or
+  the player grabs invisible pieces — this is what happened to `worksets.isHidden` (group collapse)
+  until Plan 0 deleted the surface entirely: designed-and-deferred in 3b, never given a gesture, and
+  removed rather than left a third time. A group chip's only tap is rename.
 - **Pinning is an attribute, not a location.** A piece is still in exactly one of `tray`, `mat`, or
   placed. A pinned chip leaves every lens and appears once, on the shelf.
 - **The chip cedes the vertical axis to the browser** — `touch-action: pan-y`, and drag-out commits

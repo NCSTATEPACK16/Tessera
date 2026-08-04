@@ -31,7 +31,7 @@ export interface SessionSnapshot {
   pieces: string;
   pieceCount: number;
   clusters: BoardClusterSnapshot[];
-  worksets: { id: number; label: string; collapsed: boolean; pieceIds: PieceId[] }[];
+  worksets: { id: number; label: string; pieceIds: PieceId[] }[];
   camera: { x: number; y: number; zoom: number };
   tray: {
     order: PieceId[];

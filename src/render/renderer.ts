@@ -639,7 +639,7 @@ export class Renderer {
     const zoom = this.camera.zoom;
     ctx.save();
     for (const group of groups) {
-      const pad = group.collapsed ? 0 : 0.25;
+      const pad = 0.25;
       const { x, y, w, h } = group.bounds;
 
       ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
@@ -654,7 +654,7 @@ export class Renderer {
   }
 
   /**
-   * The mono label chip (§05), and the whole of a collapsed group.
+   * The mono label chip (§05).
    *
    * Drawn in *screen* space rather than world space: a label that scaled with
    * zoom would be unreadable at 0.5× and absurd at 4×, and it is a piece of
@@ -674,10 +674,10 @@ export class Renderer {
         x: group.bounds.x,
         y: group.bounds.y,
       });
-      const text = groupChipText(group.label, group.collapsed);
+      const text = groupChipText(group.label);
       // The same function `PlayRuntime.groupChipAt` calls, so the tap target
       // cannot drift from the thing under the finger.
-      const rect = groupChipRect(group.label, group.collapsed, at, (t) => ctx.measureText(t).width);
+      const rect = groupChipRect(group.label, at, (t) => ctx.measureText(t).width);
 
       ctx.fillStyle = 'rgba(20, 20, 22, 0.86)';
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';

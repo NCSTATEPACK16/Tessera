@@ -388,7 +388,6 @@ export class PlayRuntime {
       worksets: session.worksets.all().map((w) => ({
         id: w.id,
         label: w.label,
-        collapsed: w.collapsed,
         pieceIds: [...w.pieceIds],
       })),
       camera: this.cameraState,
@@ -599,9 +598,7 @@ export class PlayRuntime {
         x: group.bounds.x,
         y: group.bounds.y,
       });
-      const rect = groupChipRect(group.label, group.collapsed, at, (t) =>
-        this.measureChipText(t),
-      );
+      const rect = groupChipRect(group.label, at, (t) => this.measureChipText(t));
       if (
         screen.x >= rect.x &&
         screen.x <= rect.x + rect.w &&
@@ -612,15 +609,6 @@ export class PlayRuntime {
       }
     }
     return null;
-  }
-
-  toggleGroupCollapsed(id: number): void {
-    const session = this.session;
-    const group = session?.worksets.get(id);
-    if (!session || !group) return;
-    session.setWorksetCollapsed(id, !group.collapsed);
-    this.bumpTray();
-    this.wake();
   }
 
   /** Tap-to-rename (§06). A relabel, not a structural change — no tray bump. */
@@ -693,8 +681,7 @@ export class PlayRuntime {
       // `create` is the only way in, and membership rules apply as they would
       // have on the original pull-out.
       for (const workset of restore.snapshot.worksets) {
-        const id = session.worksets.create(workset.pieceIds, workset.label);
-        if (id !== -1 && workset.collapsed) session.worksets.setCollapsed(id, true);
+        session.worksets.create(workset.pieceIds, workset.label);
       }
     }
 
