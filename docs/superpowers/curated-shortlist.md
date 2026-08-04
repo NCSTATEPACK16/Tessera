@@ -1,7 +1,12 @@
 # Curated photo shortlist
 
-**Status:** awaiting approval
+**Status:** approved
 **Target:** ~30 photos, ~10 per shelf. Hero for the guided twelve marked ★.
+
+**Post-approval swap:** `wildflower-garden-dense` (Evelyn Verdín) turned out to be an Unsplash+
+premium photo (served from `plus.unsplash.com`, under a separate paid licence, not the free
+Unsplash License every other row uses) — discovered while resolving download URLs in Task 4, after
+approval. Replaced with `candy-jar-colorful` (Markus Spiske), confirmed standard/free, same shelf.
 **Researched:** 2026-08-03. Every row's source page was fetched directly (not inferred from the
 platform default) to confirm the photographer credit and licence shown on that page.
 
@@ -41,7 +46,7 @@ due. That gap is worth revisiting for the next content pass (see `handoff.md`).
 | marrakech-spice-cones | Marrakech, Spice Cones | dense-and-busy | https://unsplash.com/photos/colorful-spices-displayed-in-conical-piles-at-a-market-XeHV9a4ArdA | Unsplash License | Photo: Diego Fabra / Unsplash |
 | colorful-bookshelf | Colorful Bookshelf | dense-and-busy | https://unsplash.com/photos/a-bookshelf-filled-with-lots-of-colorful-books-nekgbQSkLvo | Unsplash License | Photo: Araix Rand / Unsplash |
 | library-bookshelves | Library Shelves | dense-and-busy | https://unsplash.com/photos/bookshelves-are-filled-with-colorful-books-in-a-library-3L3wWzhAOdY | Unsplash License | Photo: Zoshua Colah / Unsplash |
-| wildflower-garden-dense | Dense Wildflower Garden | dense-and-busy | https://unsplash.com/photos/colorful-wildflowers-bloom-in-a-dense-garden-hWDGhIL-vKQ | Unsplash License | Photo: Evelyn Verdín / Unsplash |
+| candy-jar-colorful | Candy Jar | dense-and-busy | https://unsplash.com/photos/a-jar-filled-with-lots-of-different-colored-candies-mXcUj4VsYnk | Unsplash License | Photo: Markus Spiske / Unsplash |
 
 ## one-animal-close
 

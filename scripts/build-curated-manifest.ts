@@ -17,10 +17,21 @@ import { validateManifest, type CuratedPhoto } from '../src/play/curated.ts';
 
 /** §15's threshold, and the reason this whole function exists. */
 const NEAR_UNIFORM_THRESHOLD = 0.25;
-/** Two pixels within this squared RGB distance count as the same tone. */
-const UNIFORM_TOLERANCE_SQ = 24 * 24 * 3;
-/** Blocks are 16×16; a block is "uniform" when its own variance is under tolerance. */
-const BLOCK = 16;
+/**
+ * Two pixels within this squared RGB distance count as the same tone.
+ *
+ * Retuned from the plan's starting value (24/channel) after running against
+ * the real 30-photo set: at 24/channel every single photo — including a busy
+ * street market and a tiger close-up — came out 'hard', because a 16px block
+ * on a 2560px source is small enough that almost any block not straddling a
+ * hard edge reads as internally uniform. Swept BLOCK×tolerance against the
+ * real set and picked the pair that separates busy/detailed photos
+ * (markets, bookshelves) from genuinely flat-area ones (misty scenes, blurred
+ * animal-portrait backgrounds, calm-water reflections) — 3/channel here.
+ */
+const UNIFORM_TOLERANCE_SQ = 3 * 3 * 3;
+/** Blocks are 32×32 — see the tolerance comment above for why this pair was chosen. */
+const BLOCK = 32;
 
 export function nearUniformFraction(
   pixels: Uint8ClampedArray,
