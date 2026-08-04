@@ -8,24 +8,68 @@
  * same category `CLAUDE.md`'s testing posture puts `renderer.ts` in.
  */
 
+import { CURATED_PHOTOS } from './curated-manifest';
+
+export type CuratedShelf = 'wide-and-calm' | 'dense-and-busy' | 'one-animal-close';
+
+/**
+ * §15: "Each entry needs licence and attribution stored alongside it, surfaced
+ * quietly on the completion card." `validateManifest` is what makes that a
+ * build failure rather than a blank line on a card nobody notices.
+ */
+export interface CuratedLicence {
+  name: string;
+  attribution: string;
+  sourceUrl: string;
+}
+
 export interface CuratedPhoto {
   id: string;
   name: string;
+  /** §15: "browse by feeling, not folder" — a mood for the next forty minutes. */
+  shelf: CuratedShelf;
   width: number;
   height: number;
+  /** Basename under `assets/curated/`. */
+  file: string;
+  licence: CuratedLicence;
+  /** Precomputed at build time, OKLab-derived. Drives nothing yet; §15 wants it ready. */
+  dominant: readonly string[];
+  /**
+   * §15's cuttability rule: over ~25% near-uniform area is tagged 'hard' and
+   * capped at 150, "a badge of honour rather than a bad surprise" — never
+   * rejected outright.
+   */
+  difficulty: 'easy' | 'standard' | 'hard';
+  recommendedCounts: readonly number[];
 }
 
-export const CURATED_PHOTOS: CuratedPhoto[] = [
-  { id: 'aurora-ridge', name: 'Aurora Ridge', width: 2400, height: 1600 },
-  { id: 'harbor-grid', name: 'Harbor Grid', width: 2400, height: 1600 },
-  { id: 'canyon-light', name: 'Canyon Light', width: 1600, height: 2400 },
-  { id: 'orchard-rows', name: 'Orchard Rows', width: 2400, height: 1800 },
-  { id: 'tide-pools', name: 'Tide Pools', width: 2400, height: 1800 },
-  { id: 'glacier-blue', name: 'Glacier Blue', width: 2000, height: 2000 },
-];
+export { CURATED_PHOTOS };
 
 export function curatedPhotoById(id: string): CuratedPhoto | undefined {
   return CURATED_PHOTOS.find((photo) => photo.id === id);
+}
+
+export function photosByShelf(shelf: CuratedShelf): readonly CuratedPhoto[] {
+  return CURATED_PHOTOS.filter((photo) => photo.shelf === shelf);
+}
+
+/** Human-readable problems, empty when the manifest is shippable. */
+export function validateManifest(photos: readonly CuratedPhoto[]): string[] {
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const photo of photos) {
+    if (seen.has(photo.id)) problems.push(`${photo.id}: duplicate id`);
+    seen.add(photo.id);
+    if (!photo.licence.name) problems.push(`${photo.id}: licence.name is empty`);
+    if (!photo.licence.attribution) problems.push(`${photo.id}: licence.attribution is empty`);
+    if (!photo.licence.sourceUrl) problems.push(`${photo.id}: licence.sourceUrl is empty`);
+    if (!photo.file) problems.push(`${photo.id}: file is empty`);
+    if (photo.width <= 0 || photo.height <= 0) {
+      problems.push(`${photo.id}: width and height must be positive`);
+    }
+  }
+  return problems;
 }
 
 /** One deterministic scene per id, distinct enough to tell apart in a thumbnail grid. */
