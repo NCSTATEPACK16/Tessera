@@ -462,6 +462,52 @@ players' IndexedDB already holds snapshots written with the field. **`ClusterSta
 `src/board/board.ts` (the island-cluster field, a different concept from workset collapse) was left
 alone** — it is a separate question this task did not ask.
 
+## 1i. Step 8 landed: completion payoff — the Puzzle Card and the collection wall
+
+Plan `docs/superpowers/plans/2026-08-03-plan-8-completion-payoff.md`, executed section by section.
+Six commits, "Step 8: …". Gates at completion: `npm test` 573/573, `npm run typecheck` clean,
+`npm run build` clean, and the three browser specs that exercise a full solve —
+`completion.spec.ts` (3), `collection-wall.spec.ts` (3), `persistence.spec.ts`'s v2→v3 twin — green
+on dock (phone skips the solve-based ones, as it always has: "one solve is enough").
+
+**What landed.**
+- **`completions` store, db v3, additive.** `openDb`'s guarded `createObjectStore` bumped to 3; the
+  v2→v3 additive bump is asserted directly in `persistence.spec.ts`, the twin of step 6's v1→v2
+  assertion. `src/persist/completions.ts` — `saveCompletion` / `listCompletions` (newest first) /
+  `completionCount` (Plan 9's install-prompt trigger).
+- **The card, split pure/drawn.** `src/play/card.ts` (`layoutCard`, `formatElapsed`) is tested;
+  `src/render/card.ts` (`composeCard`) draws it and is judged by hand. The card image is the
+  **completed board canvas** via the new `PlayRuntime.boardCanvas()`, not the source photo.
+- **`CompletionCard` replaced `CompletionBanner`** (deleted; `grep CompletionBanner src test` is
+  empty). Share is feature-detected (`navigator.canShare({files})`) with a download fallback; a
+  dismissed share sheet does not fall through to a surprise download. `handleDone` became
+  `commitCompletion` → `deleteLibraryEntry`, in that order.
+- **The collection wall** (`src/ui/CollectionWall.tsx`), reachable from the library **and the
+  picker**.
+
+**Judgment calls with no design document behind them** (in §1g's spirit):
+- **Card pixel width 1200, mono advance 0.6, line-height 1.3× size.** All in `card.ts`, all guesses;
+  the layout test only pins order and in-bounds, so these are free to retune once the serif is seen
+  at real size.
+- **Title for an uploaded photo is `"Your photo"`.** An upload has no curated `name`; this is the
+  quiet default. Curated photos use `CuratedPhoto.name` and carry `licence.attribution`.
+- **`photoId` is threaded picker→crop→setup**, because neither the snapshot nor the library entry
+  stores it. A curated puzzle **resumed from a library card** therefore loses its attribution
+  (`photoId` is null on resume) — *except a daily*, which recovers `photoId` from the date in
+  `buildCardMeta`. If a resumed-curated card must credit its photo, the fix is a `photoId` field on
+  `SessionSnapshot`, deliberately out of scope here.
+- **The wall re-composes a tile's card from the stored 320px thumbnail**, not a full-res PNG — the
+  completions row stays small (§17 eviction). Reopened from the wall, again-harder/new-puzzle just
+  close back to the mosaic.
+- **"Collection" on the picker is a plan deviation.** The plan said "reached from the library," but
+  its own tests finish a puzzle and then look for Collection — and a finished-only player lands on
+  the picker, never the library. So the control is on both.
+
+**Standing real-hardware gate** (the open gate since 5a — none of this is answerable in Chromium):
+the **display serif at real size on a phone**, the card's **share sheet on iOS**, and whether the
+wall's **tiles read as a mosaic or a list** at phone density. `test/browser/completion.spec.ts` is
+the slowest file in the suite (~14 min for three solves); it runs dock-only for that reason.
+
 ## 2. What's next — Step 4: Hints and light
 
 **Superseded by sections 1a–1d above** — every item this section describes has landed. Left in place
