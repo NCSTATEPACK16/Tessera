@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BOARD_CLUSTER, createBoard } from '@/board/board';
-import type { BoardInput } from '@/board/board';
+import { BOARD_CLUSTER, Board, createBoard } from '@/board/board';
+import type { BoardInput, BoardSnapshot } from '@/board/board';
 import { buildNeighbourGraph, pieceIdAt } from '@/cut/graph';
 import type { Rect } from '@/core/geom';
 
@@ -286,5 +286,95 @@ describe('candidateSockets', () => {
     const island = board.merge(board.clusterIdOf(id(1, 0)), board.clusterIdOf(id(2, 1)));
 
     expect(board.candidateSockets(island)).toEqual(new Set([id(0, 0), id(1, 1)]));
+  });
+});
+
+describe('Board.restore', () => {
+  function snapshotOf(board: Board): BoardSnapshot {
+    return {
+      clusters: [...board.clusters.values()].map((c) => ({
+        id: c.id,
+        x: c.x,
+        y: c.y,
+        rot: c.rot,
+        kind: c.kind,
+        label: c.label,
+        collapsed: c.collapsed,
+      })),
+      pieces: board.pieces.map((p) => ({
+        id: p.id,
+        clusterId: p.clusterId,
+        localX: p.localX,
+        localY: p.localY,
+      })),
+    };
+  }
+
+  it('reproduces identical worldOf and cluster membership after a round trip', () => {
+    const source = input();
+    const original = createBoard(source);
+
+    // Merge (0,0) and (1,0) into an island, leave (2,1) loose, place (0,1).
+    original.merge(original.clusterIdOf(id(0, 0)), original.clusterIdOf(id(1, 0)));
+    original.moveCluster(original.clusterIdOf(id(0, 0)), 5, 5);
+    original.merge(BOARD_CLUSTER, original.clusterIdOf(id(0, 1)));
+
+    const restored = Board.restore(source, snapshotOf(original));
+
+    for (const piece of original.pieces) {
+      const a = original.worldOf(piece.id);
+      const b = restored.worldOf(piece.id);
+      expect(b.x).toBeCloseTo(a.x, 6);
+      expect(b.y).toBeCloseTo(a.y, 6);
+      expect(restored.clusterIdOf(piece.id)).toBe(original.clusterIdOf(piece.id));
+    }
+    expect(restored.placedCount).toBe(original.placedCount);
+    expect(restored.isPlaced(id(0, 1))).toBe(true);
+    expect(restored.isPlaced(id(2, 1))).toBe(false);
+  });
+
+  it('mints new cluster ids above every restored one', () => {
+    const source = input();
+    const original = createBoard(source);
+    const restored = Board.restore(source, snapshotOf(original));
+    // A merge on the restored board must not collide with an existing id.
+    const survivor = restored.merge(
+      restored.clusterIdOf(id(0, 0)),
+      restored.clusterIdOf(id(1, 0)),
+    );
+    expect(restored.cluster(survivor).pieceIds).toHaveLength(2);
+  });
+
+  it('throws if the snapshot is missing a piece the input describes', () => {
+    const source = input();
+    const snapshot: BoardSnapshot = {
+      clusters: [{ id: BOARD_CLUSTER, x: 0, y: 0, rot: 0, kind: 'board' }],
+      pieces: [{ id: 0, clusterId: BOARD_CLUSTER, localX: 0, localY: 0 }],
+    };
+    expect(() => Board.restore(source, snapshot)).toThrow(/missing piece/);
+  });
+
+  it('throws if a piece references a cluster the snapshot does not describe', () => {
+    const source = input();
+    const original = createBoard(source);
+    const snapshot = snapshotOf(original);
+    snapshot.clusters = snapshot.clusters.filter((c) => c.id !== original.clusterIdOf(id(0, 0)));
+    expect(() => Board.restore(source, snapshot)).toThrow(/missing cluster/);
+  });
+
+  it('keeps cluster 0 anchored regardless of what the snapshot says', () => {
+    const source = input();
+    const original = createBoard(source);
+    const snapshot = snapshotOf(original);
+    // A corrupt snapshot claiming the board is an ordinary loose cluster.
+    const zero = snapshot.clusters.find((c) => c.id === BOARD_CLUSTER)!;
+    zero.kind = 'loose';
+    zero.rot = 1.5;
+
+    const restored = Board.restore(source, snapshot);
+    expect(restored.cluster(BOARD_CLUSTER).anchored).toBe(true);
+    expect(restored.cluster(BOARD_CLUSTER).kind).toBe('board');
+    expect(restored.cluster(BOARD_CLUSTER).rot).toBe(0);
+    expect(() => restored.moveCluster(BOARD_CLUSTER, 1, 1)).toThrow();
   });
 });

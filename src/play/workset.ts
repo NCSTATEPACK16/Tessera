@@ -39,7 +39,6 @@ export interface Workset {
   label: string;
   /** Membership, in selection order. */
   pieceIds: PieceId[];
-  collapsed: boolean;
 }
 
 export class WorksetStore {
@@ -64,7 +63,6 @@ export class WorksetStore {
       id,
       label: label ?? `Set ${this.nextLabel++}`,
       pieceIds: [...pieceIds],
-      collapsed: false,
     });
     for (const pieceId of pieceIds) this.of.set(pieceId, id);
     return id;
@@ -108,26 +106,9 @@ export class WorksetStore {
     this.groups.delete(id);
   }
 
-  setCollapsed(id: number, collapsed: boolean): void {
-    const group = this.groups.get(id);
-    if (group) group.collapsed = collapsed;
-  }
-
   rename(id: number, label: string): void {
     const group = this.groups.get(id);
     if (group) group.label = label;
-  }
-
-  /**
-   * Is this piece inside a collapsed group?
-   *
-   * Honoured in **two** places or the board disagrees with itself: `scene()` must
-   * not draw it and `rebuild()` must not index it. Draw without indexing and the
-   * piece cannot be touched; index without drawing and the player grabs
-   * something invisible.
-   */
-  isHidden(pieceId: PieceId): boolean {
-    return this.worksetOf(pieceId)?.collapsed ?? false;
   }
 }
 

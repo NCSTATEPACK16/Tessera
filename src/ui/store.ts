@@ -27,7 +27,7 @@ export const TRAY_MIN_WIDTH = 300;
 export const TRAY_MAX_WIDTH = 380;
 
 export interface ChromeState {
-  status: 'cutting' | 'playing' | 'failed';
+  status: 'cutting' | 'playing' | 'complete' | 'failed';
   /** The real computed number, never the target (§04). */
   cut: { done: number; total: number; cols: number; rows: number };
 

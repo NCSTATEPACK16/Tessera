@@ -73,17 +73,15 @@ describe('WorksetStore', () => {
     expect(store.all()).toEqual([]);
   });
 
-  it('hides its members only while collapsed', () => {
+  it('never hides a member — collapse was removed at plan 0', () => {
     const store = new WorksetStore();
     const id = store.create([1, 2]);
-
-    expect(store.isHidden(1)).toBe(false);
-    store.setCollapsed(id, true);
-    expect(store.isHidden(1)).toBe(true);
-    expect(store.isHidden(9)).toBe(false);
-
-    store.setCollapsed(id, false);
-    expect(store.isHidden(1)).toBe(false);
+    expect(store.worksetOf(1)?.id).toBe(id);
+    // The mat's only remaining gate is `inTray`. If a second predicate ever
+    // returns here, `rebuild`, `scene` and `contentBounds` must all consult it —
+    // see CLAUDE.md. Honouring one without the others draws pieces the player
+    // cannot grab.
+    expect('isHidden' in store).toBe(false);
   });
 });
 

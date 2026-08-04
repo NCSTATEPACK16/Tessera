@@ -16,15 +16,14 @@ import { GROUP_CHIP, groupChipRect, groupChipText } from '@/render/group-chip';
 const measure = (text: string): number => text.length * 7;
 
 describe('groupChipText', () => {
-  it('marks a collapsed group, because the chip is then the whole group', () => {
-    expect(groupChipText('the roof', false)).toBe('the roof');
-    expect(groupChipText('the roof', true)).toBe('the roof ⌄');
+  it('returns the label unchanged — collapse was removed at plan 0', () => {
+    expect(groupChipText('the roof')).toBe('the roof');
   });
 });
 
 describe('groupChipRect', () => {
   it('sits above its anchor, clear of the outline', () => {
-    const rect = groupChipRect('Set 1', false, { x: 100, y: 200 }, measure);
+    const rect = groupChipRect('Set 1', { x: 100, y: 200 }, measure);
 
     expect(rect.x).toBe(100);
     expect(rect.y).toBe(200 - GROUP_CHIP.height - GROUP_CHIP.gap);
@@ -32,15 +31,8 @@ describe('groupChipRect', () => {
   });
 
   it('is as wide as its text plus padding on both sides', () => {
-    const rect = groupChipRect('Set 1', false, { x: 0, y: 0 }, measure);
+    const rect = groupChipRect('Set 1', { x: 0, y: 0 }, measure);
 
     expect(rect.w).toBe(measure('Set 1') + GROUP_CHIP.padX * 2);
-  });
-
-  it('grows for the collapsed glyph — the tap target must not lag the chip', () => {
-    const open = groupChipRect('Set 1', false, { x: 0, y: 0 }, measure);
-    const shut = groupChipRect('Set 1', true, { x: 0, y: 0 }, measure);
-
-    expect(shut.w).toBeGreaterThan(open.w);
   });
 });

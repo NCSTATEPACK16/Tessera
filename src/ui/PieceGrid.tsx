@@ -36,6 +36,10 @@ export interface PieceGridProps {
   badgeOf?: (id: PieceId) => number;
   /** A tap while `selecting`. */
   onChipClick?: (id: PieceId) => void;
+  /** Step 5c: fired on every scroll, human-speed only — not a per-frame hook. */
+  onScroll?: ((top: number) => void) | undefined;
+  /** Step 5c: applied once, before the first virtualisation pass. */
+  initialScrollTop?: number | undefined;
 }
 
 export function PieceGrid({
@@ -50,6 +54,8 @@ export function PieceGrid({
   selecting,
   badgeOf,
   onChipClick,
+  onScroll,
+  initialScrollTop,
 }: PieceGridProps): React.ReactElement {
   // One `onActivate` for both meanings a tap can have, decided here rather than
   // by a second callback on `PieceChip` — locate-on-mat and toggle-in-select-mode
@@ -59,17 +65,28 @@ export function PieceGrid({
   const scroller = useRef<HTMLDivElement>(null);
   const [metrics, setMetrics] = useState({ top: 0, height: 0, width: 0 });
 
+  // Held in a ref rather than in the effect's dependency array: the listener
+  // is attached once for the life of the grid, and re-attaching it on every
+  // render of the parent would be a scroll listener churning at chrome speed.
+  const onScrollRef = useRef(onScroll);
+  onScrollRef.current = onScroll;
+
   useEffect(() => {
     const element = scroller.current;
     if (!element) return;
 
-    const read = (): void =>
+    const read = (): void => {
       setMetrics({
         top: element.scrollTop,
         height: element.clientHeight,
         width: element.clientWidth,
       });
+      onScrollRef.current?.(element.scrollTop);
+    };
 
+    // Before the first read, so a restored grid opens already scrolled rather
+    // than flashing at the top and jumping.
+    if (initialScrollTop !== undefined) element.scrollTop = initialScrollTop;
     read();
     element.addEventListener('scroll', read, { passive: true });
     const observer = new ResizeObserver(read);

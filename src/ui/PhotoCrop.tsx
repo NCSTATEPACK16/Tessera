@@ -200,6 +200,7 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
       >
         <canvas
           ref={canvasRef}
+          data-testid="crop-source-aspect"
           className="absolute left-1/2 top-1/2 max-w-none"
           style={{
             width: `${(source.width / rect.width) * 100}%`,

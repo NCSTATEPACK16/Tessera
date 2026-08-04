@@ -477,3 +477,113 @@ describe('useHint (§07)', () => {
     expect(play.summary.hintsUsed).toBeGreaterThan(0);
   });
 });
+
+describe('cleanRun', () => {
+  it('starts true and survives tier-1 hints', () => {
+    const play = session();
+    expect(play.cleanRun).toBe(true);
+    play.useHint(id(0, 0), 1, 'classic', 0);
+    expect(play.cleanRun).toBe(true);
+  });
+
+  it('flips false on a tier-2 hint and stays false', () => {
+    const play = session();
+    play.useHint(id(0, 0), 2, 'classic', 0);
+    expect(play.cleanRun).toBe(false);
+    play.useHint(id(1, 0), 1, 'classic', 0);
+    expect(play.cleanRun).toBe(false);
+  });
+
+  it('is exposed on summary', () => {
+    const play = session();
+    expect(play.summary.cleanRun).toBe(true);
+  });
+});
+
+describe('restore options', () => {
+  it('restoreInTray seeds tray membership exactly, overriding startInTray', () => {
+    const source = pieces();
+    const first = source[0]!.id;
+    const play = new PlaySession({
+      pieces: source,
+      boardW: COLS,
+      boardH: ROWS,
+      pathScale: SCALE,
+      restoreInTray: [first],
+    });
+    expect(play.locationOf(first)).toBe('tray');
+    for (const piece of source) {
+      if (piece.id === first) continue;
+      expect(play.locationOf(piece.id)).not.toBe('tray');
+    }
+  });
+
+  it('restoreHintsUsed and restoreCleanRun seed their fields', () => {
+    const play = new PlaySession({
+      pieces: pieces(),
+      boardW: COLS,
+      boardH: ROWS,
+      pathScale: SCALE,
+      restoreHintsUsed: 2,
+      restoreCleanRun: false,
+    });
+    expect(play.summary.hintsUsed).toBe(2);
+    expect(play.cleanRun).toBe(false);
+  });
+
+  it('restoreBoard seeds cluster state instead of one-cluster-per-piece', () => {
+    const source = pieces();
+    const original = session();
+    place(original, id(0, 0));
+    settle(original);
+
+    const restored = new PlaySession({
+      pieces: source,
+      boardW: COLS,
+      boardH: ROWS,
+      pathScale: SCALE,
+      startInTray: false,
+      restoreBoard: {
+        clusters: [...original.board.clusters.values()].map((c) => ({
+          id: c.id,
+          x: c.x,
+          y: c.y,
+          rot: c.rot,
+          kind: c.kind,
+        })),
+        pieces: original.board.pieces.map((p) => ({
+          id: p.id,
+          clusterId: p.clusterId,
+          localX: p.localX,
+          localY: p.localY,
+        })),
+      },
+    });
+
+    expect(restored.summary.placed).toBe(original.summary.placed);
+    expect(restored.board.isPlaced(id(0, 0))).toBe(true);
+  });
+
+  it('setDifficulty changes the live snap tolerance', () => {
+    // 0.30 world units off its own slot: outside Precise (0.18), inside
+    // Generous (0.40). Same drop, opposite outcome, decided only by the
+    // setting the pause sheet changed mid-session.
+    const drop = (play: PlaySession): boolean => {
+      const cluster = play.board.clusterIdOf(id(0, 0));
+      play.board.moveCluster(cluster, 0.3, 0);
+      play.rebuild();
+      play.grab(cluster);
+      play.release(cluster, { x: 0, y: 0 });
+      settle(play);
+      return play.board.isPlaced(id(0, 0));
+    };
+
+    const precise = session();
+    precise.setDifficulty('precise');
+    expect(drop(precise)).toBe(false);
+
+    const generous = session();
+    generous.setDifficulty('generous');
+    expect(drop(generous)).toBe(true);
+  });
+});

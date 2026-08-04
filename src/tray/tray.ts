@@ -118,6 +118,39 @@ export class TrayModel {
   }
 
   /**
+   * Every pinned id, unfiltered — what a save needs.
+   *
+   * Distinct from `pinned` below, which is the *shelf*: canonical order, and
+   * narrowed to pieces currently in the tray. Saving the shelf would silently
+   * drop the pin on any piece that happened to be out on the mat.
+   */
+  get pinnedIds(): readonly PieceId[] {
+    return [...this.pinned_];
+  }
+
+  /**
+   * Step 5c: replace the order wholesale, from a saved snapshot.
+   *
+   * No validation against this model's own piece set — the caller is
+   * `PlayRuntime`, restoring an order it just read out of a snapshot for this
+   * exact puzzle, the same trust `release()` already places in its caller.
+   */
+  restoreOrder(order: readonly PieceId[]): void {
+    this.order_ = [...order];
+  }
+
+  /**
+   * Step 5c: set pin state directly from a saved snapshot, without `pin()`'s
+   * live-location gate — restore is reconstructing a state that was already
+   * valid when saved, not re-deriving validity from a board that may not have
+   * finished being seeded yet.
+   */
+  restorePinned(ids: readonly PieceId[]): void {
+    this.pinned_.clear();
+    for (const id of ids) this.pinned_.add(id);
+  }
+
+  /**
    * The shelf, in canonical order.
    *
    * Canonical and not pin order, deliberately: the shelf is a smaller tray, and

@@ -1,9 +1,9 @@
 /**
- * The product entry point.
+ * The product entry point, and now the only page.
  *
- * The dev harness lives at `/dev.html` and keeps every snap-tuning dial from
- * step 2 — §17 budgets a week on that tuning and it is not thrown away the
- * moment chrome exists. It goes at step 5, when the real setup screen lands.
+ * `dev.html` and the step-2 harness were deleted at step 5c, per `CLAUDE.md`'s
+ * long-standing marker: the real setup screen and the pause sheet's live
+ * settings now carry the snap-tuning dials the harness existed for.
  */
 
 import { StrictMode } from 'react';

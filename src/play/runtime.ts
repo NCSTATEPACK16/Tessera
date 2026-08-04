@@ -26,6 +26,7 @@ import type { AccentTokens } from '@/render/accent';
 import { extractAccent, fallbackAccentTokens } from '@/render/accent';
 import { TrayModel } from '@/tray/tray';
 import {
+  MIN_ZOOM,
   REGION_LENS_ZOOM,
   clampZoom,
   createCamera,
@@ -43,6 +44,16 @@ import { Renderer } from '@/render/renderer';
 import { emptyScene } from '@/render/scene';
 import type { Scene, ScenePiece } from '@/render/scene';
 import type { PuzzleAssists } from '@/play/setup';
+import { packPieces, unpackPieces } from '@/persist/snapshot';
+import type { SessionSnapshot } from '@/persist/snapshot';
+import type { Lens } from '@/tray/lenses';
+
+/** Every assist off — what a puzzle configured without them saves as. */
+const DEFAULT_ASSISTS: PuzzleAssists = {
+  ghostOpacity: 0,
+  edgeHighlight: false,
+  largePieceMode: false,
+};
 
 /**
  * How long the camera must be still before the Region lens re-reads it.
@@ -54,7 +65,7 @@ import type { PuzzleAssists } from '@/play/setup';
 const REGION_SETTLE_MS = 160;
 
 export interface RuntimeSummary {
-  status: 'cutting' | 'playing' | 'failed';
+  status: 'cutting' | 'playing' | 'complete' | 'failed';
   cut: { done: number; total: number; cols: number; rows: number };
   placed: number;
   total: number;
@@ -74,6 +85,16 @@ export interface PlayRuntimeOptions {
   container: HTMLElement;
   source: ImageBitmap;
   seed: number;
+  /** Step 5c: the library/save key for this puzzle instance. */
+  puzzleId: string;
+  /**
+   * Step 5c: reopen a saved session instead of starting fresh.
+   *
+   * The cut still runs in full — piece bitmaps are never stored, only
+   * geometry-independent state is. Only the post-cut board/tray/workset/hint
+   * construction diverges.
+   */
+  restore?: { snapshot: SessionSnapshot };
   targetCount: number;
   difficulty?: SnapDifficulty;
   rotation?: boolean;
@@ -94,6 +115,14 @@ export interface PlayRuntimeOptions {
   isOverShelf?: (client: Point) => boolean;
   /** The tray collapses to peek while a piece is out of it (§06). */
   onDragStateChange?: (dragging: boolean) => void;
+  /**
+   * Step 5c autosave. Called on every debounced tick and on `interrupt()`.
+   *
+   * `runtime` is `this` — passed rather than a pre-built snapshot so the
+   * caller can supply live chrome state (lens/lensArg/scroll) at the exact
+   * moment of saving. This class has no reason to know a lens exists.
+   */
+  onSave?: (runtime: PlayRuntime, canvas: HTMLCanvasElement | OffscreenCanvas) => void;
   notify: (summary: RuntimeSummary) => void;
 }
 
@@ -117,6 +146,7 @@ export class PlayRuntime {
   private pumping = false;
   private lastFrameMs = 0;
   private regionTimer: ReturnType<typeof setTimeout> | null = null;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 
   /**
@@ -169,9 +199,36 @@ export class PlayRuntime {
    */
   private ghostSource: ImageBitmap | null = null;
 
+  /**
+   * The pause sheet changes assists and tolerance mid-session, and
+   * `options` is readonly. These are the live values every read site in this
+   * file uses; `options.assists`/`options.difficulty` are only ever the seed.
+   */
+  private liveAssists: PuzzleAssists;
+  private liveDifficulty: SnapDifficulty;
+
   constructor(private readonly options: PlayRuntimeOptions) {
     this.renderer = new Renderer({ container: options.container });
     this.mode = options.mode ?? 'classic';
+    this.liveAssists = options.assists ?? DEFAULT_ASSISTS;
+    this.liveDifficulty = options.difficulty ?? 'standard';
+  }
+
+  /** Step 5c: the pause sheet's live settings. */
+  setAssists(assists: PuzzleAssists): void {
+    this.liveAssists = assists;
+    // Known gap: `ghostSource` is only copied in `start()`, and only when the
+    // assist was already on, so turning the ghost on mid-session has nothing
+    // to draw. Re-decoding the stored photo here is the follow-up.
+    this.renderer.setGhostUnderlay(this.ghostSource, assists.ghostOpacity);
+    this.renderer.setEdgeHighlight(assists.edgeHighlight);
+    this.controls?.setMinRelativeZoom(assists.largePieceMode ? REGION_LENS_ZOOM : MIN_ZOOM);
+    this.render();
+  }
+
+  setDifficulty(difficulty: SnapDifficulty): void {
+    this.liveDifficulty = difficulty;
+    this.session?.setDifficulty(difficulty);
   }
 
   // -------------------------------------------------------------------------
@@ -180,7 +237,7 @@ export class PlayRuntime {
     try {
       // Before the transfer below detaches it. Costs one full-size bitmap, and
       // only when the player asked for the ghost.
-      if ((this.options.assists?.ghostOpacity ?? 0) > 0) {
+      if (this.liveAssists.ghostOpacity > 0) {
         this.ghostSource = this.copySource(this.options.source);
       }
 
@@ -217,6 +274,7 @@ export class PlayRuntime {
 
   destroy(): void {
     this.destroyed = true;
+    if (this.saveTimer !== null) clearTimeout(this.saveTimer);
     if (this.regionTimer !== null) clearTimeout(this.regionTimer);
     this.controls?.destroy();
     this.renderer.setGhostUnderlay(null, 0);
@@ -255,6 +313,10 @@ export class PlayRuntime {
 
   /** §05: `interrupted` is a first-class state, not an error path. */
   interrupt(): void {
+    // `PLAN.md`: a synchronous write on `visibilitychange`, which is the one
+    // caller of this method — the debounce cannot be trusted once the tab is
+    // on its way to being backgrounded.
+    this.saveNow();
     this.controls?.interrupt();
     this.audio.suspend();
   }
@@ -273,6 +335,80 @@ export class PlayRuntime {
 
   bitmapOf(pieceId: PieceId): ImageBitmap | null {
     return this.pieces.get(pieceId)?.bitmap ?? null;
+  }
+
+  get cameraState(): { x: number; y: number; zoom: number } {
+    return { x: this.camera.x, y: this.camera.y, zoom: this.camera.zoom };
+  }
+
+  /**
+   * Everything this class owns, assembled into the save format. `chrome` is
+   * the lens/scroll state this class has no reason to know about — the
+   * caller (`App.tsx`) supplies it live at the moment of saving.
+   *
+   * Required parameters, not optional: a silent "saved with the wrong lens"
+   * is exactly the kind of bug an optional argument invites.
+   *
+   * Returns null while still cutting — there is no session yet to save.
+   */
+  snapshot(chrome: { lens: Lens; lensArg: number | null; scroll: number }): SessionSnapshot | null {
+    const session = this.session;
+    const tray = this.tray;
+    if (!session || !tray) return null;
+
+    // `inTray` is not derivable from the board — see `SessionSnapshot.tray`.
+    const trayIds = session.board.pieces
+      .filter((piece) => session.locationOf(piece.id) === 'tray')
+      .map((piece) => piece.id);
+
+    return {
+      version: 1,
+      puzzleId: this.options.puzzleId,
+      seed: this.options.seed,
+      cols: this.summary.cut.cols,
+      rows: this.summary.cut.rows,
+      targetCount: this.options.targetCount,
+      // `this.mode` is the *hint* mode, which is a wider union ('daily' is
+      // step 8's). The save format records the setup mode it was built from.
+      mode: this.options.mode ?? 'classic',
+      rotation: this.options.rotation ?? false,
+      difficulty: this.liveDifficulty,
+      assists: this.liveAssists,
+      pieces: packPieces(session.board),
+      pieceCount: session.board.pieceCount,
+      clusters: [...session.board.clusters.values()].map((c) => ({
+        id: c.id,
+        x: c.x,
+        y: c.y,
+        rot: c.rot,
+        kind: c.kind,
+        label: c.label,
+        collapsed: c.collapsed,
+      })),
+      worksets: session.worksets.all().map((w) => ({
+        id: w.id,
+        label: w.label,
+        pieceIds: [...w.pieceIds],
+      })),
+      camera: this.cameraState,
+      tray: {
+        order: [...tray.order],
+        pinned: [...tray.pinnedIds],
+        trayIds,
+        lens: chrome.lens,
+        lensArg: chrome.lensArg,
+        scroll: chrome.scroll,
+      },
+      timer: {
+        elapsedMs: session.elapsedMs(performance.now()),
+        running: this.summary.status === 'playing',
+      },
+      hintsUsed: session.summary.hintsUsed,
+      cleanRun: session.summary.cleanRun,
+      placed: session.summary.placed,
+      total: session.summary.total,
+      updatedAt: Date.now(),
+    };
   }
 
   /** The visible world rectangle, or null while the Region lens is locked (§06). */
@@ -462,9 +598,7 @@ export class PlayRuntime {
         x: group.bounds.x,
         y: group.bounds.y,
       });
-      const rect = groupChipRect(group.label, group.collapsed, at, (t) =>
-        this.measureChipText(t),
-      );
+      const rect = groupChipRect(group.label, at, (t) => this.measureChipText(t));
       if (
         screen.x >= rect.x &&
         screen.x <= rect.x + rect.w &&
@@ -475,15 +609,6 @@ export class PlayRuntime {
       }
     }
     return null;
-  }
-
-  toggleGroupCollapsed(id: number): void {
-    const session = this.session;
-    const group = session?.worksets.get(id);
-    if (!session || !group) return;
-    session.setWorksetCollapsed(id, !group.collapsed);
-    this.bumpTray();
-    this.wake();
   }
 
   /** Tap-to-rename (§06). A relabel, not a structural change — no tray bump. */
@@ -515,15 +640,29 @@ export class PlayRuntime {
   private build(cut: CutPiece[]): void {
     for (const piece of cut) this.pieces.set(piece.id, piece);
 
+    const restore = this.options.restore;
+
     const session = new PlaySession({
       pieces: cut,
       boardW: this.boardW,
       boardH: this.boardH,
       pathScale: this.pathScale,
-      ...(this.options.difficulty ? { difficulty: this.options.difficulty } : {}),
+      difficulty: this.liveDifficulty,
       ...(this.options.rotation !== undefined ? { rotation: this.options.rotation } : {}),
       ...(this.options.reducedMotion !== undefined
         ? { reducedMotion: this.options.reducedMotion }
+        : {}),
+      ...(restore
+        ? {
+            restoreBoard: {
+              clusters: restore.snapshot.clusters,
+              pieces: unpackPieces(restore.snapshot.pieces, restore.snapshot.pieceCount),
+            },
+            restoreInTray: restore.snapshot.tray.trayIds,
+            restoreHintsUsed: restore.snapshot.hintsUsed,
+            restoreCleanRun: restore.snapshot.cleanRun,
+            startedAtMs: performance.now() - restore.snapshot.timer.elapsedMs,
+          }
         : {}),
       onEvent: (event) => this.onPlayEvent(event),
     });
@@ -535,7 +674,18 @@ export class PlayRuntime {
       locationOf: (id) => session.locationOf(id),
     });
 
-    const assists = this.options.assists;
+    if (restore) {
+      this.tray.restoreOrder(restore.snapshot.tray.order);
+      this.tray.restorePinned(restore.snapshot.tray.pinned);
+      // A Workset is not a cluster, so it is replayed rather than restored —
+      // `create` is the only way in, and membership rules apply as they would
+      // have on the original pull-out.
+      for (const workset of restore.snapshot.worksets) {
+        session.worksets.create(workset.pieceIds, workset.label);
+      }
+    }
+
+    const assists = this.liveAssists;
 
     this.controls = new BoardControls({
       element: this.options.container,
@@ -548,7 +698,7 @@ export class PlayRuntime {
         this.scheduleRegion();
       },
       getBoard: () => ({ w: this.boardW, h: this.boardH }),
-      minRelativeZoom: assists?.largePieceMode ? REGION_LENS_ZOOM : undefined,
+      minRelativeZoom: assists.largePieceMode ? REGION_LENS_ZOOM : undefined,
       onChange: () => this.wake(),
       interceptRelease: ({ clusterId, client }) => {
         this.options.onDragStateChange?.(false);
@@ -572,12 +722,25 @@ export class PlayRuntime {
     // purpose — a broken accent is a wrong colour, never a blocked puzzle.
     const accent = extractAccent(cut, this.options.seed);
     this.renderer.setAccent(accent.accent);
-    this.renderer.setGhostUnderlay(this.ghostSource, assists?.ghostOpacity ?? 0);
-    this.renderer.setEdgeHighlight(assists?.edgeHighlight ?? false);
-    this.patch({ status: 'playing', placed: 0, total: session.summary.total, accent });
+    this.renderer.setGhostUnderlay(this.ghostSource, assists.ghostOpacity);
+    this.renderer.setEdgeHighlight(assists.edgeHighlight);
+    this.patch({
+      status: 'playing',
+      placed: session.summary.placed,
+      total: session.summary.total,
+      hintsUsed: session.summary.hintsUsed,
+      accent,
+    });
     this.frameContent();
     this.render();
     this.scheduleRegion();
+
+    // After `frameContent`, deliberately: a restore should reopen exactly
+    // where the player left it, not on a freshly fitted view.
+    if (restore) {
+      this.camera = { ...restore.snapshot.camera };
+      this.render();
+    }
   }
 
   private onPlayEvent(event: PlayEvent): void {
@@ -618,7 +781,10 @@ export class PlayRuntime {
 
     // Not gated on `sound`: the light payoff is a separate channel from audio,
     // and muting one has no reason to mute the other (§07/§08 are independent).
-    if (event.type === 'complete') this.renderer.completePuzzle(now);
+    if (event.type === 'complete') {
+      this.renderer.completePuzzle(now);
+      this.patch({ status: 'complete' });
+    }
     if (event.type === 'snap' && event.seam) this.renderer.fireMergeSeam(event.seam, now);
     if (event.type === 'edgeFrame') this.renderer.fireEdgeFrame(now);
 
@@ -636,6 +802,26 @@ export class PlayRuntime {
       const { placed, total, hintsUsed } = this.session.summary;
       this.patch({ placed, total, hintsUsed });
     }
+
+    // Autosave lives here, inside the runtime, rather than as a React effect
+    // keyed on summary state — the board never re-renders through React, and
+    // a per-tick subscription would be exactly that.
+    this.scheduleSave();
+  }
+
+  /** `PLAN.md`: IndexedDB, debounced 800ms. */
+  private scheduleSave(): void {
+    if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => this.saveNow(), 800);
+  }
+
+  private saveNow(): void {
+    if (this.saveTimer !== null) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    if (!this.session || !this.options.onSave) return;
+    this.options.onSave(this, this.renderer.getStaticCanvas());
   }
 
   private materialise(batch: CutPiece[]): void {
@@ -672,7 +858,7 @@ export class PlayRuntime {
       zoom: clampZoom(
         framed.zoom,
         fitScale(this.viewport, this.boardW, this.boardH),
-        this.options.assists?.largePieceMode ? REGION_LENS_ZOOM : undefined,
+        this.liveAssists.largePieceMode ? REGION_LENS_ZOOM : undefined,
       ),
     };
   }

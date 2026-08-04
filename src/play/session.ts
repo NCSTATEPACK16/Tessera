@@ -18,8 +18,8 @@
 import type { CubicPath, Point, Rect } from '@/core/geom';
 import { rotateVector } from '@/core/geom';
 import type { NeighbourLink, PieceId } from '@/cut/types';
-import { BOARD_CLUSTER, createBoard } from '@/board/board';
-import type { Board } from '@/board/board';
+import { BOARD_CLUSTER, Board, createBoard } from '@/board/board';
+import type { BoardSnapshot } from '@/board/board';
 import { HitIndex, polygonFromPath } from '@/board/hit-test';
 import type { HitPiece } from '@/board/hit-test';
 import { SNAP_TOLERANCE, applySnap, resolveSnap } from '@/board/snap';
@@ -119,6 +119,20 @@ export interface PlaySessionOptions {
    * pause/resume across `interrupted` is step 5's save-format territory.
    */
   startedAtMs?: number;
+  /**
+   * Step 5c: seed the board from saved state instead of a fresh cut. The cut
+   * still runs in full — only the post-cut cluster/piece state diverges.
+   */
+  restoreBoard?: BoardSnapshot;
+  /**
+   * Step 5c: seed tray membership from saved state instead of the
+   * `startInTray` default. When present, overrides `startInTray` entirely —
+   * `Board` has no notion of the tray, so a returned-to-tray piece is
+   * indistinguishable from a fresh one without this.
+   */
+  restoreInTray?: readonly PieceId[];
+  restoreHintsUsed?: number;
+  restoreCleanRun?: boolean;
   onEvent?: (event: PlayEvent) => void;
 }
 
@@ -129,6 +143,11 @@ export interface PlaySummary {
   completion: number;
   /** §07/§15: a completion is "clean" only when this stays 0. */
   hintsUsed: number;
+  /**
+   * §15's clean-run badge. False once a *placement-affecting* hint (tier 2 or
+   * 3) has fired — tier 1 only breathes a region, so it costs nothing.
+   */
+  cleanRun: boolean;
 }
 
 /**
@@ -163,9 +182,9 @@ export class PlaySession {
    * puzzle appears to solve itself. `rebuild`, `scene`, and `contentBounds` all
    * consult this set, and a test asserts a full tray renders nothing.
    *
-   * Two predicates gate the mat: `inTray` and `worksets.isHidden`. Both are
-   * consulted in `rebuild`, `scene`, and `contentBounds`, and honouring one
-   * without the other is how the board comes to disagree with itself.
+   * `inTray` is the mat's one gate, consulted in `rebuild`, `scene`, and
+   * `contentBounds`. If a second predicate is ever added, it must be honoured
+   * in all three places or the board comes to disagree with itself.
    */
   private readonly inTray = new Set<PieceId>();
 
@@ -182,25 +201,36 @@ export class PlaySession {
   private edgeFrameAnnounced = false;
   private completionAnnounced = false;
   private hintsUsed = 0;
+  private cleanRun_ = true;
+  private difficulty: SnapDifficulty;
   private readonly startedAtMs: number;
 
   constructor(private readonly options: PlaySessionOptions) {
     this.startedAtMs = options.startedAtMs ?? 0;
-    this.board = createBoard(
-      options.pieces.map((piece) => ({
-        id: piece.id,
-        targetX: piece.targetX,
-        targetY: piece.targetY,
-        w: piece.worldW,
-        h: piece.worldH,
-        neighbours: piece.neighbours,
-      })),
-    );
+    this.hintsUsed = options.restoreHintsUsed ?? 0;
+    this.cleanRun_ = options.restoreCleanRun ?? true;
+    this.difficulty = options.difficulty ?? 'standard';
+
+    const boardInput = options.pieces.map((piece) => ({
+      id: piece.id,
+      targetX: piece.targetX,
+      targetY: piece.targetY,
+      w: piece.worldW,
+      h: piece.worldH,
+      neighbours: piece.neighbours,
+    }));
+    this.board = options.restoreBoard
+      ? Board.restore(boardInput, options.restoreBoard)
+      : createBoard(boardInput);
 
     for (const piece of options.pieces) {
       this.source.set(piece.id, piece);
       this.polygons.set(piece.id, polygonFromPath(piece.path, options.pathScale));
-      if (options.startInTray !== false) this.inTray.add(piece.id);
+    }
+    if (options.restoreInTray) {
+      for (const id of options.restoreInTray) this.inTray.add(id);
+    } else if (options.startInTray !== false) {
+      for (const piece of options.pieces) this.inTray.add(piece.id);
     }
     this.assertPathScale();
     this.rebuild();
@@ -252,6 +282,18 @@ export class PlaySession {
     return this.held;
   }
 
+  get cleanRun(): boolean {
+    return this.cleanRun_;
+  }
+
+  /**
+   * Step 5c: the pause sheet's live snap-tolerance control. Tolerance is
+   * world-space, so this changes difficulty and never zoom.
+   */
+  setDifficulty(difficulty: SnapDifficulty): void {
+    this.difficulty = difficulty;
+  }
+
   get summary(): PlaySummary {
     const total = this.board.pieceCount;
     return {
@@ -259,6 +301,7 @@ export class PlaySession {
       total,
       completion: total === 0 ? 0 : this.board.placedCount / total,
       hintsUsed: this.hintsUsed,
+      cleanRun: this.cleanRun_,
     };
   }
 
@@ -285,7 +328,6 @@ export class PlaySession {
       // nothing — but it would also make a *full* tray read as "the board is the
       // content", which is right by accident rather than by decision.
       if (this.inTray.has(piece.id)) continue;
-      if (this.worksets.isHidden(piece.id)) continue;
       const origin = this.board.worldOf(piece.id);
       if (origin.x < minX) minX = origin.x;
       if (origin.y < minY) minY = origin.y;
@@ -305,9 +347,6 @@ export class PlaySession {
       if (this.board.isPlaced(piece.id)) continue;
       // Tray pieces likewise — they are not on the mat to be touched.
       if (this.inTray.has(piece.id)) continue;
-      // A collapsed group's members are not drawn, so they must not be pickable
-      // either — index one without drawing it and the player grabs thin air.
-      if (this.worksets.isHidden(piece.id)) continue;
       targets.push(this.hitPiece(piece.id));
     }
     this.index.rebuild(targets);
@@ -389,12 +428,6 @@ export class PlaySession {
     return id;
   }
 
-  setWorksetCollapsed(worksetId: number, collapsed: boolean): void {
-    this.worksets.setCollapsed(worksetId, collapsed);
-    this.rebuild();
-    this.emit({ type: 'worksetChanged' });
-  }
-
   /** A piece's world box — what the group outline is built from. */
   boxOf(pieceId: PieceId): Rect | null {
     if (this.inTray.has(pieceId)) return null;
@@ -407,26 +440,6 @@ export class PlaySession {
     const group = this.worksets.get(worksetId);
     if (!group) return null;
     return worksetBounds(group.pieceIds, (id) => this.boxOf(id));
-  }
-
-  /**
-   * Drag a whole group by its label chip.
-   *
-   * A loop over members and nothing else, because a Workset stores no position
-   * of its own. There is no group frame to keep in step.
-   */
-  moveWorksetBy(worksetId: number, dx: number, dy: number): void {
-    const group = this.worksets.get(worksetId);
-    if (!group) return;
-
-    const moved = new Set<number>();
-    for (const pieceId of group.pieceIds) {
-      const clusterId = this.board.clusterIdOf(pieceId);
-      if (moved.has(clusterId)) continue;
-      moved.add(clusterId);
-      this.board.moveClusterBy(clusterId, dx, dy);
-      this.syncCluster(clusterId);
-    }
   }
 
   /**
@@ -590,6 +603,10 @@ export class PlaySession {
     if (!canAffordTier(tier, this.hintsUsed, this.elapsedMs(nowMs), mode)) return false;
 
     this.hintsUsed = spendTier(tier, this.hintsUsed, mode);
+    // Tier 1 breathes a 3x3 region and never touches placement, so it costs
+    // no cleanliness. Tiers 2 and 3 reveal or place — that is the help a
+    // clean run is defined against.
+    if (tier >= 2) this.cleanRun_ = false;
     if (tier === 3) this.placeHint(pieceId);
     this.emit({ type: 'hint', tier });
     return true;
@@ -658,10 +675,7 @@ export class PlaySession {
       groups.push({
         id: group.id,
         label: group.label,
-        collapsed: group.collapsed,
-        // A collapsed group has no drawn members, so its box is the chip's
-        // anchor and nothing more — the outline shrinks to the label.
-        bounds: group.collapsed ? { ...bounds, w: 0, h: 0 } : bounds,
+        bounds,
         kind: 'workset',
       });
     }
@@ -672,8 +686,6 @@ export class PlaySession {
       // The tray is not the mat. A piece here would draw itself sitting in its
       // own slot, and the board would look solved before it was touched.
       if (this.inTray.has(piece.id)) continue;
-      // Collapsed to the chip, to reclaim mat space (§05).
-      if (this.worksets.isHidden(piece.id)) continue;
 
       const scenePiece = posed.get(piece.id) ?? this.scenePiece(piece.id);
       if (this.held !== null && this.board.clusterIdOf(piece.id) === this.held) {
@@ -705,7 +717,7 @@ export class PlaySession {
 
   private snapOptions() {
     return {
-      tolerance: SNAP_TOLERANCE[this.options.difficulty ?? 'standard'],
+      tolerance: SNAP_TOLERANCE[this.difficulty],
       rotation: this.options.rotation ?? false,
       // Tray pieces are parked on their own slots and would otherwise be the
       // best neighbour on the board. See `SnapOptions.eligible`.

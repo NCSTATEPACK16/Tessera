@@ -9,7 +9,14 @@
  */
 
 import { useRef, useState } from 'react';
-import { CURATED_PHOTOS } from '@/play/curated';
+import { CURATED_PHOTOS, photosByShelf, type CuratedShelf } from '@/play/curated';
+
+/** §15's three shelves, in display order and with their human labels. */
+const SHELVES: readonly { key: CuratedShelf; label: string }[] = [
+  { key: 'wide-and-calm', label: 'Wide and calm' },
+  { key: 'dense-and-busy', label: 'Dense and busy' },
+  { key: 'one-animal-close', label: 'One animal, close' },
+];
 
 export type PhotoChoice = { kind: 'curated'; id: string } | { kind: 'upload'; file: File };
 
@@ -17,11 +24,16 @@ export interface PhotoPickerProps {
   onPhotoChosen: (choice: PhotoChoice) => void;
   /** Surfaced by `App.tsx` when a previously chosen upload failed to decode. */
   error?: string | null;
+  /**
+   * Step 6: a first-run player never sees the library, so this is their only
+   * route to the daily.
+   */
+  onDaily?: () => void;
 }
 
 type Source = 'curated' | 'upload';
 
-export function PhotoPicker({ onPhotoChosen, error }: PhotoPickerProps): React.ReactElement {
+export function PhotoPicker({ onPhotoChosen, error, onDaily }: PhotoPickerProps): React.ReactElement {
   const [source, setSource] = useState<Source>('curated');
   const [selectedId, setSelectedId] = useState<string>(CURATED_PHOTOS[0]!.id);
   const [dragOver, setDragOver] = useState(false);
@@ -34,13 +46,25 @@ export function PhotoPicker({ onPhotoChosen, error }: PhotoPickerProps): React.R
 
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-5">
-      <div>
-        <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
-          New Puzzle
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
+            New Puzzle
+          </div>
+          <div className="mt-1 font-[var(--font-data)] text-[12px] text-[var(--ink-muted)]">
+            Step 1 of 2 — Pick a photo
+          </div>
         </div>
-        <div className="mt-1 font-[var(--font-data)] text-[12px] text-[var(--ink-muted)]">
-          Step 1 of 2 — Pick a photo
-        </div>
+        {onDaily && (
+          <button
+            type="button"
+            aria-label="Today’s puzzle"
+            onClick={onDaily}
+            className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+          >
+            Today’s puzzle
+          </button>
+        )}
       </div>
 
       <div className="flex gap-2">
@@ -80,33 +104,48 @@ export function PhotoPicker({ onPhotoChosen, error }: PhotoPickerProps): React.R
 
       {source === 'curated' ? (
         <>
-          <div className="grid grid-cols-2 gap-3">
-            {CURATED_PHOTOS.map((photo) => {
-              const selected = photo.id === selectedId;
-              return (
-                <button
-                  key={photo.id}
-                  type="button"
-                  aria-label={`Curated photo: ${photo.name}`}
-                  aria-pressed={selected}
-                  onClick={() => setSelectedId(photo.id)}
-                  className={`overflow-hidden rounded-[var(--radius-md)] border-2 text-left ${
-                    selected ? 'border-[var(--accent)]' : 'border-[var(--edge-hair)]'
-                  }`}
-                >
-                  <div
-                    className="flex aspect-[4/3] items-center justify-center text-[24px]"
-                    style={{ background: 'var(--mat-raised)' }}
-                  >
-                    {selected ? '✓' : ''}
-                  </div>
-                  <div className="px-3 py-2" style={{ background: 'var(--mat-raised)' }}>
-                    <div className="text-[13px] text-[var(--ink-primary)]">{photo.name}</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          {SHELVES.map(({ key, label }) => (
+            <div key={key} className="flex flex-col gap-3">
+              <h2 className="font-[var(--font-data)] text-[12px] uppercase tracking-wide text-[var(--ink-muted)]">
+                {label}
+              </h2>
+              <div className="grid grid-cols-2 gap-3">
+                {photosByShelf(key).map((photo) => {
+                  const selected = photo.id === selectedId;
+                  return (
+                    <button
+                      key={photo.id}
+                      type="button"
+                      aria-label={`Curated photo: ${photo.name}`}
+                      aria-pressed={selected}
+                      onClick={() => setSelectedId(photo.id)}
+                      className={`overflow-hidden rounded-[var(--radius-md)] border-2 text-left ${
+                        selected ? 'border-[var(--accent)]' : 'border-[var(--edge-hair)]'
+                      }`}
+                    >
+                      <div
+                        className="flex aspect-[4/3] items-center justify-center text-[24px]"
+                        style={{ background: 'var(--mat-raised)' }}
+                      >
+                        {selected ? '✓' : ''}
+                      </div>
+                      <div className="px-3 py-2" style={{ background: 'var(--mat-raised)' }}>
+                        <div className="text-[13px] text-[var(--ink-primary)]">
+                          {photo.name}
+                          {/* Colour is never the only signal (CLAUDE.md) — a text marker, not a badge colour. */}
+                          {photo.difficulty === 'hard' && (
+                            <span className="ml-1 text-[11px] text-[var(--ink-muted)]">
+                              (hard)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
 
           <button
             type="button"

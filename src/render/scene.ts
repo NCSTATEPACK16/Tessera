@@ -46,8 +46,7 @@ export interface ScenePiece {
 export interface SceneGroup {
   id: number;
   label: string;
-  collapsed: boolean;
-  /** World units. The members' bounding box, or the chip's box when collapsed. */
+  /** World units. The members' bounding box. */
   bounds: Rect;
   kind: 'workset' | 'island';
 }

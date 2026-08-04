@@ -22,13 +22,8 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      // Two pages, deliberately. `index.html` is the product; `dev.html` is the
-      // step-1/2 harness with every snap-tuning dial on it, and §17 budgets a
-      // week of tuning that must not be thrown away the moment chrome exists.
-      // The harness goes at step 5, not at step 3.
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
-        dev: fileURLToPath(new URL('./dev.html', import.meta.url)),
       },
     },
   },

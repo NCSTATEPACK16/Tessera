@@ -110,6 +110,11 @@ export class BoardControls {
     el.addEventListener('wheel', this.onWheel, { passive: false });
   }
 
+  /** Step 5c: forwarded to the inner camera for the pause sheet's live assists. */
+  setMinRelativeZoom(value: number): void {
+    this.camera.setMinRelativeZoom(value);
+  }
+
   destroy(): void {
     const el = this.options.element;
     el.removeEventListener('pointerdown', this.onDown);

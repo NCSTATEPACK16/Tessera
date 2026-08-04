@@ -73,6 +73,10 @@ export interface TrayProps {
   dragging: boolean;
   /** §06's pull-out. The button that calls it is disabled below two pieces. */
   onPullSelection: (pieceIds: readonly PieceId[]) => void;
+  /** Step 5c: the grid's scroll position, captured for the save format. */
+  onScroll?: ((top: number) => void) | undefined;
+  /** Step 5c: where a restored session left the grid scrolled. */
+  initialScrollTop?: number | undefined;
 }
 
 export function Tray(props: TrayProps): React.ReactElement {
@@ -208,6 +212,8 @@ export function Tray(props: TrayProps): React.ReactElement {
       selecting={chrome.selecting}
       badgeOf={(id) => selection.current.badgeOf(id)}
       onChipClick={toggleSelected}
+      onScroll={props.onScroll}
+      initialScrollTop={props.initialScrollTop}
     />
   );
 

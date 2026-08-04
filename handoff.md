@@ -339,6 +339,129 @@ gh pr create --base main --title "Step 5b: puzzle setup screen" --body-file <bod
 
 Or open it in the browser: https://github.com/NCSTATEPACK16/Tessera/pull/new/step-5b-puzzle-setup
 
+## 1g. Step 6 landed: daily and streak
+
+**Branch `step-5b-puzzle-setup`, not yet pushed.** Gates at the branch head: `npm test` 549/549
+(37 files) · `npm run typecheck` clean · `npm run build` clean · `npm run test:browser` 115 passed /
+5 skipped (viewport-conditional), both dock and phone.
+
+The daily is a closed-form function of the date — `dailyFor(dateKey)` in `src/daily/daily.ts` —
+rather than a pre-seeded table, and is otherwise an *ordinary puzzle* with a deterministic
+`daily-YYYY-MM-DD` id. That is what makes it apply to every piece of step 5c's persistence
+(autosave, `Board.restore`, thumbnails, photo blobs, the library) with zero daily-specific save
+code. The only genuinely new durable state is one streak record, in a new `daily` IndexedDB store
+(schema bumped to v2, additive — `daily.spec.ts` asserts an existing session survives the bump).
+`src/daily/streak.ts` is pure and fully unit-tested: freeze economy, auto-spend on `settle`, one
+manual repair a month, week pips, and the month grid.
+
+**Scoped out of this step, deliberately, and named here so it does not read as an oversight later:**
+
+- **Supabase, Edge Functions, and accounts.** `PLAN.md` originally specified server-side streak
+  validation and a stored per-user timezone; both require an account, and play stays account-free
+  through step 9. The streak lives entirely in the client's IndexedDB. With no accounts and no
+  leaderboard there is nothing to cheat for, so **local time is trivially spoofable and left
+  unaddressed on purpose.**
+- **Pre-seeded daily tables.** Made moot by the closed-form design — there is no rota to seed and
+  no rota to run out of, so "a missing day must never break the hub" cannot fail.
+
+**The six-photo rota is a content gap, not an architecture one.** `CURATED_PHOTOS`
+(`src/play/curated.ts`) has six procedurally-drawn scenes, so the daily repeats on a six-day cycle.
+`dailyPhotoIndex`'s coprime-stride rotation only guarantees no *consecutive-day* repeat; it does not
+hide a six-day period. `CURATED_PHOTOS` growing fixes this with no code change, but **it must not
+ship at six.** Sits next to §1e's existing note that the curated photos are not real photographs —
+same root cause, still open.
+
+**Three judgment calls with no design document behind them**, all in `src/daily/streak.ts` or
+`src/daily/daily.ts` and flagged in comments at the point of definition:
+
+- `MAX_FREEZES = 3` — a cap so a long streak cannot become literally unbreakable; the design doc's
+  own wireframe shows "2 freezes" but does not commit to a number.
+- `REPAIR_MAX_GAP_DAYS = 7` — "generous on purpose" is the brief, but without *some* cap a single
+  tap resurrects a streak after a months-long absence, which is a different feature from forgiving
+  a missed Tuesday. (This cap is also why one of the plan's own draft unit tests turned out to be
+  wrong — see below.)
+- `DAILY_COUNT_BY_WEEKDAY = [150, 100, 100, 150, 150, 200, 200]` — light midweek, heavier at the
+  weekend, so the week has a shape; no document specifies daily counts at all.
+
+**A bug in the plan's own test, caught by actually running it.** The draft plan's
+`streak.test.ts` asserted that opening a new calendar month reopens `canRepair` regardless of how
+long the player had been away — directly contradicting its own next test, which asserts a >7-day
+absence must stay unrepairable. Running the test against the implementation (rather than trusting
+the draft) surfaced the contradiction immediately; the test's expectation was corrected to keep the
+gap cap meaningful across a month boundary rather than waived by one. Nothing in `src/daily/` was
+changed to make this pass — only the one test assertion.
+
+**A second bug, this time in a hand-written browser spec, also caught by running it.** The first
+draft of `test/browser/daily.spec.ts`'s "same board on every visit" test used `page.addInitScript`
+to clear IndexedDB before the first visit — but `addInitScript` re-fires on *every* subsequent
+navigation, including the test's own later `page.reload()`, silently wiping the daily's autosaved
+session right before the assertion that depends on it existing. Fixed by deleting the database once,
+via `page.evaluate` against the already-loaded page, matching `BoardPage.open()`'s existing pattern.
+Separately, the same test discovered that **autosave never fires on a completely untouched
+board** — `PlayRuntime.scheduleSave()` only runs from a real play event, and dealing pieces into the
+tray at cut-completion does not by itself produce one worth persisting across a reload in under
+1.2s. The test now places one piece via `placeViaHint` before reloading, the same pattern
+`persistence.spec.ts` already established — this is a fact about when autosave is worth relying on,
+not a bug in the app.
+
+**The deliberate coverage gap.** "Daily completion increments the streak" has no browser
+coverage — `recordCompletion`/`streakLength` are unit-covered in `test/daily/streak.test.ts` and the
+`App.tsx` wiring is covered by inspection, but no browser spec exercises the full path. The daily is
+Classic (`DAILY_CONFIG.mode`), and `completion.spec.ts` — the only spec that ever reaches
+`status === 'complete'` — only works because it picks Zen, where every hint tier is free; there is no
+solve path anywhere in the codebase (`grep -rn "solve" src test` returns only prose), and adding a
+test-only solve hook to `PlayRuntime` was declined, as it has been once before at step 3b's browser
+suite. The alternative that *would* close this — a Zen daily — is a product decision, not a testing
+one, and was not made here.
+
+**`DAILY_CONFIG` hardcodes Classic**, in `App.tsx`. A player who prefers Zen cannot play the daily
+in Zen. Intentional — everyone is meant to be playing the same challenge — but stated here so it
+does not read as an oversight.
+
+**The real-hardware check, still the standing open gate it has been since 5a.** The specific new
+question this step adds is the month calendar's 44pt touch floor on an actual phone — `MonthCalendar`
+sizes cells at `h-[44px] min-w-[44px]` but Chromium's own layout cannot answer whether that reads
+as cramped next to the streak flame above it.
+
+## 1h. Plan 0 landed: real curated photographs, the feeling-based picker, and the workset-collapse deletion
+
+**Branch `step-5b-puzzle-setup`, not yet pushed.** Gates at the branch head: `npm test` 563/563
+(38 files) · `npm run typecheck` clean · `npm run build` clean · `npm run test:browser` green on
+both dock and phone.
+
+**The six-photo rota is closed.** `CURATED_PHOTOS` (`src/play/curated-manifest.ts`, generated by
+`npm run curated:manifest` from `assets/curated/manifest.json` — do not hand-edit the generated
+file) now carries **30 real, licensed photographs**, each with a shelf tag, per-count difficulty,
+and a build-time-precomputed dominant palette and cuttability score. The licence-validation gate
+in the manifest build fails the build if any photo is missing attribution. The daily
+(`dailyPhotoIndex`'s coprime-stride rotation) now has a real period instead of visibly repeating
+every six days. **Still short of §15's 50** — `test/play/curated.test.ts` only asserts `>= 28`, so
+that gap is tracked but not yet closed; growing the shortlist further needs no code change, only
+more manifest entries.
+
+**The picker browses by feeling, not folder (§15).** Photos are grouped onto shelves by mood
+(`wide-and-calm`, and others) rather than by source folder or upload date, matching the design
+brief's "browse by feeling" framing.
+
+**EXIF orientation and the HEIC error path got regression coverage** — `test/browser/photo-picker
+.spec.ts` now exercises both directly, closing out the two remaining Step 1 boxes in `PLAN.md`.
+
+**The workset-collapse surface is deleted, not deferred a third time.** `handoff.md` §3E (this
+file, written at 3b) flagged it: `PlaySession.moveWorksetBy`, `PlayRuntime.toggleGroupCollapsed`,
+`WorksetStore.isHidden`, and `Renderer.drawGroupChips`'s collapsed branch existed and were tested
+at the model layer, but no gesture in the app ever reached them. No task between 3b and Plan 0 ever
+designed the gesture, so Plan 0 removed the surface outright: the `collapsed` field is gone from
+`Workset`, `SceneGroup`, `groupChipText`/`groupChipRect`'s signatures, and the save format's
+`worksets[]` entries. The mat's gating comment in `CLAUDE.md` and `session.ts` now names `inTray`
+as the *only* remaining gate, with the reasoning kept (a second predicate honoured in one place and
+not another draws pieces the player cannot grab) since that reasoning outlives this particular
+predicate. `Board.restore` and `PlayRuntime`'s workset replay stay tolerant of older snapshots that
+still carry `collapsed` — `WorksetStore.create` only ever reads `pieceIds`/`label` off a saved
+entry, so the extra key is silently ignored rather than rejected, which matters because real
+players' IndexedDB already holds snapshots written with the field. **`ClusterState.collapsed` in
+`src/board/board.ts` (the island-cluster field, a different concept from workset collapse) was left
+alone** — it is a separate question this task did not ask.
+
 ## 2. What's next — Step 4: Hints and light
 
 **Superseded by sections 1a–1d above** — every item this section describes has landed. Left in place

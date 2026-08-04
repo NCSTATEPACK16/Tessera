@@ -201,3 +201,59 @@ describe('RecentPieces', () => {
     expect(ring.has(1)).toBe(false);
   });
 });
+
+describe('restoreOrder / restorePinned / pinned', () => {
+  it('pinnedIds reflects pin() calls as an array', () => {
+    const tray = model();
+    const ids = tray.order;
+    tray.pin(ids[0]!);
+    tray.pin(ids[1]!);
+    expect(tray.pinnedIds).toEqual(expect.arrayContaining([ids[0], ids[1]]));
+    expect(tray.pinnedIds).toHaveLength(2);
+  });
+
+  it('restoreOrder replaces the order wholesale', () => {
+    const tray = model();
+    const reversed = [...tray.order].reverse();
+    tray.restoreOrder(reversed);
+    expect([...tray.order]).toEqual(reversed);
+  });
+
+  it('a restored order still feeds the lenses as the canonical order', () => {
+    // The invariant that outlives a reload: every lens's output is a
+    // subsequence of whatever the canonical order currently is.
+    const tray = model();
+    const reversed = [...tray.order].reverse();
+    tray.restoreOrder(reversed);
+    const edges = tray.visible('edges', null, null);
+    let cursor = -1;
+    for (const id of edges) {
+      const next = reversed.indexOf(id);
+      expect(next).toBeGreaterThan(cursor);
+      cursor = next;
+    }
+  });
+
+  it('restorePinned sets pin state without re-checking location', () => {
+    const locations = new Map<number, PieceLocation>();
+    const tray = model(locations);
+    const ids = tray.order;
+    // Deliberately not in the tray: pin() would refuse, restorePinned must not.
+    locations.set(ids[0]!, 'mat');
+    tray.restorePinned([ids[0]!, ids[2]!]);
+    expect(tray.isPinned(ids[0]!)).toBe(true);
+    // ...and the shelf still filters it out, as it always has.
+    expect(tray.pinned).not.toContain(ids[0]!);
+    expect(tray.isPinned(ids[2]!)).toBe(true);
+    expect(tray.isPinned(ids[1]!)).toBe(false);
+  });
+
+  it('restorePinned clears any prior pin state first', () => {
+    const tray = model();
+    const ids = tray.order;
+    tray.pin(ids[0]!);
+    tray.restorePinned([ids[1]!]);
+    expect(tray.isPinned(ids[0]!)).toBe(false);
+    expect(tray.isPinned(ids[1]!)).toBe(true);
+  });
+});

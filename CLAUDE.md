@@ -59,13 +59,11 @@ Break any of these and something downstream breaks in a way that looks like a di
   `workset.ts` exists. **A Workset stores no position** — its bounds derive from its members every
   frame, because a stored one would disagree with the pieces the first time a member moved.
 - **A piece is in at most one Workset**, and membership ends on merge, on return to tray, or on
-  proximity drop. Two predicates gate the mat — `inTray` and `worksets.isHidden` — and both are
-  consulted in `rebuild`, `scene`, and `contentBounds`. Honour one without the other and the player
-  grabs invisible pieces.
-- **Group collapse is designed-and-deferred, not abandoned.** `PlaySession.moveWorksetBy`,
-  `PlayRuntime.toggleGroupCollapsed`, `Renderer.drawGroupChips`'s collapsed branch, and
-  `WorksetStore.isHidden` have no gesture wired to them yet — the only tap a group chip answers is
-  rename. See `PLAN.md`'s 3b entry for what's carried forward.
+  proximity drop. `inTray` is the mat's one gate, consulted in `rebuild`, `scene`, and
+  `contentBounds`. If a second predicate is ever added, it must be honoured in all three places or
+  the player grabs invisible pieces — this is what happened to `worksets.isHidden` (group collapse)
+  until Plan 0 deleted the surface entirely: designed-and-deferred in 3b, never given a gesture, and
+  removed rather than left a third time. A group chip's only tap is rename.
 - **Pinning is an attribute, not a location.** A piece is still in exactly one of `tray`, `mat`, or
   placed. A pinned chip leaves every lens and appears once, on the shelf.
 - **The chip cedes the vertical axis to the browser** — `touch-action: pan-y`, and drag-out commits
@@ -78,6 +76,14 @@ Break any of these and something downstream breaks in a way that looks like a di
   numeral alongside the swatch.
 - **There is no lose state anywhere in this app**, and no bounce-back on a failed drop. A dropped
   cluster stays exactly where it was dropped.
+- **The daily is an ordinary puzzle with a deterministic id** — `daily-YYYY-MM-DD`, seeded through
+  `seedFromPuzzleId` like every other puzzle. That is what lets step 5c's autosave, `Board.restore`,
+  thumbnails, and photo blobs all apply to it with no daily-specific persistence anywhere. If a
+  second save path for dailies ever appears, something has been misunderstood.
+- **`localDateKey` is the only place a local `Date` is read.** The daily resets at 00:00 *local*
+  (`PLAN.md` §6), and the usual shortcut — `toISOString().slice(0, 10)` — is UTC, which flips the
+  daily over at 19:00 for a player at UTC-5. All arithmetic on date keys is done in UTC on whole
+  days, because a local `setDate(+1)` across a DST boundary is 23 or 25 hours and rounds wrong.
 
 ## Coordinate spaces
 
@@ -119,6 +125,9 @@ src/
             workset.ts                pull-out groups — not clusters, see above
             layout.ts                 the pull-out grid, on the safe rect
             runtime.ts                the whole board, mounted and pumped
+  daily/    dates.ts                  local day keys, UTC arithmetic
+            daily.ts                  date → (photo, count, seed), closed form
+            streak.ts                 freezes, repair, pips, month grid
   render/   renderer.ts               draw(scene, camera) — the whole surface
             frame-scheduler.ts        invalidation; "idle draws nothing"
             camera.ts camera-controls.ts scene.ts mat.ts
@@ -126,18 +135,17 @@ src/
   ui/       App.tsx store.ts          React chrome; board never renders through it
             Tray Sheet PieceGrid PieceChip LensChips TopBar ProgressRing
             Shelf SelectionBar        the pinned row, and the pull-out bar
+            DailyHub StreakFlame MonthCalendar   the daily hub and its streak (step 6)
             theme.css                 §13 tokens, once, for both consumers
   main.tsx                            the product entry — index.html
-  dev/      harness.ts                steps 1-2 — dev.html, deleted at step 5
 test/                                 mirrors src/ — vitest, *.test.ts
   browser/  *.spec.ts board-page.ts   playwright, the app in a real browser
 docs/                                 the three sources of truth are gitignored, local only;
                                        docs/superpowers/ (plans, specs) is committed
 ```
 
-Two pages. `index.html` is the product; `dev.html` keeps the step-2 harness with every snap-tuning
-dial on it, because §17 budgets a week on that tuning and chrome existing is no reason to throw it
-away. It goes at step 5.
+One page. `index.html` is the product. `dev.html` and the step-2 harness were deleted at step 5c —
+the setup screen and the pause sheet's live settings now carry the snap-tuning dials it existed for.
 
 All cutting logic lives in `cutter.ts`, not the worker, so it stays testable off-thread. The same
 split runs through steps 2 and 3: everything with a decision in it is DOM-free and tested, and the
@@ -174,9 +182,7 @@ Do not drift from these without changing the design doc first.
 ## Commands
 
 ```
-npm run dev          # host-exposed for real-device testing
-                     #   /          the product — board and tray
-                     #   /dev.html  the step-2 harness and its tuning dials
+npm run dev          # host-exposed for real-device testing — the product at /
 npm test             # vitest — pure functions, node environment
 npm run test:browser # playwright — the app, in a browser, dock and phone
 npm run typecheck
