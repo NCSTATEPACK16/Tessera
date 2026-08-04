@@ -9,7 +9,14 @@
  */
 
 import { useRef, useState } from 'react';
-import { CURATED_PHOTOS } from '@/play/curated';
+import { CURATED_PHOTOS, photosByShelf, type CuratedShelf } from '@/play/curated';
+
+/** §15's three shelves, in display order and with their human labels. */
+const SHELVES: readonly { key: CuratedShelf; label: string }[] = [
+  { key: 'wide-and-calm', label: 'Wide and calm' },
+  { key: 'dense-and-busy', label: 'Dense and busy' },
+  { key: 'one-animal-close', label: 'One animal, close' },
+];
 
 export type PhotoChoice = { kind: 'curated'; id: string } | { kind: 'upload'; file: File };
 
@@ -97,33 +104,48 @@ export function PhotoPicker({ onPhotoChosen, error, onDaily }: PhotoPickerProps)
 
       {source === 'curated' ? (
         <>
-          <div className="grid grid-cols-2 gap-3">
-            {CURATED_PHOTOS.map((photo) => {
-              const selected = photo.id === selectedId;
-              return (
-                <button
-                  key={photo.id}
-                  type="button"
-                  aria-label={`Curated photo: ${photo.name}`}
-                  aria-pressed={selected}
-                  onClick={() => setSelectedId(photo.id)}
-                  className={`overflow-hidden rounded-[var(--radius-md)] border-2 text-left ${
-                    selected ? 'border-[var(--accent)]' : 'border-[var(--edge-hair)]'
-                  }`}
-                >
-                  <div
-                    className="flex aspect-[4/3] items-center justify-center text-[24px]"
-                    style={{ background: 'var(--mat-raised)' }}
-                  >
-                    {selected ? '✓' : ''}
-                  </div>
-                  <div className="px-3 py-2" style={{ background: 'var(--mat-raised)' }}>
-                    <div className="text-[13px] text-[var(--ink-primary)]">{photo.name}</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          {SHELVES.map(({ key, label }) => (
+            <div key={key} className="flex flex-col gap-3">
+              <h2 className="font-[var(--font-data)] text-[12px] uppercase tracking-wide text-[var(--ink-muted)]">
+                {label}
+              </h2>
+              <div className="grid grid-cols-2 gap-3">
+                {photosByShelf(key).map((photo) => {
+                  const selected = photo.id === selectedId;
+                  return (
+                    <button
+                      key={photo.id}
+                      type="button"
+                      aria-label={`Curated photo: ${photo.name}`}
+                      aria-pressed={selected}
+                      onClick={() => setSelectedId(photo.id)}
+                      className={`overflow-hidden rounded-[var(--radius-md)] border-2 text-left ${
+                        selected ? 'border-[var(--accent)]' : 'border-[var(--edge-hair)]'
+                      }`}
+                    >
+                      <div
+                        className="flex aspect-[4/3] items-center justify-center text-[24px]"
+                        style={{ background: 'var(--mat-raised)' }}
+                      >
+                        {selected ? '✓' : ''}
+                      </div>
+                      <div className="px-3 py-2" style={{ background: 'var(--mat-raised)' }}>
+                        <div className="text-[13px] text-[var(--ink-primary)]">
+                          {photo.name}
+                          {/* Colour is never the only signal (CLAUDE.md) — a text marker, not a badge colour. */}
+                          {photo.difficulty === 'hard' && (
+                            <span className="ml-1 text-[11px] text-[var(--ink-muted)]">
+                              (hard)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
 
           <button
             type="button"

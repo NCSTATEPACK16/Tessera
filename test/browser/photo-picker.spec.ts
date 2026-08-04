@@ -76,6 +76,14 @@ test.describe('photo picker and crop', () => {
     await expect(page.getByRole('button', { name: 'Curated photos' })).toBeVisible();
   });
 
+  test('curated photos are grouped by feeling, not by category', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'load' });
+    // The three §15 shelves, by their human labels.
+    await expect(page.getByRole('heading', { name: 'Wide and calm' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dense and busy' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'One animal, close' })).toBeVisible();
+  });
+
   test('rotate cycles in 90-degree steps without breaking the crop', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
     await page.getByRole('button', { name: 'Choose this photo' }).click();
