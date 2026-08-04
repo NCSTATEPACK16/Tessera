@@ -44,7 +44,10 @@ test.describe('completion', () => {
     test.setTimeout(600_000);
     await BoardPage.openZenAndComplete(page);
     await page.getByRole('button', { name: 'Done' }).click();
-    await page.waitForTimeout(500);
+    // Done writes the completion, then lands on the picker. Waiting for that
+    // landing is what proves the async save committed — a fixed timeout races
+    // it and flakes under full-suite load.
+    await expect(page.getByRole('button', { name: 'Choose this photo' })).toBeVisible();
 
     const counts = await page.evaluate(async () => {
       const read = (store: string): Promise<number> =>
