@@ -29,11 +29,21 @@ export interface PhotoPickerProps {
    * route to the daily.
    */
   onDaily?: () => void;
+  /**
+   * Step 8: a player with no in-progress puzzles lands here, not the library,
+   * so the collection wall must be reachable from the picker too (§15).
+   */
+  onCollection?: () => void;
 }
 
 type Source = 'curated' | 'upload';
 
-export function PhotoPicker({ onPhotoChosen, error, onDaily }: PhotoPickerProps): React.ReactElement {
+export function PhotoPicker({
+  onPhotoChosen,
+  error,
+  onDaily,
+  onCollection,
+}: PhotoPickerProps): React.ReactElement {
   const [source, setSource] = useState<Source>('curated');
   const [selectedId, setSelectedId] = useState<string>(CURATED_PHOTOS[0]!.id);
   const [dragOver, setDragOver] = useState(false);
@@ -55,16 +65,28 @@ export function PhotoPicker({ onPhotoChosen, error, onDaily }: PhotoPickerProps)
             Step 1 of 2 — Pick a photo
           </div>
         </div>
-        {onDaily && (
-          <button
-            type="button"
-            aria-label="Today’s puzzle"
-            onClick={onDaily}
-            className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
-          >
-            Today’s puzzle
-          </button>
-        )}
+        <div className="flex gap-2">
+          {onCollection && (
+            <button
+              type="button"
+              aria-label="Collection"
+              onClick={onCollection}
+              className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+            >
+              Collection
+            </button>
+          )}
+          {onDaily && (
+            <button
+              type="button"
+              aria-label="Today’s puzzle"
+              onClick={onDaily}
+              className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+            >
+              Today’s puzzle
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-2">

@@ -41,12 +41,14 @@ import type { LibraryEntry } from '@/persist/library';
 import { loadPhoto, savePhoto } from '@/persist/photos';
 import { captureThumbnail } from '@/persist/thumbnail';
 import type { SessionSnapshot } from '@/persist/snapshot';
-import { saveCompletion } from '@/persist/completions';
+import { listCompletions, saveCompletion } from '@/persist/completions';
+import type { CompletionRecord } from '@/persist/completions';
 import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
 import { Library } from './Library';
 import { PauseSheet } from './PauseSheet';
 import { CompletionCard } from './CompletionCard';
+import { CollectionWall } from './CollectionWall';
 import { dailyFor, dailyPuzzleId, isDailyPuzzleId } from '@/daily/daily';
 import { localDateKey, monthKeyOf } from '@/daily/dates';
 import {
@@ -171,8 +173,11 @@ export function App(): React.ReactElement {
    * IndexedDB read on mount that decides between the library and the picker —
    * a first-time player must never see an empty library apologising to them.
    */
-  type Screen = 'checking' | 'daily' | 'library' | 'setup' | 'playing';
+  type Screen = 'checking' | 'daily' | 'library' | 'setup' | 'playing' | 'wall';
   const [screen, setScreen] = useState<Screen>('checking');
+  /** The collection wall's rows, loaded on entry; the screen to return to. */
+  const [completions, setCompletions] = useState<readonly CompletionRecord[]>([]);
+  const beforeWall = useRef<Screen>('setup');
   /**
    * Read once per mount. A session that survives local midnight keeps
    * yesterday's key until the next load, which is correct: the daily the
@@ -647,6 +652,12 @@ export function App(): React.ReactElement {
     setPlayConfig(null);
   }, [playConfig, commitCompletion, clearCard]);
 
+  const openCollection = useCallback(async (): Promise<void> => {
+    setCompletions(await listCompletions());
+    beforeWall.current = screen;
+    setScreen('wall');
+  }, [screen]);
+
   // -- the runtime, mounted once the crop is confirmed -------------------------
 
   useEffect(() => {
@@ -927,6 +938,12 @@ export function App(): React.ReactElement {
     );
   }
 
+  if (screen === 'wall') {
+    return (
+      <CollectionWall entries={completions} onBack={() => setScreen(beforeWall.current)} />
+    );
+  }
+
   if (screen === 'library') {
     // Today's daily is offered on the hub, not here — one puzzle, one place to
     // start it. Yesterday's unfinished daily is no longer "today's" and shows
@@ -938,6 +955,9 @@ export function App(): React.ReactElement {
         streak={streakCount}
         streakTone={streakTone}
         onDaily={() => setScreen('daily')}
+        onCollection={() => {
+          void openCollection();
+        }}
         onOpen={(puzzleId) => {
           void handleOpenLibraryEntry(puzzleId);
         }}
@@ -957,6 +977,9 @@ export function App(): React.ReactElement {
           onPhotoChosen={handlePhotoChosen}
           error={setupPhase.error}
           onDaily={() => setScreen('daily')}
+          onCollection={() => {
+            void openCollection();
+          }}
         />
       );
     }
