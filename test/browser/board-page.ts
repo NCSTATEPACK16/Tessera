@@ -113,6 +113,37 @@ export class BoardPage {
     return board;
   }
 
+  /**
+   * Open a fresh Zen puzzle and solve it completely, leaving the completion
+   * card on screen. Zen makes every hint tier free, which is the only way a
+   * spec can place specific pieces without a test-only hook. Small ladder rung
+   * by default — a full solve is expensive and one is enough.
+   *
+   * Plan 8's card and wall specs, and Plan 9's second-completion prompt, all
+   * enter through here rather than reaching past `BoardPage`.
+   */
+  static async openZenAndComplete(
+    page: Page,
+    options: { pieceCount?: number } = {},
+  ): Promise<BoardPage> {
+    const board = await BoardPage.open(page, {
+      pieceCount: options.pieceCount ?? 50,
+      mode: 'Zen',
+    });
+    await board.completeZenPuzzle();
+    return board;
+  }
+
+  /** Place every remaining piece via Tier-3 hints. Plan 9 calls this twice. */
+  async completeZenPuzzle(): Promise<void> {
+    const { total } = await this.placed();
+    for (let i = 0; i < total; i++) {
+      const [next] = await this.mountedIds();
+      if (next === undefined) break;
+      await this.placeViaHint(next);
+    }
+  }
+
   async waitForCut(): Promise<void> {
     await this.page.waitForFunction(
       () =>

@@ -33,7 +33,7 @@ import type { PuzzleConfig } from '@/play/setup';
 import { nextHarderCount } from '@/play/setup';
 import type { PuzzleAssists } from '@/play/setup';
 import type { SnapDifficulty } from '@/board/snap';
-import { renderCuratedPhoto } from '@/play/curated';
+import { curatedPhotoById, renderCuratedPhoto } from '@/play/curated';
 import { downscaleTarget } from '@/play/photo';
 import { seedFromPuzzleId } from '@/core/rng';
 import { deleteLibraryEntry, listLibrary, saveLibraryEntry } from '@/persist/library';
@@ -41,9 +41,12 @@ import type { LibraryEntry } from '@/persist/library';
 import { loadPhoto, savePhoto } from '@/persist/photos';
 import { captureThumbnail } from '@/persist/thumbnail';
 import type { SessionSnapshot } from '@/persist/snapshot';
+import { saveCompletion } from '@/persist/completions';
+import { composeCard } from '@/render/card';
+import type { CardMeta } from '@/play/card';
 import { Library } from './Library';
 import { PauseSheet } from './PauseSheet';
-import { CompletionBanner } from './CompletionBanner';
+import { CompletionCard } from './CompletionCard';
 import { dailyFor, dailyPuzzleId, isDailyPuzzleId } from '@/daily/daily';
 import { localDateKey, monthKeyOf } from '@/daily/dates';
 import {
@@ -152,8 +155,16 @@ export function App(): React.ReactElement {
 
   type SetupPhase =
     | { kind: 'picker'; error: string | null }
-    | { kind: 'cropping'; source: ImageBitmap }
-    | { kind: 'configuring'; source: ImageBitmap; seed: number; puzzleId: string };
+    // `photoId` is the curated photo's id, or null for an upload — carried
+    // through so the completion card can credit it (§15) and title it.
+    | { kind: 'cropping'; source: ImageBitmap; photoId: string | null }
+    | {
+        kind: 'configuring';
+        source: ImageBitmap;
+        seed: number;
+        puzzleId: string;
+        photoId: string | null;
+      };
 
   /**
    * Where the app is, above `setupPhase`. `'checking'` is the single
@@ -200,8 +211,15 @@ export function App(): React.ReactElement {
 
   const [setupPhase, setSetupPhase] = useState<SetupPhase>({ kind: 'picker', error: null });
   const [playConfig, setPlayConfig] = useState<
-    ({ source: ImageBitmap; seed: number; puzzleId: string } & PuzzleConfig) | null
+    | ({ source: ImageBitmap; seed: number; puzzleId: string; photoId: string | null } &
+        PuzzleConfig)
+    | null
   >(null);
+  /** The composed Puzzle Card PNG and its meta, ready once a puzzle completes. */
+  const [cardBlob, setCardBlob] = useState<Blob | null>(null);
+  const [cardMeta, setCardMeta] = useState<CardMeta | null>(null);
+  /** Guards the one-time card compose against re-firing on every render. */
+  const composedFor = useRef<string | null>(null);
 
   // Human-speed, not per-frame: flips once when a chip leaves or returns to the
   // tray, never during the drag itself. Drives the shelf's dashed placeholder.
@@ -222,6 +240,8 @@ export function App(): React.ReactElement {
     hintTarget: null,
     hintsUsed: 0,
     accent: fallbackAccentTokens(),
+    elapsedMs: 0,
+    cleanRun: true,
   });
 
   const docked = useMediaQuery(DOCK_QUERY);
@@ -308,6 +328,7 @@ export function App(): React.ReactElement {
 
   const handlePhotoChosen = useCallback(async (choice: PhotoChoice): Promise<void> => {
     try {
+      const photoId = choice.kind === 'curated' ? choice.id : null;
       const bitmap =
         choice.kind === 'curated' ? await renderCuratedPhoto(choice.id) : await decodeUpload(choice.file);
       // A previous round trip through crop (picker -> crop -> picker -> pick
@@ -317,7 +338,7 @@ export function App(): React.ReactElement {
       // other route back into this handler while a cropping phase exists.
       setSetupPhase((prev) => {
         if (prev.kind === 'cropping') prev.source.close();
-        return { kind: 'cropping', source: bitmap };
+        return { kind: 'cropping', source: bitmap, photoId };
       });
     } catch (error) {
       const message =
@@ -338,12 +359,14 @@ export function App(): React.ReactElement {
       // uncropped original below, so this can never double-close the same
       // object. Only the cropped result is needed from here on; the
       // full-resolution original is not used again once the crop is confirmed.
+      const photoId = setupPhase.kind === 'cropping' ? setupPhase.photoId : null;
       if (setupPhase.kind === 'cropping') setupPhase.source.close();
       setSetupPhase({
         kind: 'configuring',
         source: result.source,
         seed: result.seed,
         puzzleId: result.puzzleId,
+        photoId,
       });
     },
     [setupPhase],
@@ -361,6 +384,7 @@ export function App(): React.ReactElement {
         source: setupPhase.source,
         seed: setupPhase.seed,
         puzzleId: setupPhase.puzzleId,
+        photoId: setupPhase.photoId,
         ...config,
       });
       originScreen.current = 'setup';
@@ -391,6 +415,9 @@ export function App(): React.ReactElement {
         source: bitmap,
         seed: entry.snapshot.seed,
         puzzleId,
+        // The snapshot does not carry which curated photo this was; a resumed
+        // daily recovers it from the date at card time (`buildCardMeta`).
+        photoId: null,
         targetCount: entry.snapshot.targetCount,
         mode: entry.snapshot.mode,
         rotation: entry.snapshot.rotation,
@@ -431,6 +458,7 @@ export function App(): React.ReactElement {
       source,
       seed: daily.seed,
       puzzleId: daily.puzzleId,
+      photoId: daily.photoId,
       targetCount: daily.targetCount,
       mode: DAILY_CONFIG.mode,
       rotation: DAILY_CONFIG.rotation,
@@ -516,10 +544,15 @@ export function App(): React.ReactElement {
     photoSavedRef.current = false;
     setDailyResult(null);
     recordedDaily.current = null;
+    // Drop the finished puzzle's card so the next completion cannot flash it.
+    setCardBlob(null);
+    setCardMeta(null);
+    composedFor.current = null;
     setPlayConfig({
       source: bitmap,
       seed,
       puzzleId: newPuzzleId,
+      photoId: playConfig.photoId,
       targetCount: next,
       mode: playConfig.mode,
       rotation: playConfig.rotation,
@@ -528,25 +561,91 @@ export function App(): React.ReactElement {
     });
   }, [playConfig]);
 
+  /**
+   * The completion card's meta, assembled from the frozen run numbers and the
+   * photo. A resumed daily recovers its `photoId` from the date, since the
+   * snapshot does not store it (§15 attribution still shows on a resumed daily).
+   */
+  const buildCardMeta = useCallback((): CardMeta | null => {
+    if (!playConfig) return null;
+    const photoId =
+      playConfig.photoId ?? (isDailyPuzzleId(playConfig.puzzleId) ? daily.photoId : null);
+    const curated = photoId ? curatedPhotoById(photoId) : undefined;
+    return {
+      title: curated?.name ?? 'Your photo',
+      elapsedMs: summary.elapsedMs,
+      pieceCount: summary.total,
+      mode: playConfig.mode,
+      cleanRun: summary.cleanRun,
+      attribution: curated?.licence.attribution ?? null,
+    };
+  }, [playConfig, daily, summary.elapsedMs, summary.total, summary.cleanRun]);
+
+  /**
+   * §15: record the finish, then remove the in-progress entry — in that order,
+   * so a crash between them loses nothing. The wall reads `completions`; the
+   * library holds in-progress puzzles only. The `saveInFlight` wait is the same
+   * race guard the old delete-only path carried: an autosave overtaking the
+   * delete would resurrect the entry.
+   */
+  const commitCompletion = useCallback(async (): Promise<void> => {
+    if (!playConfig) return;
+    const rt = runtime.current;
+    await saveInFlight.current.catch(() => {});
+    if (rt) {
+      const photoId =
+        playConfig.photoId ?? (isDailyPuzzleId(playConfig.puzzleId) ? daily.photoId : null);
+      const curated = photoId ? curatedPhotoById(photoId) : undefined;
+      const thumbnailBlob = await captureThumbnail(rt.boardCanvas());
+      await saveCompletion({
+        puzzleId: playConfig.puzzleId,
+        photoId,
+        thumbnailBlob,
+        elapsedMs: summary.elapsedMs,
+        pieceCount: summary.total,
+        mode: playConfig.mode,
+        cleanRun: summary.cleanRun,
+        completedAt: Date.now(),
+        attribution: curated?.licence.attribution ?? null,
+      });
+    }
+    await deleteLibraryEntry(playConfig.puzzleId);
+  }, [playConfig, daily, summary.elapsedMs, summary.total, summary.cleanRun]);
+
+  const clearCard = useCallback((): void => {
+    setCardBlob(null);
+    setCardMeta(null);
+    composedFor.current = null;
+  }, []);
+
   const handleDone = useCallback(async (): Promise<void> => {
     if (!playConfig) return;
-    // A completed puzzle simply leaves the library. After the in-flight save,
-    // or the write that lost the race would put it straight back.
-    await saveInFlight.current.catch(() => {});
-    await deleteLibraryEntry(playConfig.puzzleId);
+    await commitCompletion();
     const entries = await listLibrary();
 
-    // Every await is done, so these four commit in one batch. That matters:
+    // Every await is done, so these commit in one batch. That matters:
     // clearing `playConfig` while `setupPhase` was still `'configuring'`
     // renders `PuzzleSetup` for one frame against a source bitmap the cutter
     // worker detached long ago, and it throws on the spot.
+    clearCard();
     setSetupPhase({ kind: 'picker', error: null });
     setLibraryEntries(entries);
     setScreen(
       originScreen.current === 'daily' ? 'daily' : entries.length > 0 ? 'library' : 'setup',
     );
     setPlayConfig(null);
-  }, [playConfig]);
+  }, [playConfig, commitCompletion, clearCard]);
+
+  /** Record the finish, then head straight to the picker for a fresh photo. */
+  const handleNewPuzzle = useCallback(async (): Promise<void> => {
+    if (!playConfig) return;
+    await commitCompletion();
+    setLibraryEntries(await listLibrary());
+    clearCard();
+    setSetupPhase({ kind: 'picker', error: null });
+    setScreen('setup');
+    setPlayConfig(null);
+  }, [playConfig, commitCompletion, clearCard]);
 
   // -- the runtime, mounted once the crop is confirmed -------------------------
 
@@ -631,6 +730,32 @@ export function App(): React.ReactElement {
     // is called for its side effect on the runtime it just created, not
     // watched for change here; see the original comment this replaces.
   }, [playConfig, restartKey]);
+
+  // Compose the Puzzle Card once, when a puzzle completes. Guarded by a ref so
+  // a re-render cannot recompose it — the same shape `recordedDaily` uses. The
+  // card is drawn from the completed board canvas (§11), not the source photo.
+  useEffect(() => {
+    if (summary.status !== 'complete' || !playConfig) return;
+    if (composedFor.current === playConfig.puzzleId) return;
+    const rt = runtime.current;
+    if (!rt) return;
+    const meta = buildCardMeta();
+    if (!meta) return;
+    composedFor.current = playConfig.puzzleId;
+    let cancelled = false;
+    void (async () => {
+      // Fonts first: `ctx.font` falls back silently if the webfont has not
+      // arrived, and a card in the wrong typeface is a defect nothing reports.
+      await document.fonts.ready;
+      const blob = await composeCard(rt.boardCanvas(), meta);
+      if (cancelled) return;
+      setCardBlob(blob);
+      setCardMeta(meta);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [summary.status, playConfig, buildCardMeta]);
 
   // The dock's inner edge changes the board's viewport, and a window resize
   // event never fires for it. Without this the camera silently stops matching
@@ -857,7 +982,13 @@ export function App(): React.ReactElement {
         onConfirm={handleSetupConfirm}
         // Back re-enters crop on the already-cropped bitmap, not the original —
         // the pre-crop source was released when the crop was confirmed.
-        onBack={() => setSetupPhase({ kind: 'cropping', source: setupPhase.source })}
+        onBack={() =>
+          setSetupPhase({
+            kind: 'cropping',
+            source: setupPhase.source,
+            photoId: setupPhase.photoId,
+          })
+        }
       />
     );
   }
@@ -892,16 +1023,26 @@ export function App(): React.ReactElement {
         />
 
         {summary.status === 'complete' ? (
-          <CompletionBanner
-            canGoHarder={nextHarderCount(playConfig.targetCount) !== null}
-            {...(isDailyPuzzleId(playConfig.puzzleId) && dailyResult ? { daily: dailyResult } : {})}
-            onAgainHarder={() => {
-              void handleAgainHarder();
-            }}
-            onDone={() => {
-              void handleDone();
-            }}
-          />
+          cardBlob && cardMeta ? (
+            <CompletionCard
+              meta={cardMeta}
+              cardBlob={cardBlob}
+              canGoHarder={nextHarderCount(playConfig.targetCount) !== null}
+              nextCount={nextHarderCount(playConfig.targetCount)}
+              {...(isDailyPuzzleId(playConfig.puzzleId) && dailyResult
+                ? { daily: dailyResult }
+                : {})}
+              onAgainHarder={() => {
+                void handleAgainHarder();
+              }}
+              onDone={() => {
+                void handleDone();
+              }}
+              onNewPuzzle={() => {
+                void handleNewPuzzle();
+              }}
+            />
+          ) : null
         ) : (
           <TopBar
             status={summary.status}
