@@ -67,6 +67,8 @@ import { loadStreak, saveStreak } from '@/persist/daily';
 import { DailyHub } from './DailyHub';
 import type { StreakTone } from './StreakFlame';
 import { DEFAULT_PUZZLE_CONFIG } from '@/play/setup';
+import { HEIC_HEAD_BYTES, looksLikeHeic, namedLikeHeic } from '@/play/heic';
+import { decodeHeicInWorker, readHead } from '@/play/heic-client';
 
 /**
  * Reads a File's natural pixel size without allocating a persistent
@@ -96,22 +98,13 @@ async function probeImageSize(file: File): Promise<{ width: number; height: numb
  * pipeline, but the intermediate canvases were not.
  */
 /**
- * Step 5c: HEIC is what an iPhone shoots by default and what no browser
- * decodes, so "couldn't open that photo" is technically true and useless.
+ * Step 5c: HEIC is what an iPhone shoots by default. Track 1 converts it
+ * rather than refusing it, but conversion can still fail — on a device where
+ * the WASM will not load, or on a genuinely corrupt file — and when it does,
+ * "couldn't open that photo" is technically true and useless.
  */
 const HEIC_MESSAGE =
   "HEIC photos aren’t supported directly here — try ‘Most Compatible’ in Settings → Photos, or export as JPEG.";
-
-function looksLikeHeic(file: File): boolean {
-  const type = file.type.toLowerCase();
-  const name = file.name.toLowerCase();
-  return (
-    type.includes('heic') ||
-    type.includes('heif') ||
-    name.endsWith('.heic') ||
-    name.endsWith('.heif')
-  );
-}
 
 async function decodeUpload(file: File): Promise<ImageBitmap> {
   try {
@@ -130,7 +123,21 @@ async function decodeUpload(file: File): Promise<ImageBitmap> {
       imageOrientation: 'from-image',
     });
   } catch (error) {
-    if (looksLikeHeic(file)) throw new Error(HEIC_MESSAGE);
+    // The browser gets first refusal, always — Safari decodes HEIC natively,
+    // and iOS often transcodes to JPEG on the share path. Only once the engine
+    // has actually failed is it worth asking whether libheif should be woken.
+    const head = await readHead(file, HEIC_HEAD_BYTES);
+    if (looksLikeHeic(file, head)) {
+      try {
+        return await decodeHeicInWorker(file);
+      } catch {
+        throw new Error(HEIC_MESSAGE);
+      }
+    }
+    // The bytes said no, but the name or MIME type said HEIC. That file is
+    // corrupt rather than HEIC, and the player is still better served by the
+    // advice than by the generic message — see `namedLikeHeic`.
+    if (namedLikeHeic(file)) throw new Error(HEIC_MESSAGE);
     throw error;
   }
 }
@@ -156,7 +163,17 @@ export function App(): React.ReactElement {
   const runtime = useRef<PlayRuntime | null>(null);
 
   type SetupPhase =
-    | { kind: 'picker'; error: string | null }
+    | {
+        kind: 'picker';
+        error: string | null;
+        /**
+         * A chosen photo is decoding. HEIC conversion can take seconds on an
+         * older device, and silence during it reads as "nothing happened" —
+         * which the target player takes as their own mistake, not the app's
+         * delay. Absent means idle; only `handlePhotoChosen` ever sets it.
+         */
+        busy?: boolean;
+      }
     // `photoId` is the curated photo's id, or null for an upload — carried
     // through so the completion card can credit it (§15) and title it.
     | { kind: 'cropping'; source: ImageBitmap; photoId: string | null }
@@ -332,6 +349,12 @@ export function App(): React.ReactElement {
   // -- the setup flow: picker -> crop -> playConfig ---------------------------
 
   const handlePhotoChosen = useCallback(async (choice: PhotoChoice): Promise<void> => {
+    // Set before any await, so the reassurance is on screen from the moment
+    // the file lands rather than from when the decoder gets going.
+    setSetupPhase((prev) => {
+      if (prev.kind === 'cropping') prev.source.close();
+      return { kind: 'picker', error: null, busy: true };
+    });
     try {
       const photoId = choice.kind === 'curated' ? choice.id : null;
       const bitmap =
@@ -976,6 +999,7 @@ export function App(): React.ReactElement {
         <PhotoPicker
           onPhotoChosen={handlePhotoChosen}
           error={setupPhase.error}
+          busy={setupPhase.busy ?? false}
           onDaily={() => setScreen('daily')}
           onCollection={() => {
             void openCollection();

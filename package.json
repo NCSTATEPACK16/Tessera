@@ -32,6 +32,7 @@
     "esbuild@0.21.5": true
   },
   "dependencies": {
+    "heic-to": "^1.5.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zustand": "^5.0.14"
