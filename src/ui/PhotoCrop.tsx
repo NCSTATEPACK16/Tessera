@@ -179,115 +179,124 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
   };
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-5">
-      <div>
-        <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
-          New Puzzle
+    // The frame below is `shrink-0`: a bare flex child with only an
+    // `aspectRatio` style and an absolutely-positioned canvas child has no
+    // intrinsic min-height, so a height-constrained flex column will squash
+    // it short rather than let the column scroll — silently clipping the
+    // preview to a thin strip of the photo instead of showing all of it.
+    // The confirm button lives outside the scroll area entirely, in its own
+    // `shrink-0` footer, so it never needs that scroll to be reachable.
+    <div className="flex h-full flex-col">
+      <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-5">
+        <div>
+          <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
+            New Puzzle
+          </div>
+          <div className="mt-1 font-[var(--font-data)] text-[12px] text-[var(--ink-muted)]">
+            Step 2 of 2 — Crop &amp; frame
+          </div>
         </div>
-        <div className="mt-1 font-[var(--font-data)] text-[12px] text-[var(--ink-muted)]">
-          Step 2 of 2 — Crop &amp; frame
-        </div>
-      </div>
 
-      <div
-        ref={frameRef}
-        onPointerDown={onFramePointerDown}
-        onPointerMove={onFramePointerMove}
-        onPointerUp={onFramePointerUp}
-        onPointerCancel={onFramePointerUp}
-        className="relative touch-none overflow-hidden rounded-[var(--radius-md)] border border-[var(--edge-hair)]"
-        style={{ aspectRatio: frameAspect, background: 'var(--mat-void)' }}
-      >
-        <canvas
-          ref={canvasRef}
-          data-testid="crop-source-aspect"
-          className="absolute left-1/2 top-1/2 max-w-none"
-          style={{
-            width: `${(source.width / rect.width) * 100}%`,
-            // The photo's own translate is expressed as a percentage of the
-            // canvas's local (pre-rotation) box, the same basis the width
-            // percentage above uses — that keeps the offset self-consistent
-            // regardless of rotation. Increasing pan.x moves the crop rect's
-            // center right in photo space (see computeCropRect), so the
-            // image itself must shift left on screen to keep that new
-            // center in the middle of the frame — hence the subtraction.
-            transform: `translate(calc(-50% - ${(100 * pan.x) / source.width}%), calc(-50% - ${(100 * pan.y) / source.height}%)) rotate(${rotateSteps * 90}deg)`,
-          }}
+        <div
+          ref={frameRef}
+          onPointerDown={onFramePointerDown}
+          onPointerMove={onFramePointerMove}
+          onPointerUp={onFramePointerUp}
+          onPointerCancel={onFramePointerUp}
+          className="relative shrink-0 touch-none overflow-hidden rounded-[var(--radius-md)] border border-[var(--edge-hair)]"
+          style={{ aspectRatio: frameAspect, background: 'var(--mat-void)' }}
+        >
+          <canvas
+            ref={canvasRef}
+            data-testid="crop-source-aspect"
+            className="absolute left-1/2 top-1/2 max-w-none"
+            style={{
+              width: `${(source.width / rect.width) * 100}%`,
+              // The photo's own translate is expressed as a percentage of the
+              // canvas's local (pre-rotation) box, the same basis the width
+              // percentage above uses — that keeps the offset self-consistent
+              // regardless of rotation. Increasing pan.x moves the crop rect's
+              // center right in photo space (see computeCropRect), so the
+              // image itself must shift left on screen to keep that new
+              // center in the middle of the frame — hence the subtraction.
+              transform: `translate(calc(-50% - ${(100 * pan.x) / source.width}%), calc(-50% - ${(100 * pan.y) / source.height}%)) rotate(${rotateSteps * 90}deg)`,
+            }}
+          />
+          {grid && (
+            <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden>
+              {Array.from({ length: grid.cols - 1 }, (_, i) => (
+                <line
+                  key={`v${i}`}
+                  x1={`${((i + 1) / grid.cols) * 100}%`}
+                  y1="0"
+                  x2={`${((i + 1) / grid.cols) * 100}%`}
+                  y2="100%"
+                  stroke="rgba(255,255,255,0.35)"
+                  strokeWidth={1}
+                />
+              ))}
+              {Array.from({ length: grid.rows - 1 }, (_, i) => (
+                <line
+                  key={`h${i}`}
+                  x1="0"
+                  y1={`${((i + 1) / grid.rows) * 100}%`}
+                  x2="100%"
+                  y2={`${((i + 1) / grid.rows) * 100}%`}
+                  stroke="rgba(255,255,255,0.35)"
+                  strokeWidth={1}
+                />
+              ))}
+            </svg>
+          )}
+        </div>
+
+        <div className="flex gap-2">
+          {ASPECTS.map(({ label, value }) => (
+            <button
+              key={label}
+              type="button"
+              aria-label={`Aspect: ${label}`}
+              aria-pressed={aspectChoice === value}
+              onClick={() => setAspectChoice(value)}
+              className={`flex-1 rounded-[var(--radius-sm)] border py-2 font-[var(--font-data)] text-[11px] ${
+                aspectChoice === value
+                  ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                  : 'border-[var(--edge-hair)] text-[var(--ink-muted)]'
+              }`}
+            >
+              {aspectChoice === value ? '✓ ' : ''}
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* CLAUDE.md "Hard numbers": touch target 44pt floor, everywhere — a bare
+            range input's hit area is only as tall as its (thin) track. Setting
+            min-height on the input directly grows the interactive box while
+            browsers keep the visible track centered and thin within it, the
+            same way a <select>'s box grows without thickening its text. */}
+        <input
+          type="range"
+          aria-label="Zoom"
+          min={MIN_ZOOM}
+          max={MAX_ZOOM}
+          step={0.01}
+          value={zoom}
+          onChange={(e) => setZoom(Number(e.target.value))}
+          className="min-h-[44px] w-full"
         />
-        {grid && (
-          <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden>
-            {Array.from({ length: grid.cols - 1 }, (_, i) => (
-              <line
-                key={`v${i}`}
-                x1={`${((i + 1) / grid.cols) * 100}%`}
-                y1="0"
-                x2={`${((i + 1) / grid.cols) * 100}%`}
-                y2="100%"
-                stroke="rgba(255,255,255,0.35)"
-                strokeWidth={1}
-              />
-            ))}
-            {Array.from({ length: grid.rows - 1 }, (_, i) => (
-              <line
-                key={`h${i}`}
-                x1="0"
-                y1={`${((i + 1) / grid.rows) * 100}%`}
-                x2="100%"
-                y2={`${((i + 1) / grid.rows) * 100}%`}
-                stroke="rgba(255,255,255,0.35)"
-                strokeWidth={1}
-              />
-            ))}
-          </svg>
-        )}
+
+        <button
+          type="button"
+          aria-label="Rotate 90 degrees"
+          onClick={() => setRotateSteps((r) => (((r + 1) % 4) as RotateSteps))}
+          className="rounded-[var(--radius-sm)] border border-[var(--edge-hair)] py-2 text-[13px] text-[var(--ink-primary)]"
+        >
+          Rotate
+        </button>
       </div>
 
-      <div className="flex gap-2">
-        {ASPECTS.map(({ label, value }) => (
-          <button
-            key={label}
-            type="button"
-            aria-label={`Aspect: ${label}`}
-            aria-pressed={aspectChoice === value}
-            onClick={() => setAspectChoice(value)}
-            className={`flex-1 rounded-[var(--radius-sm)] border py-2 font-[var(--font-data)] text-[11px] ${
-              aspectChoice === value
-                ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
-                : 'border-[var(--edge-hair)] text-[var(--ink-muted)]'
-            }`}
-          >
-            {aspectChoice === value ? '✓ ' : ''}
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* CLAUDE.md "Hard numbers": touch target 44pt floor, everywhere — a bare
-          range input's hit area is only as tall as its (thin) track. Setting
-          min-height on the input directly grows the interactive box while
-          browsers keep the visible track centered and thin within it, the
-          same way a <select>'s box grows without thickening its text. */}
-      <input
-        type="range"
-        aria-label="Zoom"
-        min={MIN_ZOOM}
-        max={MAX_ZOOM}
-        step={0.01}
-        value={zoom}
-        onChange={(e) => setZoom(Number(e.target.value))}
-        className="min-h-[44px] w-full"
-      />
-
-      <button
-        type="button"
-        aria-label="Rotate 90 degrees"
-        onClick={() => setRotateSteps((r) => (((r + 1) % 4) as RotateSteps))}
-        className="rounded-[var(--radius-sm)] border border-[var(--edge-hair)] py-2 text-[13px] text-[var(--ink-primary)]"
-      >
-        Rotate
-      </button>
-
-      <div className="flex gap-3">
+      <div className="flex shrink-0 gap-3 border-t border-[var(--edge-hair)] bg-[var(--mat-void)] p-5">
         <button
           type="button"
           aria-label="Back to photo picker"

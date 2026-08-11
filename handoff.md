@@ -659,3 +659,188 @@ clamping value. It never checks the block actually exceeds the rect.
   > thing you actually care about — `shelfBottom − sectionTop`, not the box's own height.
 - `npm run test:browser` earned its keep twice in 3b, finding two defects that code review had
   missed entirely. Treat it as the gate `CLAUDE.md` says it is, not an optional extra.
+
+---
+
+## 6. Session — 2026-08-11: the picker thumbnail bug, and the current frontier
+
+**What was reported:** the picker grid (`tesserapuzzle.netlify.app`, the deployed build) showed
+photo titles and a blue selection border but **no image inside any tile** — every card was a flat
+`--mat-raised` rectangle. The photo only became visible after choosing it and reaching the crop
+screen.
+
+**Root cause.** `src/ui/PhotoPicker.tsx`'s curated grid never rendered an `<img>` at all — each
+tile was `<div style={{ background: 'var(--mat-raised)' }}>{selected ? '✓' : ''}</div>`, a
+placeholder that was never replaced with real artwork. This is distinct from (and not explained
+by) the deliberate lazy-decode comment on `src/play/curated.ts`'s `FILES` glob — that glob only
+gates the **full-resolution `createImageBitmap` decode** used once a photo is chosen; the picker
+grid was never wired to *any* image source, thumbnail or otherwise. Likely a step 5a/Plan 0 gap:
+5a's original picker was backed by procedurally-drawn placeholder photos and the grid tile was
+built as a bare colour swatch; when Plan 0 swapped in 30 real licensed JPEGs it updated
+`renderCuratedPhoto`'s full-res path but not the grid tile.
+
+**Fix, two files:**
+- `src/play/curated.ts` — added `curatedPhotoUrl(id)`, backed by a second, **eager** `import.meta.glob`
+  keyed to the same `assets/curated/*.jpg` files but with `{ eager: true, query: '?url', import: 'default' }`.
+  This resolves every photo's hashed build URL as a plain string at module load — cheap, no fetch,
+  no decode — leaving `FILES` (the `eager: false` loader map) untouched for `renderCuratedPhoto`'s
+  full-res path.
+- `src/ui/PhotoPicker.tsx` — the tile now renders `<img src={curatedPhotoUrl(photo.id)} loading="lazy"
+  decoding="async" className="h-full w-full object-cover" />` over a `background: photo.dominant[0]`
+  placeholder tint (previously-inert manifest data, now doing its first real job as a loading-state
+  colour). `loading="lazy"` is what keeps thirty grid tiles from becoming thirty eager fetches —
+  the browser only requests bytes for tiles actually scrolled into view, preserving the intent
+  behind the original `eager: false` comment on the full-res glob. Selected state moved to a small
+  accent-coloured checkmark badge in the corner (the old centred ✓ would have sat on top of the
+  photo now).
+
+**Verified:** `npm run typecheck` clean, `npm test` 573/573, `npm run build` clean (confirms the
+`?url` glob syntax is valid for this repo's Vite 6), `npx playwright test test/browser/photo-picker.spec.ts`
+7/7 on dock, and the full `npm run test:browser` gate run clean in the background during this
+session (dock + phone). **Not checked on real hardware** — same standing gate as every step since
+5a; this is a pure-CSS/`<img>` change so it is very unlikely to misbehave on iOS Safari, but it has
+not been looked at there.
+
+**Two things noticed in passing, not touched:**
+- The picker's curated entries still carry `licence: { name: 'stub', attribution: 'stub', sourceUrl:
+  'stub' }` for at least the original six photo ids in the manifest source
+  (`src/play/curated-manifest.ts` is generated — check `assets/curated/manifest.json` before hand-editing).
+  `validateManifest` only checks the fields are non-empty, so `'stub'` passes silently. Worth an
+  audit before shipping, since §15 and the completion card both promise real attribution.
+- An untracked `TesseraV3Figma/` directory is sitting at the repo root (`git status` at the top of
+  this session). Not created or touched this session — flagging so it doesn't get silently
+  `git add -A`'d into a commit later without a decision about whether it belongs in the repo or in
+  `.gitignore`.
+
+**Local jcodemunch index was stale** at the start of this session (dated 2026-08-04, three minutes
+behind the actual `HEAD` and missing all of Step 8 and the real 30-photo manifest — it still showed
+the old 6-photo procedurally-drawn set). Re-ran `index_folder` with `incremental: true` before
+trusting any search result; worth doing at the start of any session where the branch has moved
+since the index's `indexed_at`.
+
+**Dev environment for testing this fix:** `npm run dev` is running in the background for this
+session (Vite's `server.host: true` is already set — see `vite.config.ts` — specifically so the
+dev server is LAN-reachable). Reachable at `http://localhost:5173/` on this machine and
+`http://192.168.68.170:5173/` from another device on the same network (e.g. an iPad, to eyeball the
+thumbnail sizing/lazy-load behaviour for real). The full `npm run test:browser` gate was also
+kicked off in the background at the same time — check its output before treating this fix as fully
+gated if it was still running when this file was read.
+
+### 6.0.1. Two follow-up layout bugs, found by the user testing the fix above live
+
+Reported against the same dev server, with screenshots: (1) the picker's "Choose this photo" button
+was only reachable by scrolling all the way down past every shelf, and (2) the crop screen's photo
+preview looked zoomed in from the start instead of showing the whole photo, with the zoom slider
+handle sitting at the far end of its track even though the app reports zoom = 1 (its minimum).
+
+**Investigation, not two bugs but one.** Both `PhotoPicker.tsx` and `PhotoCrop.tsx` share the same
+shape: a single `flex h-full flex-col gap-N overflow-y-auto p-5` wrapping *everything*, confirm
+button included, so the button is wherever the document flow happens to end. Reproduced the crop
+screen's "zoomed in" report directly (a small Playwright script driving the live dev server, not
+guesswork) at a wide-but-short viewport (2000×850, the shape of a laptop browser window) and found
+the actual root cause: the crop frame div sets `style={{ aspectRatio: frameAspect }}` but has no
+`min-height`, and its only child (the photo canvas) is `position: absolute` and so contributes
+nothing to intrinsic sizing. A flex child with effectively zero min-content height and the default
+`flex-shrink: 1` gets silently **squashed short by the flex algorithm whenever the column's content
+doesn't fit**, rather than the column actually scrolling — which is exactly what `overflow-y-auto`
+was there to handle. The squash doesn't touch the canvas's own width/height attributes (still the
+full photo, zoom genuinely still 1), it just clips the *frame* window down to a thin horizontal
+strip, so the visible slice looks zoomed into whatever band happened to land in the middle. Confirmed
+by measuring the frame's actual bounding box before and after the fix: 1952×437.5px (aspect 4.46,
+nowhere near the photo's real 1.503) before, 1952×1298.5px (aspect 1.503, exact) after. At a taller
+viewport the column never needed to shrink anything, so the bug was invisible there — this is why it
+survived the earlier photo-picker/crop browser specs, all of which run at a fixed, tall-enough
+viewport.
+
+**Fix, same shape in both files:** split the single scrolling column into a `flex-1 overflow-y-auto`
+content area plus a `shrink-0` footer holding the confirm button(s), pinned to the bottom of a
+`flex h-full flex-col` wrapper — so the confirm button is reachable without scrolling regardless of
+how tall the content above it grows. `PhotoCrop.tsx`'s frame div additionally got `shrink-0` itself,
+which is the actual fix for the zoom/squash bug — once the frame can't be silently shrunk, the column
+scrolls (as `overflow-y-auto` always intended) instead of clipping the image, and the full,
+undistorted photo renders at its true aspect ratio from the first frame. `PhotoPicker.tsx` didn't
+have the squash half of this bug (its grid tiles use a fixed `aspect-[4/3]` with real img content,
+which has non-zero intrinsic height, so nothing there was silently shrinking) — only the
+scroll-to-reach-the-button half, fixed by the same footer split.
+
+**Deliberately not touched:** `PuzzleSetup.tsx` (step 5b's third screen in this flow) has an
+identical "everything in one scrolling column, confirm button at the bottom" shape, but its preview
+image uses a hard `max-h-[160px]` rather than a squashable `aspectRatio` box, so it isn't exposed to
+the same zoom bug — and nobody reported it. Left alone rather than proactively restyled, to keep this
+change scoped to what broke.
+
+**Verified:** `npm run typecheck` clean, `npm test` 573/573, `npx playwright test
+test/browser/photo-picker.spec.ts` 14/14 across dock **and** phone (the earlier run before this fix
+was dock-only), plus a direct Playwright reproduction of the reported viewport confirming the frame's
+bounding box now matches the photo's true aspect ratio and the confirm button's box sits inside the
+viewport bounds with no scroll needed. Full `npm run test:browser` gate re-run in the background
+after these two fixes landed on top of the thumbnail fix — check its output before treating any of
+the three as fully gated if it was still running when this file was read.
+
+### 6.1. The current frontier — everything else in `PLAN.md` is checked off
+
+Contrary to `PLAN.md`'s own unchecked boxes for **Step 4** and most of **Step 5**: those are stale
+checkbox state, not real gaps. Cross-referencing against §1a–1i above and `git log`, every step
+through **Step 8** has actually landed: 1 (cutter/renderer), 2 (drag/snap/spring/audio), 3a/3b
+(tray/lenses/shelf/worksets), 4a–4d (light system, hints, accent), 5a/5b/5c (picker, setup, crop,
+library, pause sheet, save/resume, again-harder), Plan 0 (30 real licensed photos, feeling-based
+shelves, workset-collapse deletion), 6 (daily/streak), and 8 (Puzzle Card, collection wall). The
+only two build-order items in `PLAN.md` with nothing built yet are **Step 7** and **Step 9** — confirmed
+by `find src -iname '*onboard*' -o -iname '*tutorial*'` and a search for a service worker/PWA
+manifest, both empty.
+
+**Step 7 — First run (§16).** The guided twelve-piece tutorial. Open questions worth researching
+before writing a plan:
+- **Where does "has this device seen the guided puzzle" live?** Not `localStorage`
+  (`CLAUDE.md` invariant) — IndexedDB, presumably a new tiny store or a flag alongside the existing
+  `daily`/`library` stores. Needs a decision on what "seen" means (started vs. completed vs.
+  skipped) since it can be skipped and still count as a real completion.
+- **The unprompted hint at 8 pieces / 20s idle** is a new trigger shape — every existing hint fire
+  in `src/play/hints.ts` is player-initiated. This needs an idle timer scoped to the guided session
+  only, and a decision on whether it lives in `PlaySession` (model) or `PlayRuntime` (host) — probably
+  the latter, since idle-detection is closer to "nothing observable happened for N ms" than to game
+  state, but worth checking against how `PlaySession`'s existing hint economy is structured before
+  assuming.
+- **The tray's self-narrated slide-in at 4 placed** ("Pieces live here. Filter them.") is a coach-mark
+  pattern with no existing precedent in the UI layer — there's no toast/tooltip system anywhere in
+  `src/ui/` today, so this is either a tiny bespoke component or the first use of a pattern worth
+  generalising for later coach-marks.
+- **The curated 12-piece "already scattered" starting photo** — is this a new, dedicated curated
+  entry (a 31st manifest row, shelf-exempt), or a fixed crop of an existing one at `pieceCount: 12`?
+  `PIECE_COUNT_LADDER` in `src/play/setup.ts` starts at 50, so 12 is currently unreachable through
+  the normal setup screen — check whether `setup.ts`'s ladder needs a carve-out or whether the
+  guided puzzle bypasses `PuzzleSetup` entirely (it bypasses picker/crop too, per §16 — "no account,
+  no menu, no mode picker" — so likely bypasses setup the same way, going straight to a fixed
+  `PuzzleConfig`).
+- **Skip must still write a real completion.** Trace `App.commitCompletion`'s write-then-delete
+  ordering invariant (`CLAUDE.md`) and confirm a skip either completes the union-find first (so
+  `commitCompletion`'s existing path just works) or needs its own explicit path into the
+  `completions` store — the design intent ("counts as a real completion on the collection wall")
+  suggests the former is closer to what's wanted, but a skip by definition isn't solved, so this
+  needs a real design decision, not just an implementation guess.
+
+**Step 9 — PWA and the iPad-grade pass.** No manifest, no service worker, no install-prompt UI exist
+yet — this is greenfield, not a gap in something partially built. Worth researching before
+planning:
+- **Service worker strategy for 30 curated JPEGs** (currently several hundred KB to ~2MB each,
+  so tens of MB total) plus the audio bank plus the app shell. Precache everything vs.
+  cache-on-first-play needs a decision — precaching 30 photos on first visit is a lot of bytes
+  before the player has done anything; cache-on-play risks "offline after first visit" not holding
+  for curated photos never opened.
+- **`completionCount()` already exists** (`src/persist/completions.ts`, built at step 8 with this
+  exact use noted in its own handoff section) but nothing calls it yet — the "prompt after the
+  second completion" wiring is pure UI, no new persistence needed.
+- **The "7 days idle" warning** needs a last-visited timestamp somewhere — check whether one already
+  exists implicitly (e.g. via `library` entries' `updatedAt`) before adding new persisted state.
+- **Stage Manager / Split View edge-drag conflicts** are an iPadOS-only behaviour with no Chromium
+  equivalent — this is real-hardware-only research, not something to prototype in a browser first.
+- Also still open, not step-9-owned but worth bundling into the same research pass since it's the
+  same "ship-readiness" bucket: **the curated library is at 30/50 photos** (§15's target), and the
+  **stub licence/attribution data** flagged above in §6.
+
+**Standing gate, unchanged since step 5a:** real-device verification has not happened for *any*
+step since 5a's initial pass (5a, 5b, 6, Plan 0, and 8 all explicitly recorded "not performed in
+this session"). Everything from the snap-feel budget in §17 to touch-target sizing to this
+session's own lazy-loaded thumbnails is sitting in that same unverified bucket. Worth deciding
+whether Step 7 or Step 9 planning should have a real-hardware pass built into it as a task rather
+than continuing to defer it step over step.
