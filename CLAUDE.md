@@ -84,6 +84,16 @@ Break any of these and something downstream breaks in a way that looks like a di
   (`PLAN.md` §6), and the usual shortcut — `toISOString().slice(0, 10)` — is UTC, which flips the
   daily over at 19:00 for a player at UTC-5. All arithmetic on date keys is done in UTC on whole
   days, because a local `setDate(+1)` across a DST boundary is 23 or 25 hours and rounds wrong.
+- **A finished puzzle is written to `completions` before it is deleted from the library**, in that
+  order (`App.commitCompletion`), so a crash between the two loses nothing. The wall reads
+  `completions` and nothing else; the library is in-progress puzzles only. If a completed puzzle
+  ever appears in the library, the two stores have been conflated.
+- **The Puzzle Card composes from the completed board canvas, not the source photo** —
+  `PlayRuntime.boardCanvas()` (the static layer), the same capture `captureThumbnail` makes. §11's
+  "the photo, fully lit" is the assembled board, seams and all. Sourcing the card from the original
+  prints a stock image instead of what the player made. `elapsedMs` and `cleanRun` are frozen into
+  `RuntimeSummary` on the `complete` event only — never per frame, or the timer would turn the
+  summary into a per-tick React re-render channel and break the board-never-renders invariant.
 
 ## Coordinate spaces
 
@@ -124,6 +134,7 @@ src/
   play/     session.ts                board + snap + settle + scene + tray/mat
             workset.ts                pull-out groups — not clusters, see above
             layout.ts                 the pull-out grid, on the safe rect
+            card.ts                   the Puzzle Card's layout maths — pure, per wireframe 05
             runtime.ts                the whole board, mounted and pumped
   daily/    dates.ts                  local day keys, UTC arithmetic
             daily.ts                  date → (photo, count, seed), closed form
@@ -132,10 +143,12 @@ src/
             frame-scheduler.ts        invalidation; "idle draws nothing"
             camera.ts camera-controls.ts scene.ts mat.ts
             group-chip.ts             a Workset's label chip — canvas, never DOM over it
+            card.ts                   composeCard — the completed board → a PNG (step 8)
   ui/       App.tsx store.ts          React chrome; board never renders through it
             Tray Sheet PieceGrid PieceChip LensChips TopBar ProgressRing
             Shelf SelectionBar        the pinned row, and the pull-out bar
             DailyHub StreakFlame MonthCalendar   the daily hub and its streak (step 6)
+            CompletionCard CollectionWall   the Puzzle Card and the mosaic of finishes (step 8)
             theme.css                 §13 tokens, once, for both consumers
   main.tsx                            the product entry — index.html
 test/                                 mirrors src/ — vitest, *.test.ts

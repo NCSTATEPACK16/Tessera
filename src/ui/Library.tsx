@@ -22,6 +22,8 @@ export interface LibraryProps {
   onNewPuzzle: () => void;
   /** Step 6: the hub is a peer screen, reached from here. */
   onDaily?: () => void;
+  /** Step 8: the collection wall of finished puzzles (§15). */
+  onCollection?: () => void;
   streak?: number;
   streakTone?: StreakTone;
 }
@@ -86,6 +88,7 @@ export function Library({
   onOpen,
   onNewPuzzle,
   onDaily,
+  onCollection,
   streak = 0,
   streakTone = 'none',
 }: LibraryProps): React.ReactElement {
@@ -96,6 +99,16 @@ export function Library({
           Your Puzzles
         </div>
         <div className="flex gap-2">
+          {onCollection && (
+            <button
+              type="button"
+              aria-label="Collection"
+              onClick={onCollection}
+              className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+            >
+              Collection
+            </button>
+          )}
           {onDaily && (
             <button
               type="button"

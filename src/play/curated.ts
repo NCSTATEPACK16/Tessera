@@ -79,6 +79,27 @@ export function validateManifest(photos: readonly CuratedPhoto[]): string[] {
  */
 const FILES = import.meta.glob<{ default: string }>('../../assets/curated/*.jpg');
 
+/**
+ * URL-only counterpart of `FILES`, resolved eagerly. This is cheap — Vite
+ * inlines the hashed path as a string at build time, no fetch happens — so it
+ * is safe to resolve for every photo up front. The `<img loading="lazy">` tag
+ * that consumes this URL is what actually defers the request until a tile is
+ * scrolled into view, which is what keeps the picker grid from decoding
+ * thirty full-size photos at once; this glob only avoids decoding them via
+ * `renderCuratedPhoto`'s `createImageBitmap` path.
+ */
+const THUMB_URLS = import.meta.glob<string>('../../assets/curated/*.jpg', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+});
+
+export function curatedPhotoUrl(id: string): string | undefined {
+  const photo = curatedPhotoById(id);
+  if (!photo) return undefined;
+  return THUMB_URLS[`../../assets/curated/${photo.file}`];
+}
+
 export async function renderCuratedPhoto(id: string): Promise<ImageBitmap> {
   const photo = curatedPhotoById(id);
   if (!photo) throw new Error(`renderCuratedPhoto: unknown curated photo id "${id}"`);

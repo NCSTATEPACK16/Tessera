@@ -79,6 +79,13 @@ export interface RuntimeSummary {
   hintsUsed: number;
   /** §13: the fallback until the cut finishes and the real photo is extracted from. */
   accent: AccentTokens;
+  /**
+   * §11: the completion card's elapsed time and clean-run badge. Both are
+   * frozen into the summary on the `complete` event only — never per frame, so
+   * the timer does not turn the summary into a per-tick re-render channel.
+   */
+  elapsedMs: number;
+  cleanRun: boolean;
 }
 
 export interface PlayRuntimeOptions {
@@ -179,6 +186,8 @@ export class PlayRuntime {
     hintTarget: null,
     hintsUsed: 0,
     accent: fallbackAccentTokens(),
+    elapsedMs: 0,
+    cleanRun: true,
   };
 
   /** §07: the loose mat piece the last tap selected, or null. */
@@ -496,6 +505,16 @@ export class PlayRuntime {
   }
 
   /**
+   * §11: the completed board canvas, fully lit — what the Puzzle Card composes
+   * from and `captureThumbnail` captures. The completion bloom lives on a
+   * separate layer, so this is the assembled photo, seams and all, without the
+   * payoff wash baked in.
+   */
+  boardCanvas(): HTMLCanvasElement {
+    return this.renderer.getStaticCanvas();
+  }
+
+  /**
    * Fire a hint at `tier` for the last-tapped piece. False (spending nothing)
    * if there is no target or the economy can't afford it — the hint button
    * decides what that looks like.
@@ -783,7 +802,14 @@ export class PlayRuntime {
     // and muting one has no reason to mute the other (§07/§08 are independent).
     if (event.type === 'complete') {
       this.renderer.completePuzzle(now);
-      this.patch({ status: 'complete' });
+      // Freeze the run's numbers here — the card reads them once, and the
+      // timer must not become a per-frame patch (the board never re-renders
+      // through React).
+      this.patch({
+        status: 'complete',
+        elapsedMs: this.session!.elapsedMs(now),
+        cleanRun: this.session!.summary.cleanRun,
+      });
     }
     if (event.type === 'snap' && event.seam) this.renderer.fireMergeSeam(event.seam, now);
     if (event.type === 'edgeFrame') this.renderer.fireEdgeFrame(now);

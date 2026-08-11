@@ -43,6 +43,51 @@ test('a reload mid-session restores the board rather than resetting it', async (
   expect(after.total).toBe(before.total);
 });
 
+test('the v2 to v3 bump is additive — it adds `completions` and loses nothing', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+
+  // `open()` deletes the database, so the app creates it fresh at the current
+  // version. The claim under test is the shape of that current version: v3,
+  // with `completions` alongside every store step 6 and before it created —
+  // the same additive guarantee `daily.spec.ts` asserts for v1→v2.
+  const board = await BoardPage.open(page, { mode: 'Zen' });
+
+  const [first] = await board.mountedIds();
+  await board.placeViaHint(first!);
+  // Past the 800ms autosave debounce, so a real session exists to survive.
+  await page.waitForTimeout(1200);
+
+  const schema = await page.evaluate(
+    () =>
+      new Promise<{ version: number; names: string[] }>((resolve, reject) => {
+        const request = indexedDB.open('tessera');
+        request.onsuccess = () => {
+          const db = request.result;
+          const result = { version: db.version, names: [...db.objectStoreNames] };
+          db.close();
+          resolve(result);
+        };
+        request.onerror = () => reject(request.error);
+      }),
+  );
+
+  expect(schema.version).toBe(3);
+  expect(schema.names).toEqual(
+    expect.arrayContaining(['sessions', 'photos', 'thumbnails', 'daily', 'completions']),
+  );
+
+  // The session written before this read still restores — the bump did not
+  // drop it. The app lands on the library because a save exists.
+  await page.reload({ waitUntil: 'load' });
+  const card = page.getByLabel(/Open puzzle:/).first();
+  await expect(card).toBeVisible();
+  await card.click();
+  await board.waitForCut();
+  expect((await board.placed()).placed).toBe(1);
+});
+
 test('a session left through the pause sheet is still there on the next visit', async ({
   page,
 }) => {
