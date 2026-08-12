@@ -1,0 +1,49 @@
+name: Accessibility report
+description: A motor, visual, or cognitive-accessibility barrier — the mission this project exists for.
+labels: ["accessibility"]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Accessibility reports get priority triage here — see `CONTRIBUTING.md`'s acceptance
+        criteria for the standing rules (44pt touch floor, colour never alone, no haptics-only
+        feedback, and others). This template asks for a bit more detail than the plain bug report
+        because "it felt hard to use" needs the *what*, specifically, to turn into a fix.
+  - type: textarea
+    id: barrier
+    attributes:
+      label: What was hard, specifically
+      description: What were you trying to do, and what got in the way? Prefer concrete detail over a general impression — "the piece kept sliding out from under my finger" over "dragging felt bad."
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and iPadOS/iOS version
+      placeholder: e.g. "iPad (9th gen), iPadOS 26.1"
+    validations:
+      required: true
+  - type: checkboxes
+    id: assistive-tech
+    attributes:
+      label: Assistive settings in use, if any
+      options:
+        - label: VoiceOver
+        - label: Switch Control
+        - label: AssistiveTouch
+        - label: Reduce Motion
+        - label: Larger Text / Dynamic Type
+        - label: Reduced transparency or increased contrast
+        - label: None of the above
+  - type: textarea
+    id: what-failed
+    attributes:
+      label: What failed, concretely
+      description: A missed target, a drag that didn't register, a colour distinction you couldn't make, text that clipped — the more specific, the faster this becomes a fix rather than a research task.
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: A screen recording is worth more than a description for anything involving motor tremor or drag precision.

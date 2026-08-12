@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in Tessera is broken or behaves unexpectedly.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what actually happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: As exact as you can make it — which photo, piece count, mode, and what you did on screen.
+      placeholder: |
+        1. Pick a curated photo, 150 pieces, Classic mode
+        2. Drag a corner piece near its slot
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and browser
+      description: e.g. "iPad Pro 11-inch, iPadOS 26, Safari" or "MacBook, Chrome 130"
+    validations:
+      required: true
+  - type: checkboxes
+    id: touch-or-mouse
+    attributes:
+      label: Input
+      options:
+        - label: Touch (finger)
+        - label: Trackpad or mouse
+        - label: Apple Pencil or stylus
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, console errors, or a screen recording help a lot for anything drag/snap related — snap feel is genuinely hard to describe in words.
