@@ -958,10 +958,123 @@ code.
 
 ### 7.4. What's next
 
-Track 1 is done and gated. The frontier is now **Track 2** (open-source hardening + first CI —
-`LICENSE`, `ARCHITECTURE.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS`,
-issue templates, `.github/workflows/ci.yml`, golden-image cut tests, README rewrite; zero files
-under `src/`, and per the spec's own ordering note it "may run in parallel with, or ahead of, Track
-1"). Tracks 3–5 (Comfort mode, step 7, step 9) come after, in that order, per the spec's §A.4
-table. `docs/superpowers/specs/2026-08-11-ux-report-response-design.md` §C has the scoping notes
-for all four remaining tracks.
+Track 1 is done and gated. Track 2 (below) is now also done and gated. Tracks 3–5 (Comfort mode,
+step 7, step 9) remain, in that order, per the spec's §A.4 table.
+`docs/superpowers/specs/2026-08-11-ux-report-response-design.md` §C has the scoping notes for all
+three.
+
+---
+
+## 8. Session — 2026-08-11 (continued again): Track 2 — open-source hardening and the first CI
+
+Zero files under `src/`, per the spec. Commit `981f1cf`, same branch
+(`fix/photo-picker-thumbnails-and-layout`). Licence chosen with the project owner before writing
+anything: **MIT** for the code.
+
+**What landed:**
+
+- `LICENSE` (MIT) and a separate `ASSETS-LICENSE.md` — the curated photographs are Unsplash
+  License, not MIT and not CC0, and the file exists specifically so a contributor never assumes
+  otherwise. It also documents what the Unsplash License actually permits (free commercial use,
+  no reselling unaltered copies, no compiling into a competing stock-photo service) and the process
+  for adding a new photo.
+- `ARCHITECTURE.md` — links into `CLAUDE.md`'s Invariants/Coordinate-spaces/Layout sections rather
+  than duplicating them, per the spec's explicit instruction. A "where to start reading" table by
+  task type.
+- `CONTRIBUTING.md` — setup, the CI gate commands, the two-suite posture
+  (`vitest` owns `*.test.ts`, Playwright owns `*.spec.ts`, "DOM-free is the same word as tested"),
+  and **the accessibility acceptance criteria written as first-class review rules**: 44pt floor,
+  colour never alone, deliberate `touch-action`/`overscroll-behavior`, no haptics-only feedback, no
+  bounce-back, the existing safe-area-inset pattern. A PR touching drag/snap/input must say what
+  device it was tested on.
+- `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1, enforcement contact is the project owner's email.
+- `.github/CODEOWNERS` — `src/cut/`, `src/board/`, `assets/curated/` (+ its manifest) require the
+  owner's review, "bugs in the cut or the union-find are the kind that corrupt saved puzzles
+  silently" rather than a trust judgment.
+- `.github/ISSUE_TEMPLATE/`: `bug_report.yml`, `accessibility.yml` (assistive-tech checkboxes, "what
+  failed, concretely" — designed to get past "it felt hard to use"), `photo_suggestion.yml`
+  (demands a licence claim up front, merged only by a maintainer per `ASSETS-LICENSE.md`).
+- `.github/workflows/ci.yml` — three jobs: `test` (typecheck, `npm test`, build, then the new
+  bundle-budget check), `manifest-integrity` (new, dependency-free, ~seconds), `browser` (the full
+  `test:browser` gate, uploads `test-results/` on failure since the CI reporter is `github` not
+  `html` — there's no `playwright-report/` to upload). Node version pinned via a new `.nvmrc`
+  (`26`), referenced by `node-version-file` rather than hardcoded twice.
+- **Two new scripts, both written and tested against the real repo state, not just against the
+  spec's description:**
+  - `scripts/check-bundle-budget.mjs` — reads the built `dist/index.html` to find the real entry
+    chunk (rather than guessing a filename pattern), asserts it stays under 700 KB (comfortable
+    headroom above the actual 359 KB at the time this landed) and that a `heic-to-*.js` chunk still
+    exists separately. This is Track 1's code-split guarantee turned into an automated regression
+    check instead of a one-time manual build inspection.
+  - `scripts/check-manifest-integrity.mjs` — closes the exact gap `validateManifest`
+    (`src/play/curated.ts`) leaves open: it only checks licence fields are *non-empty*, which is
+    how `'stub'` sat in the manifest silently for as long as it did (see §6's A.2 correction). This
+    script checks every `assets/curated/*.jpg` has a manifest row and vice versa, and flags known
+    placeholder values (`stub`, `todo`, `tbd`, etc.) in any licence field. Run standalone —
+    confirms cleanly that all 30 current entries are real.
+- **`test/browser/golden-cut.spec.ts`** — a screenshot regression test on individual piece chips
+  (piece 0 and piece 1 in canonical order, at a fixed seed and fixed curated photo, 50-piece ladder
+  rung for speed). Guards against a cut-geometry change that's still algebraically valid (passes
+  every existing `test/cut/` assertion) but looks wrong to a human eye — a shifted bevel, a
+  misplaced knob. Runs dock-only; chip rendering doesn't depend on viewport, and the phone
+  project's tray sheet starts collapsed, so there's no signal in running it there.
+  - **The baseline PNGs are platform-specific by Playwright's own filename convention**
+    (`piece-0-dock-darwin.png` locally; CI would need `piece-0-dock-linux.png`) — confirmed by
+    generating the macOS baseline locally and observing the filename, not assumed. This means a
+    macOS-generated baseline reads as *missing* on Linux CI rather than silently comparing across
+    platforms (the good failure mode, not a false pixel-diff). **`ci.yml`'s `browser` job will fail
+    on this one spec until someone runs the new `update-golden-snapshots.yml` workflow once** — it's
+    a manual `workflow_dispatch` that regenerates the Linux baseline on an actual Ubuntu runner and
+    commits it back. This is flagged in three places (the spec test's own doc comment, `ci.yml`'s
+    comment on the `browser` job, and here) so it reads as a known one-time bootstrap step, not a
+    broken CI job.
+- **README rewrite** — accessibility mission first (the "grandparent with a motor tremor" framing,
+  same target user as the report), then a real screenshot, then one-command setup, then a trimmed
+  status section (the old one still said "Step 3a of 9" and referenced a 319-test suite that's now
+  593). The screenshot (`assets/readme/screenshot.png`, ~300 KB after re-encoding through `sharp`)
+  is a genuine capture from a live run — a Zen puzzle opened via `BoardPage`, 45 pieces placed via
+  `placeViaHint`, screenshotted mid-solve — not a mockup. The capture script itself was a temporary
+  `test/browser/_tmp-capture.spec.ts`, deleted after use; regenerate the same way if the screenshot
+  ever needs updating (bump the piece count in the loop for more/less assembled area).
+
+**Gates:** `npm test` 593/593 (unchanged — Track 2 added no unit-tested logic), `npm run typecheck`
+clean, `npm run build` clean, both new scripts pass standalone,
+`npm run test:browser` **130 passed / 10 skipped, 0 failed** (138 → 140 tests; `golden-cut.spec.ts`
+added two, one skipped on phone) — this count is from a run with nothing else competing on the
+machine; see the false-alarm note directly below for why that qualifier is now a standing practice,
+not paranoia.
+
+### 8.1. A second false alarm, worse than §7.3's: an unrelated session can kill your dev server
+
+The first full-gate run after Track 2's changes failed from test 7/140 onward with
+`net::ERR_CONNECTION_REFUSED` at `localhost:5179`. Not resource contention this time — `lsof -i
+:5179` came back completely empty, meaning the dev server Playwright's `webServer` had started
+was simply gone partway through the run.
+
+**Root cause, found via `ps aux`, not guessed:** a different, unrelated Claude Code session on the
+same machine, working on a completely different project (`RetrolineTurbo`), ran a shell command
+containing `pkill -f vite` as part of its own workflow. `pkill -f` pattern-matches across the
+*entire* process table with no project scoping, so it killed every `vite` process on the machine,
+this one included. Re-running immediately after (nothing else competing) came back clean —
+130/10/0, the number quoted above.
+
+**Worth carrying forward, distinct from §7.3's lesson:** §7.3's contention gotcha is solved by
+checking `ps aux` for *another Playwright/Chromium process* and re-running in isolation. This one
+isn't caught the same way — the server is simply gone, and isolation doesn't help if something
+external kills it again mid-run. The tell is `ERR_CONNECTION_REFUSED` appearing *partway through* a
+previously-healthy run (as opposed to every test failing from the start, which would suggest the
+server never started at all) — that shape means something killed a server that was working, and
+`ps aux` for `vite` processes rooted in *other* project directories is the next thing to check
+before assuming a code change is at fault.
+
+### 8.2. What's next
+
+Tracks 1 and 2 are both done and gated. Frontier is **Track 3** (Comfort mode, contrast gates,
+Dynamic Type) → **Track 4** (step 7, first run) → **Track 5** (step 9, PWA), per the spec's §A.4
+ordering. `docs/superpowers/specs/2026-08-11-ux-report-response-design.md` §C has the scoping notes
+for all three. Track 2 also left one manual step for whoever opens the PR or merges to main: **run
+`.github/workflows/update-golden-snapshots.yml` once** to generate the Linux baseline for
+`golden-cut.spec.ts` before CI can go green on it. Four candidate `good first issue`/`help wanted`
+issues were drafted and verified against current source this session but **not filed** — the PAT
+here can't create issues either (see the note added to `github-pat-cannot-open-prs`); their content
+is in the session transcript and should be pasted into new issues by hand.
