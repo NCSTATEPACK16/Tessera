@@ -94,6 +94,13 @@ Break any of these and something downstream breaks in a way that looks like a di
   prints a stock image instead of what the player made. `elapsedMs` and `cleanRun` are frozen into
   `RuntimeSummary` on the `complete` event only — never per frame, or the timer would turn the
   summary into a per-tick React re-render channel and break the board-never-renders invariant.
+- **Comfort mode is one flag, read in three places.** `PuzzleAssists.comfort` drives the 60pt
+  control-target retarget (`data-comfort` → `--touch-min`), the exaggerated held-piece lift, the
+  snap-tolerance floor at Generous, and tremor damping — never a second flag for any one of them.
+- **The accent's WCAG contrast is measured, not assumed.** `clampToAccentRange`'s L/C band does
+  not guarantee 4.5:1 against `--mat-raised` at every hue — `ensureContrast` is the pass that
+  actually checks and corrects. A photo whose dominant colour is a saturated blue at the clamp's
+  own lightness floor is a real failing case, hand-verified this session, not a hypothetical one.
 
 ## Coordinate spaces
 

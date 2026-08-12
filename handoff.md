@@ -1078,3 +1078,107 @@ for all three. Track 2 also left one manual step for whoever opens the PR or mer
 issues were drafted and verified against current source this session but **not filed** — the PAT
 here can't create issues either (see the note added to `github-pat-cannot-open-prs`); their content
 is in the session transcript and should be pasted into new issues by hand.
+
+---
+
+## 9. Session — 2026-08-12: Track 3 — Comfort mode, contrast gates, Dynamic Type
+
+Same branch (`fix/photo-picker-thumbnails-and-layout`). Plan written fresh this session at
+`docs/superpowers/plans/2026-08-12-plan-track3-comfort-mode.md` (no prior plan existed for this
+track, unlike 4 and 5) and executed inline, task by task, per the spec's §C Track 3 scope.
+
+**What landed:**
+
+- **`PuzzleAssists.comfort: boolean`** (`src/play/setup.ts`) — one flag, toggled in `PauseSheet`
+  beside the three existing assists. Read by `PlaySession` (held-piece lift 1.06 → 1.20,
+  `COMFORT_LIFT_SCALE`), `floorDifficulty()` (snap tolerance forced to `generous`, with the tighter
+  two tolerance buttons disabled rather than just re-coloured), `App.tsx` (a `data-comfort`
+  attribute on `<html>` that retargets `--touch-min` from 44px to 60px), and
+  `PointerMachine`/`BoardControls` (tremor damping, below). A puzzle resumed from a saved snapshot
+  with comfort already on floors its difficulty before the session is even constructed, not just on
+  the next toggle.
+- **Tremor damping** (`src/input/pointer.ts`) — a one-pole low-pass (`TREMOR_LOW_PASS_ALPHA = 0.35`)
+  plus a dead-zone (`TREMOR_DEAD_ZONE_PX = 1.5`) on the drag path, both flagged chosen-not-measured.
+  Applied only once `dragging`; the `MOVE_THRESHOLD_PX` promotion check in `move()` still reads the
+  raw sample unconditionally, so damping can never read as input lag.
+- **Hit-slop consolidation** — a `.touch-target` CSS utility (`min-height`/`min-width:
+  var(--touch-min)`) replacing every hardcoded `min-h-[44px]`/`min-w-[44px]` Tailwind arbitrary
+  value across `src/ui/*.tsx` (the literals were overriding the cascade and would have stayed 44px
+  under comfort otherwise). One deliberate exception: `MonthCalendar.tsx`'s day-cell `<td>` keeps
+  its literal `h-[44px] min-w-[44px]` — it is a fixed cell size, not an interactive touch target.
+  **Caught by the browser gate, not by hand:** with every control now capable of 60pt, the pause
+  sheet's own content could outgrow a 900px dock viewport with no way to scroll to `Resume` — fixed
+  with `max-h-[90vh] overflow-y-auto` on the sheet's root panel, the same overflow discipline every
+  other overlay in this codebase already has.
+- **A measured WCAG contrast gate on `accent.ts`** — `contrastRatio()` (hand-rolled relative
+  luminance, ~10 lines) and `ensureContrast()`, which walks OKLab lightness upward against
+  `MAT_RAISED_RGB` (`--mat-raised`, the harder of the two chrome backgrounds the accent sits on)
+  until it clears `WCAG_MIN_CONTRAST = 4.5`. Only the `accent` token is gated — `accentBloom`/
+  `accentTray` drive a light/glow effect, not legible text, so they stay on `clampToAccentRange`
+  alone. **The near-miss that justifies this task is real, not hypothetical:** a saturated blue at
+  hue 240°, the clamp's own permitted `L = 0.62` floor and `C = 0.16` ceiling, hand-computed and then
+  confirmed by a unit test to land at a **4.478:1** ratio against `--mat-raised` — under the 4.5:1
+  floor by a hair, and something `clampToAccentRange` alone cannot see because it only bounds a
+  range, never measures an actual ratio.
+- **Adaptive ghost-underlay opacity** — `adaptiveGhostOpacity(base, meanColor)` in `accent.ts`
+  boosts alpha for dark photo regions (which a uniform low alpha disappears into against
+  `--mat-void`), capped at `GHOST_ADAPTIVE_CEILING = 0.55`, computed from the same `CutPiece.meanColor`
+  `accent.ts` already consumes — no second pixel pass. `Renderer.setGhostUnderlay` gained a third,
+  optional `slots` parameter; `paintStatic` now draws the ghost per-piece-slot (9-arg `drawImage`,
+  source rect in the bitmap's own pixel space via a computed px-per-world-unit ratio, dest rect in
+  world units) when slots are supplied, falling back to the original single full-board draw
+  otherwise. **Judgment call:** adaptive opacity is *not* comfort-gated — it fires whenever the
+  ghost assist itself is on (`ghostOpacity > 0`), since it is a straightforward legibility fix to an
+  existing assist, not a comfort-specific behaviour. The renderer wiring itself has no new unit test
+  (canvas drawing, judged by hand and by the existing browser gate, per this codebase's established
+  DOM-free-is-tested split); only the pure alpha function is unit-tested.
+- **Dynamic Type** — `theme.css`'s seven `--text-N` tokens converted from px to rem
+  (`--text-3: 1rem` instead of `16px`, etc.), and all 111 `text-[Npx]` Tailwind arbitrary values
+  across `src/ui/*.tsx` migrated onto the token classes (`text-1`…`text-6`; no `text-4`/`text-7`
+  call site existed). Mapping rounds *up* to the nearest token, never down, so the migration cannot
+  silently shrink any existing text. `@axe-core/playwright` added as a devDependency for one scan —
+  test-only, never shipped in `dist/`, the same narrow exception `vite-plugin-pwa` set for Track 5's
+  build-time need. **Caught by the browser gate, not by hand:** at 200% root font size on the phone
+  viewport, the three snap-tolerance buttons (`flex` row of `flex-1` labels) genuinely overflowed —
+  fixed with `flex-wrap` on that row, which also protects against zoom levels past 200%.
+
+**Explicitly out of scope, per the plan:** instrumentation (supplementary-attempts-per-piece,
+time-to-seat) — flagged deferred in the spec itself; the obvious wiring would route per-attempt data
+through `RuntimeSummary` and break *the board never re-renders through React*.
+
+**Gates:** `npm test` 615/615, `npm run typecheck` clean, `npm run build` clean.
+`npm run test:browser`: **140 passed / 10 skipped, 0 failed**, both dock and phone — but not on the
+first full run.
+
+### 9.1. A third instance of §7.3's lesson — the same shape, still worth re-confirming rather than assuming
+
+The first full `test:browser` run after this track's changes came back with 4 failures:
+`completion.spec.ts:43`/`:74` (the slow full-solve tests), `photo-picker.spec.ts:80` (the HEIC
+WASM-compile-budget test), and `puzzle-setup.spec.ts:116` ("large piece mode holds pieces bigger
+than the default zoom floor does" — a test that touches nothing this session changed). All four are
+either the exact tests §7.3 already named as resource-sensitive, or in a file untouched by Track 3.
+
+**Verified, not assumed:** with `ps aux` confirmed clean of any other Playwright/Chromium/vite
+process, all four were re-run individually — `puzzle-setup.spec.ts:116` and
+`photo-picker.spec.ts:80` each passed in under 10s, and `completion.spec.ts`'s three tests (all
+three, not just the two that had failed) passed together in 7.1 minutes. The clean full-suite number
+above is from the run that followed.
+
+**Worth carrying forward:** this is the *third* time this exact shape has shown up across two
+sessions (§7.3, §8.1, now this one) — a full 140-test, two-viewport run is apparently sensitive
+enough to this machine's momentary load that it should be treated as noisy by default, and a
+failure list should always be re-run individually before being read as a regression. Nothing in this
+list suggests a fix is owed to the suite itself (no assertion here is wrong, only occasionally
+starved of its timeout budget under load) — but if this keeps recurring across sessions, splitting
+`completion.spec.ts`'s three full-solve tests into their own Playwright project (so they never share
+a worker/timeout budget with the fast specs) is the next thing to try, not a bigger timeout.
+
+### 9.2. What's next
+
+Track 3 is done and gated. Frontier is **Track 4** (step 7, first run — plan already written at
+`docs/superpowers/plans/2026-08-03-plan-7-first-run.md`) → **Track 5** (step 9, PWA — plan at
+`docs/superpowers/plans/2026-08-03-plan-9-pwa-and-ipad-pass.md`). Track 4's plan already depends on
+Comfort mode existing (offering it by name during onboarding), which is why Track 3 had to land
+first. The real-hardware gate for this track — **whether 60pt targets and the damped drag actually
+read as comfort rather than sluggishness on an iPad with an assistive-touch user** — has not been
+run; Chromium cannot answer it.
