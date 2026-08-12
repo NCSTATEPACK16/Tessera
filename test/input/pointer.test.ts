@@ -26,7 +26,13 @@ interface Recorded {
   taps: number[];
 }
 
-function harness(options: { zoom?: number; pick?: (world: Point) => number | null } = {}) {
+function harness(
+  options: {
+    zoom?: number;
+    pick?: (world: Point) => number | null;
+    tremorDamping?: boolean;
+  } = {},
+) {
   const zoom = options.zoom ?? 1;
   const log: Recorded = { grabs: [], drags: [], releases: [], camera: [], taps: [] };
 
@@ -41,7 +47,10 @@ function harness(options: { zoom?: number; pick?: (world: Point) => number | nul
     onTap: (clusterId) => log.taps.push(clusterId),
   };
 
-  return { machine: new PointerMachine(host), log };
+  return {
+    machine: new PointerMachine(host, { tremorDamping: options.tremorDamping ?? false }),
+    log,
+  };
 }
 
 const at = (id: number, x: number, y: number, t: number) => ({ id, x, y, t });
@@ -362,5 +371,65 @@ describe('adoption — a drag that began in the tray (§06)', () => {
     expect(machine.phase).toBe('idle');
     expect(log.releases).toHaveLength(1);
     expect(log.releases[0]!.velocity).toEqual({ x: 0, y: 0 });
+  });
+});
+
+function variance(xs: number[]): number {
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+  return xs.reduce((a, b) => a + (b - mean) ** 2, 0) / xs.length;
+}
+
+describe('tremor damping (§C Track 3)', () => {
+  const ORIGIN = 10; // inside the default harness's pick region (x<100 && y<100)
+
+  it('is off by default — a drag delta passes through unchanged', () => {
+    const { machine, log } = harness();
+    machine.down(at(1, ORIGIN, ORIGIN, 0));
+    machine.move(at(1, ORIGIN + MOVE_THRESHOLD_PX + 1, ORIGIN, 10));
+    machine.move(at(1, ORIGIN + MOVE_THRESHOLD_PX + 21, ORIGIN, 20));
+    const lastDrag = log.drags.at(-1)!;
+    expect(lastDrag.dx).toBeCloseTo(20, 5);
+  });
+
+  it('smooths a jittery sequence once enabled, without changing net displacement much', () => {
+    const { machine, log } = harness({ tremorDamping: true });
+    machine.down(at(1, ORIGIN, ORIGIN, 0));
+    const start = ORIGIN + MOVE_THRESHOLD_PX + 1;
+    machine.move(at(1, start, ORIGIN, 10));
+    // A jittery back-and-forth around a rising trend — the shape a tremor
+    // produces, not a clean line.
+    const samples = [
+      { x: start + 30, y: ORIGIN + 2, t: 20 },
+      { x: start + 28, y: ORIGIN - 2, t: 30 },
+      { x: start + 34, y: ORIGIN + 1, t: 40 },
+      { x: start + 32, y: ORIGIN - 1, t: 50 },
+      { x: start + 40, y: ORIGIN, t: 60 },
+    ];
+    for (const s of samples) machine.move(at(1, s.x, s.y, s.t));
+
+    const xs = [start, ...samples.map((s) => s.x)];
+    const raw = xs.slice(1).map((x, i) => x - xs[i]!);
+    const dampedDeltas = log.drags.slice(-5).map((d) => d.dx);
+    expect(variance(dampedDeltas)).toBeLessThan(variance(raw));
+  });
+
+  it('does not delay MOVE_THRESHOLD_PX promotion — the press-to-drag check runs on the raw sample', () => {
+    const { machine } = harness({ tremorDamping: true });
+    machine.down(at(1, ORIGIN, ORIGIN, 0));
+    expect(machine.phase).toBe('pressing');
+    machine.move(at(1, ORIGIN + MOVE_THRESHOLD_PX + 1, ORIGIN, 10));
+    expect(machine.phase).toBe('dragging');
+  });
+
+  it('is toggleable live via setTremorDamping', () => {
+    const { machine, log } = harness();
+    machine.down(at(1, ORIGIN, ORIGIN, 0));
+    machine.move(at(1, ORIGIN + MOVE_THRESHOLD_PX + 1, ORIGIN, 10));
+    machine.setTremorDamping(true);
+    machine.move(at(1, ORIGIN + 40, ORIGIN + 2, 20));
+    machine.move(at(1, ORIGIN + 38, ORIGIN - 2, 30));
+    // Damped: the second move's dx is pulled toward the first, not equal to
+    // the raw (38 - 40 = -2) delta.
+    expect(log.drags.at(-1)!.dx).not.toBeCloseTo(-2, 5);
   });
 });

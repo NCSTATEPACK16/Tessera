@@ -48,7 +48,7 @@ export function Shelf({
       ].join(' ')}
     >
       {ids.length === 0 ? (
-        <p className="py-[8px] text-[12px] text-[var(--ink-muted)]">Drop a piece here to keep it.</p>
+        <p className="py-[8px] text-1 text-[var(--ink-muted)]">Drop a piece here to keep it.</p>
       ) : (
         ids.map((id) => (
           <PieceChip

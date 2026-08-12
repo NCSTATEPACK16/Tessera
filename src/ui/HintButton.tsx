@@ -69,7 +69,7 @@ export function HintButton({
             ? clearanceBottomPx + 16
             : 'max(16px, env(safe-area-inset-bottom))',
       }}
-      className="pointer-events-auto z-10 flex h-[44px] min-w-[44px] items-center justify-center rounded-full border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-[14px] text-[var(--ink-primary)] backdrop-blur-[12px] disabled:opacity-40"
+      className="pointer-events-auto z-10 flex touch-target items-center justify-center rounded-full border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-2 text-[var(--ink-primary)] backdrop-blur-[12px] disabled:opacity-40"
     >
       Hint
     </button>

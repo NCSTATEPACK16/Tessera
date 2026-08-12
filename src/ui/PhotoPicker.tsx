@@ -69,10 +69,10 @@ export function PhotoPicker({
       <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
+            <div className="font-[var(--font-display)] text-5 text-[var(--ink-primary)]">
               New Puzzle
             </div>
-            <div className="mt-1 font-[var(--font-data)] text-[12px] text-[var(--ink-muted)]">
+            <div className="mt-1 font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
               Step 1 of 2 — Pick a photo
             </div>
           </div>
@@ -82,7 +82,7 @@ export function PhotoPicker({
                 type="button"
                 aria-label="Collection"
                 onClick={onCollection}
-                className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+                className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
               >
                 Collection
               </button>
@@ -92,7 +92,7 @@ export function PhotoPicker({
                 type="button"
                 aria-label="Today’s puzzle"
                 onClick={onDaily}
-                className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+                className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
               >
                 Today’s puzzle
               </button>
@@ -106,7 +106,7 @@ export function PhotoPicker({
             aria-label="Curated photos"
             aria-pressed={source === 'curated'}
             onClick={() => setSource('curated')}
-            className={`flex-1 rounded-[var(--radius-md)] border px-0 py-2 font-[var(--font-data)] text-[12px] ${
+            className={`flex-1 rounded-[var(--radius-md)] border px-0 py-2 font-[var(--font-data)] text-1 ${
               source === 'curated'
                 ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
                 : 'border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -119,7 +119,7 @@ export function PhotoPicker({
             aria-label="Upload photo"
             aria-pressed={source === 'upload'}
             onClick={() => setSource('upload')}
-            className={`flex-1 rounded-[var(--radius-md)] border px-0 py-2 font-[var(--font-data)] text-[12px] ${
+            className={`flex-1 rounded-[var(--radius-md)] border px-0 py-2 font-[var(--font-data)] text-1 ${
               source === 'upload'
                 ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
                 : 'border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -132,14 +132,14 @@ export function PhotoPicker({
         {busy && (
           <div
             role="status"
-            className="rounded-[var(--radius-sm)] border border-[var(--edge-hair)] p-3 text-[13px] text-[var(--ink-primary)]"
+            className="rounded-[var(--radius-sm)] border border-[var(--edge-hair)] p-3 text-2 text-[var(--ink-primary)]"
           >
             Getting your photo ready…
           </div>
         )}
 
         {error && (
-          <div role="alert" className="rounded-[var(--radius-sm)] border border-[var(--accent)] p-3 text-[13px] text-[var(--ink-primary)]">
+          <div role="alert" className="rounded-[var(--radius-sm)] border border-[var(--accent)] p-3 text-2 text-[var(--ink-primary)]">
             {error}
           </div>
         )}
@@ -147,7 +147,7 @@ export function PhotoPicker({
         {source === 'curated' ? (
           SHELVES.map(({ key, label }) => (
             <div key={key} className="flex flex-col gap-3">
-              <h2 className="font-[var(--font-data)] text-[12px] uppercase tracking-wide text-[var(--ink-muted)]">
+              <h2 className="font-[var(--font-data)] text-1 uppercase tracking-wide text-[var(--ink-muted)]">
                 {label}
               </h2>
               <div className="grid grid-cols-2 gap-3">
@@ -165,7 +165,7 @@ export function PhotoPicker({
                       }`}
                     >
                       <div
-                        className="relative flex aspect-[4/3] items-center justify-center text-[24px]"
+                        className="relative flex aspect-[4/3] items-center justify-center text-5"
                         style={{ background: photo.dominant[0] ?? 'var(--mat-raised)' }}
                       >
                         <img
@@ -177,7 +177,7 @@ export function PhotoPicker({
                         />
                         {selected && (
                           <div
-                            className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-[14px] text-[var(--mat-void)]"
+                            className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-2 text-[var(--mat-void)]"
                             style={{ background: 'var(--accent)' }}
                           >
                             ✓
@@ -185,11 +185,11 @@ export function PhotoPicker({
                         )}
                       </div>
                       <div className="px-3 py-2" style={{ background: 'var(--mat-raised)' }}>
-                        <div className="text-[13px] text-[var(--ink-primary)]">
+                        <div className="text-2 text-[var(--ink-primary)]">
                           {photo.name}
                           {/* Colour is never the only signal (CLAUDE.md) — a text marker, not a badge colour. */}
                           {photo.difficulty === 'hard' && (
-                            <span className="ml-1 text-[11px] text-[var(--ink-muted)]">
+                            <span className="ml-1 text-1 text-[var(--ink-muted)]">
                               (hard)
                             </span>
                           )}
@@ -224,7 +224,7 @@ export function PhotoPicker({
               dragOver ? 'border-[var(--accent)]' : 'border-[var(--edge-hair)]'
             }`}
           >
-            <div className="font-[var(--font-data)] text-[12px] text-[var(--ink-muted)]">
+            <div className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
               Tap to pick from your library
               <br />
               or drag a photo here
@@ -250,7 +250,7 @@ export function PhotoPicker({
             type="button"
             aria-label="Choose this photo"
             onClick={() => onPhotoChosen({ kind: 'curated', id: selectedId })}
-            className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] py-3 text-[15px] text-[var(--mat-void)]"
+            className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] py-3 text-3 text-[var(--mat-void)]"
           >
             Choose this photo →
           </button>

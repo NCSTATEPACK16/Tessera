@@ -75,7 +75,7 @@ export function StreakFlame({
     return (
       <span className="flex items-center gap-1.5">
         <span aria-hidden="true">{tone === 'broken' || tone === 'none' ? '○' : '▲'}</span>
-        <span className="font-[var(--font-data)] text-[14px] tabular-nums">{streak}</span>
+        <span className="font-[var(--font-data)] text-2 tabular-nums">{streak}</span>
       </span>
     );
   }
@@ -84,14 +84,14 @@ export function StreakFlame({
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline gap-2">
         <span
-          className="font-[var(--font-display)] text-[40px] leading-none text-[var(--ink-primary)]"
+          className="font-[var(--font-display)] text-6 leading-none text-[var(--ink-primary)]"
           // §13: the display serif is for the streak number, and tabular so it
           // does not shift width as the count grows.
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
           {streak}
         </span>
-        <span className="font-[var(--font-data)] text-[12px] text-[var(--ink-muted)]">
+        <span className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
           day streak{freezes > 0 ? ` · ${freezes} freeze${freezes === 1 ? '' : 's'}` : ''}
         </span>
       </div>
@@ -104,7 +104,7 @@ export function StreakFlame({
               role="listitem"
               aria-label={`${cell.dateKey}: ${PIP_LABEL[cell.status]}`}
               title={`${cell.dateKey}: ${PIP_LABEL[cell.status]}`}
-              className={`flex h-[22px] w-[22px] items-center justify-center rounded-[var(--radius-sm)] text-[10px] leading-none ${pipClass(
+              className={`flex h-[22px] w-[22px] items-center justify-center rounded-[var(--radius-sm)] text-1 leading-none ${pipClass(
                 cell.status,
               )}`}
             >

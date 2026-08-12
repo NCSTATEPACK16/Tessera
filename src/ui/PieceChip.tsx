@@ -144,12 +144,12 @@ export function PieceChip({
       {badge > 0 && (
         // §06's numbered order badge. The numeral is the signal; the ring is
         // decoration, because colour is never the only signal.
-        <span className="pointer-events-none absolute right-[2px] top-[2px] flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[var(--accent)] px-[3px] font-[var(--font-data)] text-[10px] text-black">
+        <span className="pointer-events-none absolute right-[2px] top-[2px] flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[var(--accent)] px-[3px] font-[var(--font-data)] text-1 text-black">
           {badge}
         </span>
       )}
       {onMat && (
-        <span className="pointer-events-none absolute bottom-[2px] right-[4px] font-[var(--font-data)] text-[10px] text-[var(--ink-muted)]">
+        <span className="pointer-events-none absolute bottom-[2px] right-[4px] font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
           mat
         </span>
       )}

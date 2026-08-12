@@ -69,6 +69,9 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
         ghostOpacity: clampGhostOpacity(ghostOpacity),
         edgeHighlight,
         largePieceMode,
+        // Comfort is toggled later, mid-play, from the pause sheet — not a
+        // choice offered at setup.
+        comfort: DEFAULT_PUZZLE_CONFIG.assists.comfort,
       },
     });
   };
@@ -76,10 +79,10 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-5">
       <div>
-        <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
+        <div className="font-[var(--font-display)] text-5 text-[var(--ink-primary)]">
           New Puzzle
         </div>
-        <div className="mt-1 font-[var(--font-data)] text-[12px] text-[var(--ink-muted)]">
+        <div className="mt-1 font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
           Step 2 of 2 — Configure
         </div>
       </div>
@@ -98,7 +101,7 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
       />
 
       <div>
-        <div className="mb-2 font-[var(--font-data)] text-[11px] tracking-[0.08em] text-[var(--ink-muted)]">
+        <div className="mb-2 font-[var(--font-data)] text-1 tracking-[0.08em] text-[var(--ink-muted)]">
           PIECE COUNT
         </div>
         <div className="flex gap-2">
@@ -112,7 +115,7 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
                 aria-label={`Piece count: ${count}`}
                 aria-pressed={selected}
                 onClick={() => setTargetCount(count)}
-                className={`flex flex-1 flex-col items-center gap-1 rounded-[var(--radius-sm)] py-2 font-[var(--font-data)] text-[12px] ${
+                className={`flex flex-1 flex-col items-center gap-1 rounded-[var(--radius-sm)] py-2 font-[var(--font-data)] text-1 ${
                   selected
                     ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
                     : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -131,14 +134,14 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
           // Warns, never blocks. A player who wants a soft 250-piece puzzle of
           // a treasured low-resolution photo is allowed to have one — this
           // only makes sure the softness is not a surprise afterwards.
-          <p role="status" className="mt-2 text-[12px] text-[var(--ink-muted)]">
+          <p role="status" className="mt-2 text-1 text-[var(--ink-muted)]">
             This photo is a little small for {targetCount} pieces — they may look soft.
           </p>
         )}
       </div>
 
       <div>
-        <div className="mb-2 font-[var(--font-data)] text-[11px] tracking-[0.08em] text-[var(--ink-muted)]">
+        <div className="mb-2 font-[var(--font-data)] text-1 tracking-[0.08em] text-[var(--ink-muted)]">
           MODE
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -158,11 +161,11 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
                 }`}
               >
                 <div
-                  className={`text-[13px] ${selected ? 'text-[var(--accent)]' : 'text-[var(--ink-primary)]'}`}
+                  className={`text-2 ${selected ? 'text-[var(--accent)]' : 'text-[var(--ink-primary)]'}`}
                 >
                   {selected ? `✓ ${label}` : label}
                 </div>
-                <div className="font-[var(--font-data)] text-[10px] text-[var(--ink-muted)]">
+                <div className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
                   {sub}
                 </div>
               </button>
@@ -173,8 +176,8 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
 
       <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--edge-hair)] p-3">
         <div>
-          <div className="text-[15px] text-[var(--ink-primary)]">Rotation</div>
-          <div className="font-[var(--font-data)] text-[10px] text-[var(--ink-muted)]">
+          <div className="text-3 text-[var(--ink-primary)]">Rotation</div>
+          <div className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
             Pieces can be rotated — significantly harder
           </div>
         </div>
@@ -183,7 +186,7 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
           aria-label="Rotation"
           aria-pressed={rotation}
           onClick={() => setRotation((r) => !r)}
-          className={`min-h-[44px] min-w-[44px] rounded-[var(--radius-sm)] text-[12px] ${
+          className={`touch-target rounded-[var(--radius-sm)] text-1 ${
             rotation
               ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
               : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -194,12 +197,12 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
       </div>
 
       <div className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--edge-hair)] p-3">
-        <div className="font-[var(--font-data)] text-[11px] tracking-[0.08em] text-[var(--ink-muted)]">
+        <div className="font-[var(--font-data)] text-1 tracking-[0.08em] text-[var(--ink-muted)]">
           ASSISTS
         </div>
 
         <div>
-          <div className="mb-1 text-[13px] text-[var(--ink-primary)]">Snap tolerance</div>
+          <div className="mb-1 text-2 text-[var(--ink-primary)]">Snap tolerance</div>
           <div className="flex gap-2">
             {TOLERANCES.map(({ value, label }) => {
               const selected = difficulty === value;
@@ -210,7 +213,7 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
                   aria-label={`Snap tolerance: ${label}`}
                   aria-pressed={selected}
                   onClick={() => setDifficulty(value)}
-                  className={`flex-1 rounded-[var(--radius-sm)] py-2 font-[var(--font-data)] text-[11px] ${
+                  className={`flex-1 rounded-[var(--radius-sm)] py-2 font-[var(--font-data)] text-1 ${
                     selected
                       ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
                       : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -224,9 +227,9 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
         </div>
 
         <div>
-          <div className="mb-1 flex justify-between text-[13px] text-[var(--ink-primary)]">
+          <div className="mb-1 flex justify-between text-2 text-[var(--ink-primary)]">
             <span>Ghost underlay</span>
-            <span className="font-[var(--font-data)] text-[11px] text-[var(--ink-muted)]">
+            <span className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
               {Math.round((ghostOpacity / GHOST_OPACITY_MAX) * 100)}%
             </span>
           </div>
@@ -238,18 +241,18 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
             step={0.01}
             value={ghostOpacity}
             onChange={(e) => setGhostOpacity(Number(e.target.value))}
-            className="min-h-[44px] w-full"
+            className="min-h-[var(--touch-min)] w-full"
           />
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="text-[13px] text-[var(--ink-primary)]">Edge highlight</div>
+          <div className="text-2 text-[var(--ink-primary)]">Edge highlight</div>
           <button
             type="button"
             aria-label="Edge highlight"
             aria-pressed={edgeHighlight}
             onClick={() => setEdgeHighlight((v) => !v)}
-            className={`min-h-[44px] min-w-[44px] rounded-[var(--radius-sm)] text-[12px] ${
+            className={`touch-target rounded-[var(--radius-sm)] text-1 ${
               edgeHighlight
                 ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
                 : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -260,13 +263,13 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="text-[13px] text-[var(--ink-primary)]">Large piece mode</div>
+          <div className="text-2 text-[var(--ink-primary)]">Large piece mode</div>
           <button
             type="button"
             aria-label="Large piece mode"
             aria-pressed={largePieceMode}
             onClick={() => setLargePieceMode((v) => !v)}
-            className={`min-h-[44px] min-w-[44px] rounded-[var(--radius-sm)] text-[12px] ${
+            className={`touch-target rounded-[var(--radius-sm)] text-1 ${
               largePieceMode
                 ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
                 : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -282,7 +285,7 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
           type="button"
           aria-label="Back to crop"
           onClick={onBack}
-          className="rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-4 py-3 text-[15px] text-[var(--ink-muted)]"
+          className="rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-4 py-3 text-3 text-[var(--ink-muted)]"
         >
           ← Back
         </button>
@@ -290,7 +293,7 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
           type="button"
           aria-label="Start cutting"
           onClick={handleConfirm}
-          className="flex-1 rounded-[var(--radius-md)] bg-[var(--accent)] py-3 text-[15px] text-[var(--mat-void)]"
+          className="flex-1 rounded-[var(--radius-md)] bg-[var(--accent)] py-3 text-3 text-[var(--mat-void)]"
         >
           Start Cutting
         </button>

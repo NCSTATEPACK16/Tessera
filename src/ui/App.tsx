@@ -873,6 +873,16 @@ export function App(): React.ReactElement {
     root.setProperty('--color-accent-tray', summary.accent.accentTray);
   }, [summary.accent]);
 
+  // §C Track 3: the one place comfort's 60pt control-target retarget happens.
+  // `theme.css`'s `--touch-min` is already what every button and `.touch-target`
+  // element reads — flipping this attribute is the whole mechanism. No puzzle
+  // configured yet (library/setup screens) reads as comfort off, same as
+  // `DEFAULT_PUZZLE_CONFIG.assists.comfort`.
+  useEffect(() => {
+    const comfort = (liveAssists ?? playConfig?.assists)?.comfort ?? false;
+    document.documentElement.toggleAttribute('data-comfort', comfort);
+  }, [liveAssists, playConfig?.assists]);
+
   // -- the tray --------------------------------------------------------------
 
   const tray = runtime.current?.tray ?? null;
@@ -1126,12 +1136,12 @@ export function App(): React.ReactElement {
               autoFocus
               aria-label="Group name"
               defaultValue={runtime.current?.groupLabel(renaming) ?? ''}
-              className="min-h-[44px] rounded-[6px] bg-transparent px-[8px] font-[var(--font-data)] text-[14px]"
+              className="touch-target rounded-[6px] bg-transparent px-[8px] font-[var(--font-data)] text-2"
               onKeyDown={(event) => {
                 if (event.key === 'Escape') setRenaming(null);
               }}
             />
-            <button type="submit" className="min-h-[44px] px-[12px] text-[14px]">
+            <button type="submit" className="touch-target px-[12px] text-2">
               Rename
             </button>
           </form>

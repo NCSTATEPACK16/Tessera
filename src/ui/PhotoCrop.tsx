@@ -189,10 +189,10 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
     <div className="flex h-full flex-col">
       <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-5">
         <div>
-          <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
+          <div className="font-[var(--font-display)] text-5 text-[var(--ink-primary)]">
             New Puzzle
           </div>
-          <div className="mt-1 font-[var(--font-data)] text-[12px] text-[var(--ink-muted)]">
+          <div className="mt-1 font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
             Step 2 of 2 — Crop &amp; frame
           </div>
         </div>
@@ -258,7 +258,7 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
               aria-label={`Aspect: ${label}`}
               aria-pressed={aspectChoice === value}
               onClick={() => setAspectChoice(value)}
-              className={`flex-1 rounded-[var(--radius-sm)] border py-2 font-[var(--font-data)] text-[11px] ${
+              className={`flex-1 rounded-[var(--radius-sm)] border py-2 font-[var(--font-data)] text-1 ${
                 aspectChoice === value
                   ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
                   : 'border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -283,14 +283,14 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
           step={0.01}
           value={zoom}
           onChange={(e) => setZoom(Number(e.target.value))}
-          className="min-h-[44px] w-full"
+          className="min-h-[var(--touch-min)] w-full"
         />
 
         <button
           type="button"
           aria-label="Rotate 90 degrees"
           onClick={() => setRotateSteps((r) => (((r + 1) % 4) as RotateSteps))}
-          className="rounded-[var(--radius-sm)] border border-[var(--edge-hair)] py-2 text-[13px] text-[var(--ink-primary)]"
+          className="rounded-[var(--radius-sm)] border border-[var(--edge-hair)] py-2 text-2 text-[var(--ink-primary)]"
         >
           Rotate
         </button>
@@ -301,7 +301,7 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
           type="button"
           aria-label="Back to photo picker"
           onClick={onBack}
-          className="rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-4 py-3 text-[15px] text-[var(--ink-muted)]"
+          className="rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-4 py-3 text-3 text-[var(--ink-muted)]"
         >
           ← Back
         </button>
@@ -309,7 +309,7 @@ export function PhotoCrop({ source, onConfirm, onBack }: PhotoCropProps): React.
           type="button"
           aria-label="Use this photo"
           onClick={handleConfirm}
-          className="flex-1 rounded-[var(--radius-md)] bg-[var(--accent)] py-3 text-[15px] text-[var(--mat-void)]"
+          className="flex-1 rounded-[var(--radius-md)] bg-[var(--accent)] py-3 text-3 text-[var(--mat-void)]"
         >
           Use this photo
         </button>

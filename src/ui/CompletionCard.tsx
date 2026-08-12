@@ -72,17 +72,17 @@ export function CompletionCard({
   };
 
   const secondary =
-    'min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]';
+    'touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]';
 
   return (
     <div className="pointer-events-auto absolute inset-0 z-10 flex flex-col items-center justify-center gap-[16px] overflow-y-auto bg-[color-mix(in_srgb,var(--mat-void)_86%,transparent)] p-[24px] backdrop-blur-[12px]">
       {daily && (
         <div className="flex flex-col items-center">
-          <div className="text-[14px] text-[var(--ink-primary)]">
+          <div className="text-2 text-[var(--ink-primary)]">
             {`Daily done · ${daily.streak} day streak`}
           </div>
           {daily.freezeEarned && (
-            <div className="font-[var(--font-data)] text-[11px] text-[var(--ink-muted)]">
+            <div className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
               Freeze earned — one missed day is covered.
             </div>
           )}
@@ -103,7 +103,7 @@ export function CompletionCard({
             type="button"
             aria-label={`Again, at ${nextCount} pieces`}
             onClick={onAgainHarder}
-            className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--accent)] px-3 text-[13px] text-[var(--accent)]"
+            className="touch-target rounded-[var(--radius-md)] border border-[var(--accent)] px-3 text-2 text-[var(--accent)]"
           >
             {`Again, at ${nextCount} pieces`}
           </button>
@@ -121,7 +121,7 @@ export function CompletionCard({
           type="button"
           aria-label="Done"
           onClick={onDone}
-          className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--accent)] px-3 text-[13px] text-[var(--mat-void)]"
+          className="touch-target rounded-[var(--radius-md)] bg-[var(--accent)] px-3 text-2 text-[var(--mat-void)]"
         >
           Done
         </button>

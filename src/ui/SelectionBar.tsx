@@ -20,7 +20,7 @@ export function SelectionBar({ count, onPullOut, onCancel }: SelectionBarProps):
       <button
         type="button"
         // 44pt floor, everywhere.
-        className="min-h-[44px] flex-1 rounded-[8px] bg-[var(--accent)] px-[12px] text-[14px] text-black disabled:opacity-40"
+        className="touch-target flex-1 rounded-[8px] bg-[var(--accent)] px-[12px] text-2 text-black disabled:opacity-40"
         disabled={count < 2}
         onClick={onPullOut}
       >
@@ -28,7 +28,7 @@ export function SelectionBar({ count, onPullOut, onCancel }: SelectionBarProps):
       </button>
       <button
         type="button"
-        className="min-h-[44px] rounded-[8px] border border-[var(--edge-hair)] px-[12px] text-[14px]"
+        className="touch-target rounded-[8px] border border-[var(--edge-hair)] px-[12px] text-2"
         onClick={onCancel}
       >
         Cancel
