@@ -844,3 +844,124 @@ this session"). Everything from the snap-feel budget in §17 to touch-target siz
 session's own lazy-loaded thumbnails is sitting in that same unverified bucket. Worth deciding
 whether Step 7 or Step 9 planning should have a real-hardware pass built into it as a task rather
 than continuing to defer it step over step.
+
+---
+
+## 7. Session — 2026-08-11 (continued): the UX & architecture report, and Track 1
+
+A separate report (`docs/TESSERA_UX_ARCHITECTURE_REPORT.md`, gitignored, working-machine only)
+came in covering iPad motor accessibility, the uploaded-photo pipeline, open-source structure, and
+first-run/offline architecture. It was written against `handoff.md`'s description of the app, not
+against the source, so it does not know what already ships.
+
+**`docs/superpowers/specs/2026-08-11-ux-report-response-design.md` (committed) is the review and
+the plan.** §A separates already-built from genuinely missing — roughly 40% of the report's
+§1.3/§2.2/§2.3 recommendations describe behaviour already in the codebase, itemised there rather
+than re-verified here. §A.3 names the four places the report disagrees with the locked design doc
+and resolves each as an opt-in Comfort mode, never a new default — the design doc keeps winning
+per `CLAUDE.md`. The remaining work is five sequenced tracks, one session each: **1 HEIC
+ingestion → 2 open-source hardening + CI → 3 Comfort mode/contrast/Dynamic Type → 4 step 7 → 5
+step 9.** Track 1 is specified to task level in that file; 2–5 are scoped only.
+
+### 7.1. Track 1 landed: HEIC ingestion
+
+`App.tsx` used to detect HEIC and refuse it with Settings-app advice. An iPhone shoots HEIC by
+default, so that was the upload path failing outright for the target player. Three new files —
+`src/play/heic.ts` (pure detection, tested), `src/play/heic.worker.ts` (transport shell, mirrors
+`cutter.worker.ts`), `src/play/heic-client.ts` (main-thread front door, mirrors `cut-client.ts`) —
+plus a HEIC branch in `App.tsx`'s `decodeUpload` and a busy state in `PhotoPicker.tsx`.
+
+- **Detection is three-signal and the container wins.** `sniffHeicBrand` reads the `ftyp` major
+  brand from the first bytes and overrules both MIME (Windows lies) and extension (iOS share paths
+  lie). Only the major brand is checked — `mif1` appears in every AVIF's *compatible*-brands list,
+  so scanning that list would misroute AVIF, which decodes natively.
+- **The browser gets first refusal always.** `createImageBitmap` runs before any detection branch;
+  libheif only wakes on an actual throw plus a positive sniff. Verified in the build: the ~3 MB
+  `heic-to` chunk sits behind a dynamic `import()` inside the worker and never touches the main
+  entry chunk (`dist/assets/main-*.js` stayed at 367.61 kB / 111.66 kB gzip; `heic-to-*.js` is its
+  own 2996.44 kB chunk).
+- **No double rotation, and no redundant re-decode** — see §7.2 below; this is where the spec's
+  own decisions 4 and 5 were corrected against the library's actual behaviour during
+  implementation, and the spec file was updated in place rather than left describing a plan that
+  wasn't what got built.
+- **No real HEIC fixture is buildable in this repo** (`sharp`'s bundled libvips ships no HEVC
+  *encoder* — patent licensing). The browser suite proves the *routing* decision instead:
+  container-sniffed HEIC bytes under a `.jpg` name reach the decoder (asserted by counting workers
+  whose URL contains `heic.worker`), and a real JPEG never wakes it. The conversion itself — a real
+  HEIC from an iPad's Photos library actually decoding, upright, at a usable speed — is the
+  hardware gate below, same as every step since 5a.
+
+Gates, verified **in isolation** (see §7.3 for why that qualifier matters): `npm test` 593/593 (40
+files) · `npm run typecheck` clean · `npm run build` clean · `npm run test:browser` 129 passed / 9
+skipped, both dock and phone, zero failures. Two commits: `db83d7b` (Track 1 implementation),
+`1289477` (spec corrections). Both pushed to
+`origin/fix/photo-picker-thumbnails-and-layout` — **same branch as the picker thumbnail/layout
+fixes earlier in this session (`3e63c9f`), not a fresh one**, since Track 1 continued directly from
+that work in the same session. **PR not opened** — the fine-grained PAT in this environment cannot
+create pull requests (`gh pr create` → "Resource not accessible by personal access token
+(createPullRequest)"), the same limitation recorded at step 5b. Open it at
+https://github.com/NCSTATEPACK16/Tessera/pull/new/fix/photo-picker-thumbnails-and-layout.
+
+### 7.2. Two corrections to the spec, found only by implementing against the library
+
+The spec's decisions 4 and 5 (§B) were written from the report's assumptions about `heic-to`'s
+shape, before checking. Both were wrong in the same direction — assuming more work was needed than
+the library actually requires:
+
+- **Decision 4 planned a JPEG re-decode.** Request a JPEG without orientation from `heic-to`, then
+  re-decode it through `createImageBitmap(…, { imageOrientation: 'from-image' })`, to avoid double
+  rotation. Checking libheif's actual behaviour: it applies the container's `irot` box while
+  decoding, and `heic-to` documents that **EXIF is dropped entirely** on conversion. So the output
+  already carries exactly one rotation and no tag anything could apply twice — the re-decode was a
+  redundant encode/decode round trip for nothing. `heic.worker.ts` now requests `type: 'bitmap'`
+  directly and passes no orientation option at all, with the reasoning in a comment at the point of
+  definition (`heic.worker.ts`'s own doc comment), per `CLAUDE.md`'s "absent handling reads as an
+  omission unless it says why."
+- **Decision 5 assumed the downscale needed a second worker hop.** `heic-to` runs its own internal
+  worker, but that one returns `ImageData` to the *main* thread and encodes there — using it as
+  planned would have put a full 12 MP allocation back on the main thread before `downscaleTarget`
+  ever ran. Calling `heic-to/next` from **our own** worker with `type: 'bitmap'` keeps both decode
+  and downscale off the main thread, transferring a bitmap handle instead of copying pixels — the
+  same reason `cutter.worker.ts` transfers piece bitmaps rather than copying them.
+
+Both corrections are recorded as blockquotes in the spec file itself
+(`docs/superpowers/specs/2026-08-11-ux-report-response-design.md`, decisions 4 and 5), not just
+here — the spec is meant to stay accurate to what shipped, not to what was planned before checking.
+
+### 7.3. A false alarm: the full browser gate looked like it had 5 failures, and didn't
+
+Running `npm run test:browser` for the whole suite (138 tests) produced 5 failures: both
+`photo-picker.spec.ts:80` (HEIC-mislabelled-as-JPEG routing, dock and phone) and three slow
+full-solve tests (`collection-wall.spec.ts:40`/`52`, `completion.spec.ts:22`). All five turned out
+to be **resource contention, not regressions** — this session had a second, unrelated Playwright
+invocation running concurrently in the background (a leftover baseline check from an earlier
+session, still targeting the shared, `reuseExistingServer`-reused dev server on the same port) at
+the same time the full gate ran. Two headless Chromium instances doing a 6+-minute full-solve test
+file each, on one machine, is enough to blow the HEIC test's already-generous 30s WASM-compile
+budget and to starve the hint-button lookups in the slow completion-flow specs of their 5s default
+timeout.
+
+**Verified this was the cause, not guessed:** every one of the 5 failing tests was re-run
+individually with no other Playwright process alive, and every one passed —
+`photo-picker.spec.ts:80` in 1.6s on both viewports (well inside its 30s budget), the three slow
+tests each in their own multi-minute run. A subsequent **full clean gate run, alone, with nothing
+else competing for the machine**, came back 129 passed / 9 skipped / **0 failed** in 16.9 minutes.
+That clean run is what `npm test`/`typecheck`/`build`/`test:browser` above in §7.1 refers to.
+
+**Worth carrying forward:** `playwright.config.ts`'s `webServer.reuseExistingServer` (true outside
+CI) means two concurrent `npx playwright test` invocations against this repo share one dev server
+and one machine's CPU — a second background Playwright run left over from an earlier task, or from
+a different session, can produce test failures that look like real regressions in whichever run
+reports them. If a browser-gate failure doesn't reproduce on a targeted single-test re-run, check
+`ps aux` for another `playwright`/`chromium_headless_shell` process before spending time on the
+code.
+
+### 7.4. What's next
+
+Track 1 is done and gated. The frontier is now **Track 2** (open-source hardening + first CI —
+`LICENSE`, `ARCHITECTURE.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS`,
+issue templates, `.github/workflows/ci.yml`, golden-image cut tests, README rewrite; zero files
+under `src/`, and per the spec's own ordering note it "may run in parallel with, or ahead of, Track
+1"). Tracks 3–5 (Comfort mode, step 7, step 9) come after, in that order, per the spec's §A.4
+table. `docs/superpowers/specs/2026-08-11-ux-report-response-design.md` §C has the scoping notes
+for all four remaining tracks.
