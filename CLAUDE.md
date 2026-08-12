@@ -69,7 +69,14 @@ Break any of these and something downstream breaks in a way that looks like a di
 - **The chip cedes the vertical axis to the browser** — `touch-action: pan-y`, and drag-out commits
   on horizontal movement, for touch pointers only. `touch-action: none` does not lose a race with
   native scrolling, it *disables* it, which left the tray unscrollable by touch through all of 3a.
-- **No `localStorage` for session state** — IndexedDB only.
+- **No `localStorage` for session state** — IndexedDB only. **One explicit, narrow carve-out:**
+  `hasSeenFirstRunSync` (`src/persist/first-run.ts`) mirrors the guided-twelve seen-flag into
+  `localStorage` as a synchronous pre-hydration cache, so the app's first render already knows
+  whether to attempt the guided twelve instead of waiting on an IndexedDB round trip. This is UI
+  routing, not session state — IndexedDB stays the source of truth, and the cache fails open in
+  both directions: missing or unreadable, it reads as "not done yet", which costs a returning
+  player one avoidable read, never a trapped or repeated tutorial. Do not reach for `localStorage`
+  for anything else without the same fail-open reasoning written down at the point of definition.
 - **No feedback may depend on a channel the web build lacks.** Haptics are an amplifier, never the
   carrier. The snap must feel complete on a silent device with no vibration.
 - **Colour is never the only signal.** Edge pieces get a corner notch glyph; colour bins get a
@@ -101,6 +108,16 @@ Break any of these and something downstream breaks in a way that looks like a di
   not guarantee 4.5:1 against `--mat-raised` at every hue — `ensureContrast` is the pass that
   actually checks and corrects. A photo whose dominant colour is a saturated blue at the clamp's
   own lightness floor is a real failing case, hand-verified this session, not a hypothetical one.
+- **The guided twelve is an ordinary puzzle with an overlay.** There is no tutorial engine — the
+  same `PlayRuntime`, the same snap, the same audio. The coach in `first-run.ts` decides *when* the
+  tray mounts and *when* a hint fires, and nothing else. A second play path for the first run would
+  mean the tutorial teaches a game the player is not about to play. Its twelve pieces still need a
+  real scatter (`PlayRuntime.build()`'s `firstRunScatter`) — a piece left sitting at its own home
+  slot is exactly adjacent to its real graph neighbours, and `resolveSnap` finds a genuine neighbour
+  before it ever falls back to the board-frame exception, so an unscattered "already scattered"
+  board can never actually place a piece onto the board at all.
+- **A skipped first run writes no completion.** §16's "counts as a real completion" is about
+  finishing it. The wall is a possession, and an unearned first tile devalues every tile after it.
 
 ## Coordinate spaces
 
@@ -143,6 +160,7 @@ src/
             layout.ts                 the pull-out grid, on the safe rect
             card.ts                   the Puzzle Card's layout maths — pure, per wireframe 05
             runtime.ts                the whole board, mounted and pumped
+            first-run.ts              the guided twelve's coach — §16's four beats, pure
   daily/    dates.ts                  local day keys, UTC arithmetic
             daily.ts                  date → (photo, count, seed), closed form
             streak.ts                 freezes, repair, pips, month grid
@@ -156,6 +174,7 @@ src/
             Shelf SelectionBar        the pinned row, and the pull-out bar
             DailyHub StreakFlame MonthCalendar   the daily hub and its streak (step 6)
             CompletionCard CollectionWall   the Puzzle Card and the mosaic of finishes (step 8)
+            FirstRun.tsx              the guided twelve's overlay — copy and skip only (step 7)
             theme.css                 §13 tokens, once, for both consumers
   main.tsx                            the product entry — index.html
 test/                                 mirrors src/ — vitest, *.test.ts

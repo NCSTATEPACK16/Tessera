@@ -214,9 +214,41 @@ test('a returning player is never taught again', async ({ page }) => {
   await expect.poll(() => remaining(page)).toBe(12);
 
   await page.getByLabel('Skip').click();
+
+  // §C Track 4: the synchronous pre-hydration cache, mirrored alongside the
+  // IndexedDB write markFirstRunDone makes — not just the async source of
+  // truth eventually agreeing after a reload.
+  const cached = await page.evaluate(() => localStorage.getItem('tessera:firstRunSeen'));
+  expect(cached).toBe('true');
+
   await page.reload({ waitUntil: 'load' });
 
   await expect(page.getByText('Drag a piece where you think it goes.')).toHaveCount(0);
+});
+
+test('Comfort mode is offered by name, quietly, and actually widens controls live', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await openFreshProfile(page);
+  await expect.poll(() => remaining(page)).toBe(12);
+
+  const comfortToggle = page.getByLabel('Comfort mode');
+  await expect(comfortToggle).toBeVisible();
+  await expect(comfortToggle).toHaveAttribute('aria-pressed', 'false');
+
+  const skip = page.getByLabel('Skip');
+  const before = await skip.boundingBox();
+  expect(before?.height).toBeLessThan(60);
+
+  await comfortToggle.click();
+  await expect(comfortToggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(comfortToggle).toHaveText('Comfort mode: On');
+
+  // Applied live to the actual running puzzle, the same as the pause
+  // sheet's toggle — not just a label change on the overlay itself.
+  const after = await skip.boundingBox();
+  expect(after?.height).toBeGreaterThanOrEqual(60);
 });
 
 test('finishing the twelve earns a real completion and offers the two next steps', async ({

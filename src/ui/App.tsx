@@ -43,7 +43,7 @@ import { captureThumbnail } from '@/persist/thumbnail';
 import type { SessionSnapshot } from '@/persist/snapshot';
 import { completionCount, listCompletions, saveCompletion } from '@/persist/completions';
 import type { CompletionRecord } from '@/persist/completions';
-import { loadFirstRunDone, markFirstRunDone } from '@/persist/first-run';
+import { hasSeenFirstRunSync, loadFirstRunDone, markFirstRunDone } from '@/persist/first-run';
 import { FIRST_RUN_PIECES, firstRunStart, firstRunTick } from '@/play/first-run';
 import type { FirstRunBeat, FirstRunState } from '@/play/first-run';
 import { FirstRunOverlay } from './FirstRun';
@@ -375,11 +375,17 @@ export function App(): React.ReactElement {
   // deleted everything must not be taught it again, and neither must one who
   // has a real completion on the wall but no puzzle currently in progress.
   useEffect(() => {
+    // The synchronous cache first: when it already says "seen", there is no
+    // reason to make the IndexedDB round trip below wait on a read whose
+    // answer is already known, and it can never be wrong in the direction
+    // that matters — a stale/missing cache only ever costs one extra read,
+    // never traps a returning player.
+    const cachedDone = hasSeenFirstRunSync();
     void (async () => {
       const [entries, completions, firstRunDone] = await Promise.all([
         listLibrary(),
         completionCount(),
-        loadFirstRunDone(),
+        cachedDone ? Promise.resolve(true) : loadFirstRunDone(),
       ]);
       setLibraryEntries(entries);
 
@@ -1328,7 +1334,18 @@ export function App(): React.ReactElement {
         )}
 
         {screen === 'first-run' && summary.status !== 'complete' && (
-          <FirstRunOverlay beat={firstRunBeat} onSkip={handleFirstRunSkip} />
+          <FirstRunOverlay
+            beat={firstRunBeat}
+            onSkip={handleFirstRunSkip}
+            comfort={(liveAssists ?? playConfig?.assists)?.comfort ?? false}
+            onToggleComfort={() => {
+              const assists = liveAssists ?? playConfig?.assists;
+              if (!assists) return;
+              const next = { ...assists, comfort: !assists.comfort };
+              setLiveAssists(next);
+              runtime.current?.setAssists(next);
+            }}
+          />
         )}
       </div>
 
