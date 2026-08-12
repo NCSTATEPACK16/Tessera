@@ -51,6 +51,15 @@ const XRAY_RESTORE_MS = 160;
 /** World-space stroke weight for the edge-highlight assist, before the /zoom conversion. */
 const EDGE_HIGHLIGHT_WIDTH = 2;
 
+/** §C Track 3: one ghost-underlay slot, world units, with its own adaptive alpha. */
+export interface GhostSlot {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  alpha: number;
+}
+
 export interface RendererStats {
   frames: number;
   /** Pieces drawn on the last dynamic pass, after culling. */
@@ -111,6 +120,8 @@ export class Renderer {
   /** Step 5b's ghost-underlay assist: the source photo, drawn under placed pieces. */
   private ghostBitmap: ImageBitmap | null = null;
   private ghostOpacity = 0;
+  /** §C Track 3's adaptive per-slot alpha, or null when the caller has none built. */
+  private ghostSlots: readonly GhostSlot[] | null = null;
   /** Step 5b's edge-highlight assist, and its lazily built per-piece outline cache. */
   private edgeHighlightEnabled = false;
   private readonly edgePaths = new Map<number, Path2D>();
@@ -254,10 +265,20 @@ export class Renderer {
    * Step 5b's ghost-underlay assist: a dimmed copy of the source photo, drawn
    * inside `paintStatic` under the placed pieces so it pans and zooms with the
    * board. Pass `null` (or opacity 0) to turn it off.
+   *
+   * `slots` (§C Track 3) is the adaptive per-piece alpha built from
+   * `CutPiece.meanColor` — when present, `paintStatic` draws each slot
+   * separately instead of the whole board in one pass. Omitting it keeps the
+   * pre-Track-3 single-draw behaviour, so a two-argument call stays valid.
    */
-  setGhostUnderlay(bitmap: ImageBitmap | null, opacity: number): void {
+  setGhostUnderlay(
+    bitmap: ImageBitmap | null,
+    opacity: number,
+    slots: readonly GhostSlot[] | null = null,
+  ): void {
     this.ghostBitmap = bitmap;
     this.ghostOpacity = opacity;
+    this.ghostSlots = slots;
   }
 
   /** Step 5b's edge-highlight assist: stroke every piece's cut silhouette. */
@@ -343,8 +364,32 @@ export class Renderer {
     this.applyCamera(ctx);
     if (this.ghostBitmap && this.ghostOpacity > 0) {
       ctx.save();
-      ctx.globalAlpha = this.ghostOpacity;
-      ctx.drawImage(this.ghostBitmap, 0, 0, this.scene.boardW, this.scene.boardH);
+      if (this.ghostSlots && this.ghostSlots.length > 0) {
+        // Per-slot alpha (§C Track 3): source rect in the bitmap's own pixel
+        // space, dest rect in world units — same px-per-world-unit ratio
+        // `pathScale` already names for piece outlines, computed once here
+        // since the ghost bitmap's natural size and the board's world size
+        // are both constant for the puzzle's lifetime.
+        const pxPerUnit = this.ghostBitmap.width / this.scene.boardW;
+        for (const slot of this.ghostSlots) {
+          if (slot.alpha <= 0) continue;
+          ctx.globalAlpha = slot.alpha;
+          ctx.drawImage(
+            this.ghostBitmap,
+            slot.x * pxPerUnit,
+            slot.y * pxPerUnit,
+            slot.w * pxPerUnit,
+            slot.h * pxPerUnit,
+            slot.x,
+            slot.y,
+            slot.w,
+            slot.h,
+          );
+        }
+      } else {
+        ctx.globalAlpha = this.ghostOpacity;
+        ctx.drawImage(this.ghostBitmap, 0, 0, this.scene.boardW, this.scene.boardH);
+      }
       ctx.restore();
     }
     this.drawBoardOutline(ctx);

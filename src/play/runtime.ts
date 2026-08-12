@@ -23,7 +23,7 @@ import { gridLayout } from '@/play/layout';
 import { PlaySession } from '@/play/session';
 import type { PlayEvent } from '@/play/session';
 import type { AccentTokens } from '@/render/accent';
-import { extractAccent, fallbackAccentTokens } from '@/render/accent';
+import { adaptiveGhostOpacity, extractAccent, fallbackAccentTokens } from '@/render/accent';
 import { TrayModel } from '@/tray/tray';
 import {
   MIN_ZOOM,
@@ -41,9 +41,11 @@ import {
 import type { Camera } from '@/render/camera';
 import { GROUP_CHIP, groupChipRect } from '@/render/group-chip';
 import { Renderer } from '@/render/renderer';
+import type { GhostSlot } from '@/render/renderer';
 import { emptyScene } from '@/render/scene';
 import type { Scene, ScenePiece } from '@/render/scene';
 import type { PuzzleAssists } from '@/play/setup';
+import { floorDifficulty } from '@/play/setup';
 import { packPieces, unpackPieces } from '@/persist/snapshot';
 import type { SessionSnapshot } from '@/persist/snapshot';
 import type { Lens } from '@/tray/lenses';
@@ -53,6 +55,7 @@ const DEFAULT_ASSISTS: PuzzleAssists = {
   ghostOpacity: 0,
   edgeHighlight: false,
   largePieceMode: false,
+  comfort: false,
 };
 
 /**
@@ -207,6 +210,8 @@ export class PlayRuntime {
    * taken in `start()`, before the transfer, and only when the assist is on.
    */
   private ghostSource: ImageBitmap | null = null;
+  /** §C Track 3: kept for `ghostSlots()` to build adaptive alpha from `meanColor`. */
+  private cutPieces: CutPiece[] = [];
 
   /**
    * The pause sheet changes assists and tolerance mid-session, and
@@ -220,7 +225,21 @@ export class PlayRuntime {
     this.renderer = new Renderer({ container: options.container });
     this.mode = options.mode ?? 'classic';
     this.liveAssists = options.assists ?? DEFAULT_ASSISTS;
-    this.liveDifficulty = options.difficulty ?? 'standard';
+    // A puzzle resumed with comfort already on in its saved snapshot must not
+    // open at a tighter tolerance than comfort permits.
+    this.liveDifficulty = floorDifficulty(options.difficulty ?? 'standard', this.liveAssists.comfort);
+  }
+
+  /** §C Track 3: per-piece adaptive alpha for the ghost underlay, from `CutPiece.meanColor`. */
+  private ghostSlots(assists: PuzzleAssists): GhostSlot[] | null {
+    if (assists.ghostOpacity <= 0 || this.cutPieces.length === 0) return null;
+    return this.cutPieces.map((piece) => ({
+      x: piece.targetX,
+      y: piece.targetY,
+      w: piece.worldW,
+      h: piece.worldH,
+      alpha: adaptiveGhostOpacity(assists.ghostOpacity, piece.meanColor),
+    }));
   }
 
   /** Step 5c: the pause sheet's live settings. */
@@ -229,9 +248,13 @@ export class PlayRuntime {
     // Known gap: `ghostSource` is only copied in `start()`, and only when the
     // assist was already on, so turning the ghost on mid-session has nothing
     // to draw. Re-decoding the stored photo here is the follow-up.
-    this.renderer.setGhostUnderlay(this.ghostSource, assists.ghostOpacity);
+    this.renderer.setGhostUnderlay(this.ghostSource, assists.ghostOpacity, this.ghostSlots(assists));
     this.renderer.setEdgeHighlight(assists.edgeHighlight);
     this.controls?.setMinRelativeZoom(assists.largePieceMode ? REGION_LENS_ZOOM : MIN_ZOOM);
+    this.controls?.setTremorDamping(assists.comfort);
+    this.session?.setComfort(assists.comfort);
+    this.liveDifficulty = floorDifficulty(this.liveDifficulty, assists.comfort);
+    this.session?.setDifficulty(this.liveDifficulty);
     this.render();
   }
 
@@ -658,6 +681,7 @@ export class PlayRuntime {
 
   private build(cut: CutPiece[]): void {
     for (const piece of cut) this.pieces.set(piece.id, piece);
+    this.cutPieces = cut;
 
     const restore = this.options.restore;
 
@@ -667,6 +691,7 @@ export class PlayRuntime {
       boardH: this.boardH,
       pathScale: this.pathScale,
       difficulty: this.liveDifficulty,
+      comfort: this.liveAssists.comfort,
       ...(this.options.rotation !== undefined ? { rotation: this.options.rotation } : {}),
       ...(this.options.reducedMotion !== undefined
         ? { reducedMotion: this.options.reducedMotion }
@@ -718,6 +743,7 @@ export class PlayRuntime {
       },
       getBoard: () => ({ w: this.boardW, h: this.boardH }),
       minRelativeZoom: assists.largePieceMode ? REGION_LENS_ZOOM : undefined,
+      tremorDamping: assists.comfort,
       onChange: () => this.wake(),
       interceptRelease: ({ clusterId, client }) => {
         this.options.onDragStateChange?.(false);
@@ -741,7 +767,7 @@ export class PlayRuntime {
     // purpose — a broken accent is a wrong colour, never a blocked puzzle.
     const accent = extractAccent(cut, this.options.seed);
     this.renderer.setAccent(accent.accent);
-    this.renderer.setGhostUnderlay(this.ghostSource, assists.ghostOpacity);
+    this.renderer.setGhostUnderlay(this.ghostSource, assists.ghostOpacity, this.ghostSlots(assists));
     this.renderer.setEdgeHighlight(assists.edgeHighlight);
     this.patch({
       status: 'playing',

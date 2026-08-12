@@ -18,7 +18,7 @@
  */
 
 import type { ColourInput } from '@/tray/colour';
-import { hexOf, hueOf, kMeans, srgbToOkLab } from '@/tray/colour';
+import { hexOf, hueOf, kMeans, okLabToSrgb, srgbToOkLab } from '@/tray/colour';
 import type { OkLab } from '@/tray/colour';
 
 export const ACCENT_FALLBACK = '#6FA8FF';
@@ -27,6 +27,18 @@ const CLAMP_L = { min: 0.62, max: 0.78 };
 const CLAMP_C = { min: 0.09, max: 0.16 };
 const MIN_HUE_SEPARATION_DEG = 25;
 const DOMINANT_COUNT = 3;
+
+/**
+ * `--mat-raised` (#1E232A, theme.css), not `--mat-void` — the accent sits on
+ * both as either text/border colour or a light background, and raised is the
+ * harder of the two to clear: it is lighter than void, so it costs more
+ * contrast, not less. Passing against raised passes against void for free.
+ */
+export const MAT_RAISED_RGB: [number, number, number] = [30, 35, 42];
+/** WCAG 2.1 AA, normal text. */
+export const WCAG_MIN_CONTRAST = 4.5;
+const CONTRAST_L_STEP = 0.01;
+const CONTRAST_L_MAX = 0.95;
 
 export interface AccentTokens {
   accent: string;
@@ -99,6 +111,68 @@ function rankBySize(samples: readonly OkLab[], centroids: readonly OkLab[]): OkL
     .map((entry) => entry.centroid);
 }
 
+function relativeLuminance(rgb: readonly [number, number, number]): number {
+  const linear = (channel: number): number => {
+    const c = channel / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * linear(rgb[0]) + 0.7152 * linear(rgb[1]) + 0.0722 * linear(rgb[2]);
+}
+
+/** WCAG 2.1 contrast ratio, 1 (identical) to 21 (black on white). Symmetric. */
+export function contrastRatio(
+  a: readonly [number, number, number],
+  b: readonly [number, number, number],
+): number {
+  const lumA = relativeLuminance(a);
+  const lumB = relativeLuminance(b);
+  const lighter = Math.max(lumA, lumB);
+  const darker = Math.min(lumA, lumB);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * The second pass, after `clampToAccentRange`: walk OKLab lightness upward
+ * until the colour actually clears `minRatio` against `against`, rather than
+ * assuming the clamp's L/C band is always enough — it is not (see the
+ * near-miss test in `accent.test.ts`, a real value the clamp alone permits).
+ * Hue and chroma magnitude are held fixed; only L moves. Never throws — an
+ * unreachable ratio returns the best L found, the same never-block posture
+ * `extractAccent` already keeps for every other failure mode here.
+ */
+export function ensureContrast(
+  lab: OkLab,
+  against: readonly [number, number, number],
+  minRatio: number,
+): OkLab {
+  let candidate = lab;
+  for (let L = lab.L; L <= CONTRAST_L_MAX; L += CONTRAST_L_STEP) {
+    candidate = { ...lab, L };
+    if (contrastRatio(okLabToSrgb(candidate), against) >= minRatio) return candidate;
+  }
+  return candidate;
+}
+
+/**
+ * Step 5b's ghost underlay is a single dimmed copy of the source photo drawn
+ * under placed pieces (`renderer.ts`'s `paintStatic`). A uniform alpha reads
+ * as invisible over the photo's own dark regions against `--mat-void`'s
+ * near-black — this boosts opacity per slot from that slot's own mean colour,
+ * using the pixel data cut already sampled (`CutPiece.meanColor`), so it costs
+ * no second pass over the image. Chosen, not measured — revisit on hardware.
+ */
+const GHOST_ADAPTIVE_CEILING = 0.55;
+const GHOST_BOOST_LIGHTNESS_FLOOR = 0.7;
+
+export function adaptiveGhostOpacity(
+  base: number,
+  meanColor: readonly [number, number, number],
+): number {
+  const L = srgbToOkLab(meanColor).L;
+  const boost = Math.max(0, GHOST_BOOST_LIGHTNESS_FLOOR - L);
+  return Math.min(GHOST_ADAPTIVE_CEILING, base + boost * base);
+}
+
 /**
  * Extract accent tokens from a puzzle's pieces. `useNeutral` is the manual
  * escape (§13) — settings, not a computed decision; there is nowhere to
@@ -120,7 +194,15 @@ export function extractAccent(
     const centroids = kMeans(samples, k, seed, 'accent');
     const ranked = rankBySize(samples, centroids);
 
-    const accent = clampToAccentRange(ranked[0]!);
+    // `ensureContrast` is only for `accent` — the token used as interactive
+    // text/border colour against dark chrome. `accentBloom`/`accentTray`
+    // drive a light/glow effect, not legibility, so they stay on the clamp
+    // alone.
+    const accent = ensureContrast(
+      clampToAccentRange(ranked[0]!),
+      MAT_RAISED_RGB,
+      WCAG_MIN_CONTRAST,
+    );
     const bloom = ensureHueSeparation(accent, clampToAccentRange(ranked[1] ?? ranked[0]!));
     const tray = clampToAccentRange(ranked[2] ?? ranked[1] ?? ranked[0]!);
 

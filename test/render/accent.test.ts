@@ -11,12 +11,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACCENT_FALLBACK,
+  adaptiveGhostOpacity,
   clampToAccentRange,
+  contrastRatio,
+  ensureContrast,
   ensureHueSeparation,
   extractAccent,
   fallbackAccentTokens,
+  MAT_RAISED_RGB,
+  WCAG_MIN_CONTRAST,
 } from '@/render/accent';
-import { hueOf, srgbToOkLab } from '@/tray/colour';
+import { hueOf, okLabToSrgb, srgbToOkLab } from '@/tray/colour';
 import type { ColourInput, OkLab } from '@/tray/colour';
 
 const flat = (id: number, rgb: [number, number, number]): ColourInput => ({
@@ -130,12 +135,99 @@ describe('extractAccent', () => {
   it('never throws', () => {
     expect(() => extractAccent([flat(0, [0, 0, 0])], 1)).not.toThrow();
   });
+
+  it('always meets the WCAG floor against --mat-raised, at a near-black and a near-white photo', () => {
+    // CLAUDE.md: a test that passes at both extremes of the constant it guards
+    // is not testing that constant — so this asserts the actual measured
+    // ratio, not just that extraction returns something.
+    const nearBlack = Array.from({ length: 12 }, (_, i) => flat(i, [5, 5, 8]));
+    const nearWhite = Array.from({ length: 12 }, (_, i) => flat(i, [250, 248, 245]));
+    for (const pieces of [nearBlack, nearWhite]) {
+      const tokens = extractAccent(pieces, 1);
+      expect(contrastRatio(hexToRgb(tokens.accent), MAT_RAISED_RGB)).toBeGreaterThanOrEqual(
+        WCAG_MIN_CONTRAST - 1e-6,
+      );
+    }
+  });
 });
 
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
+
+describe('contrastRatio', () => {
+  it('is 1 for two identical colours', () => {
+    expect(contrastRatio([100, 100, 100], [100, 100, 100])).toBeCloseTo(1, 5);
+  });
+
+  it('is 21 for pure black against pure white — the WCAG maximum', () => {
+    expect(contrastRatio([0, 0, 0], [255, 255, 255])).toBeCloseTo(21, 1);
+  });
+
+  it('is symmetric — argument order does not matter', () => {
+    const a: [number, number, number] = [10, 200, 90];
+    const b: [number, number, number] = [230, 20, 40];
+    expect(contrastRatio(a, b)).toBeCloseTo(contrastRatio(b, a), 6);
+  });
+});
+
+describe('ensureContrast', () => {
+  // Hue 240deg, L 0.62, chroma 0.16 — the clamp's own permitted extreme.
+  // Hand-computed this session: contrastRatio comes out to ~4.478, just under
+  // WCAG_MIN_CONTRAST. This is the case clampToAccentRange alone cannot catch.
+  const nearMiss: OkLab = {
+    L: 0.62,
+    a: Math.cos((240 * Math.PI) / 180) * 0.16,
+    b: Math.sin((240 * Math.PI) / 180) * 0.16,
+  };
+
+  it('confirms the near-miss actually fails 4.5:1 against --mat-raised', () => {
+    expect(contrastRatio(okLabToSrgb(nearMiss), MAT_RAISED_RGB)).toBeLessThan(WCAG_MIN_CONTRAST);
+  });
+
+  it('walks lightness up until the near-miss clears the WCAG floor', () => {
+    const fixed = ensureContrast(nearMiss, MAT_RAISED_RGB, WCAG_MIN_CONTRAST);
+    expect(contrastRatio(okLabToSrgb(fixed), MAT_RAISED_RGB)).toBeGreaterThanOrEqual(
+      WCAG_MIN_CONTRAST - 1e-6,
+    );
+    expect(fixed.L).toBeGreaterThan(nearMiss.L);
+  });
+
+  it('leaves an already-compliant colour untouched', () => {
+    const bright: OkLab = { L: 0.78, a: 0.02, b: 0.02 };
+    const before = contrastRatio(okLabToSrgb(bright), MAT_RAISED_RGB);
+    expect(before).toBeGreaterThanOrEqual(WCAG_MIN_CONTRAST);
+    expect(ensureContrast(bright, MAT_RAISED_RGB, WCAG_MIN_CONTRAST)).toEqual(bright);
+  });
+
+  it('never throws and returns its best effort even for an unreachable target', () => {
+    const impossible: OkLab = { L: 0.62, a: 0, b: 0 };
+    expect(() => ensureContrast(impossible, MAT_RAISED_RGB, 21)).not.toThrow();
+  });
+});
+
+describe('adaptiveGhostOpacity', () => {
+  it('boosts opacity for a near-black slot, past the base value', () => {
+    expect(adaptiveGhostOpacity(0.2, [5, 5, 5])).toBeGreaterThan(0.2);
+  });
+
+  it('leaves a near-white slot at the base value — no boost needed there', () => {
+    expect(adaptiveGhostOpacity(0.2, [250, 250, 250])).toBeCloseTo(0.2, 5);
+  });
+
+  it('is monotonic — a darker slot never gets less boost than a lighter one, same base', () => {
+    const dark = adaptiveGhostOpacity(0.2, [10, 10, 10]);
+    const mid = adaptiveGhostOpacity(0.2, [128, 128, 128]);
+    const light = adaptiveGhostOpacity(0.2, [240, 240, 240]);
+    expect(dark).toBeGreaterThanOrEqual(mid);
+    expect(mid).toBeGreaterThanOrEqual(light);
+  });
+
+  it('never exceeds the adaptive ceiling regardless of how dark the slot is', () => {
+    expect(adaptiveGhostOpacity(0.3, [0, 0, 0])).toBeLessThanOrEqual(0.55);
+  });
+});
 
 /** Sanity check that the fallback is the documented constant. */
 describe('fallbackAccentTokens', () => {
