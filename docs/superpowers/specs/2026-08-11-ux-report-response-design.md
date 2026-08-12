@@ -156,17 +156,29 @@ exposes orientation options, which decision 4 depends on.
    so Vite code-splits it into the worker chunk. Track 2's CI adds a bundle budget on the main
    entry chunk to keep it that way.
 
-4. **Orientation: one source, applied once — this is the whole `irot` fix.** Ask `heic-to` for
-   the converted JPEG **without** applying orientation, then hand the resulting blob to the same
-   `createImageBitmap(blob, { imageOrientation: 'from-image' })` path every other upload takes.
-   HEIC can carry rotation in both the EXIF `Orientation` tag and the container's `irot` box, and
-   the classic bug is applying both. We never apply a rotation ourselves, so there is nothing to
-   double. **Write this as a comment in `heic.ts`** — without it, the absent rotation handling
-   reads as an omission rather than a decision.
+4. **Orientation: one source, applied once — this is the whole `irot` fix.** HEIC can carry
+   rotation in both the EXIF `Orientation` tag and the container's `irot` box, and the classic bug
+   is applying both. **Pass no orientation option at all**, and say why in `heic.ts` — without the
+   comment the absent handling reads as an omission rather than a decision.
 
-5. **The downscale happens once, where it already happens.** The converted blob goes through
-   `probeImageSize` + `downscaleTarget` (`src/play/photo.ts:104`) exactly as a JPEG does.
-   `CLAUDE.md`'s 2560px long-edge cap is enforced in one place; do not add a second.
+   > **Corrected during implementation.** The spec originally said to request a JPEG without
+   > orientation and re-decode it through `createImageBitmap(…, 'from-image')`. That works, but
+   > the reasoning was assumed. Verified against the library: libheif applies `irot` while
+   > decoding, and `heic-to` documents that **EXIF is dropped entirely** on conversion. So the
+   > output already carries exactly one rotation and no tag anything could apply twice, and the
+   > re-decode was a redundant encode/decode round trip. Requesting `type: 'bitmap'` directly is
+   > both simpler and strictly cheaper.
+
+5. **The downscale happens once, where it already happens.** `downscaleTarget`
+   (`src/play/photo.ts:104`) is applied to the decoded bitmap **inside the worker**, so the
+   full-size 12 MP allocation never crosses to the main thread. `CLAUDE.md`'s 2560px long-edge cap
+   is enforced in one place; do not add a second.
+
+   > **Corrected during implementation.** `heic-to` runs its own internal worker, but that one
+   > returns `ImageData` to the main thread and encodes there. Using `heic-to/next` from *our*
+   > worker with `type: 'bitmap'` keeps both the decode and the downscale off the main thread and
+   > transfers a bitmap handle instead of pixels — the same reason `cutter.worker.ts` transfers
+   > piece bitmaps.
 
 6. **Progress is visible from the instant the file lands**, not from when the worker starts —
    report §2.4's "nothing happened" gap, which the target audience reads as their own mistake.
@@ -195,6 +207,18 @@ exposes orientation options, which decision 4 depends on.
 
 `npm test` · `npm run typecheck` · `npm run build` (which also confirms the code-split: the main
 chunk size must not move) · `npm run test:browser` on dock **and** phone.
+
+**No real HEIC fixture is possible in this repo, and this is not a gap to be closed later.**
+`sharp`'s bundled libvips ships no HEVC *encoder* (patent licensing) — `heif({compression:'hevc'})`
+fails with "Unsupported compression", and its `heif` output is aliased to AVIF only. So the browser
+suite asserts the **routing decision** end to end (HEIC bytes under a JPEG name reach the decoder;
+a JPEG never wakes it, asserted by counting workers whose URL contains `heic.worker`) and leaves
+the conversion itself to the hardware gate below. Do not spend a session trying to synthesise one.
+
+**The first HEIC of a session pays a cold ~3 MB WASM fetch and compile**, which overruns
+Playwright's 5s default expect timeout — the mislabelled-HEIC spec sets 30s explicitly and says
+why. This cost is the concrete justification for the busy state in decision 6; it is not a
+theoretical nicety.
 
 Then the gate `CLAUDE.md` calls a gate and which no step since 5a has actually run: **upload a
 real HEIC from an iPad's photo library** over `npm run dev` on the LAN (`vite.config.ts` already
