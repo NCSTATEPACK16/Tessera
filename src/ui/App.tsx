@@ -763,6 +763,11 @@ export function App(): React.ReactElement {
       });
     }
     await deleteLibraryEntry(playConfig.puzzleId);
+    // §16: finishing the guided twelve is a real completion, so it earns the
+    // same "never taught again" write every skip already gets — one gate,
+    // covers every action this card offers (Done, New puzzle, or the
+    // first-run-only pair below).
+    if (playConfig.puzzleId === FIRST_RUN_PUZZLE_ID) void markFirstRunDone();
   }, [playConfig, daily, summary.elapsedMs, summary.total, summary.cleanRun]);
 
   const clearCard = useCallback((): void => {
@@ -799,6 +804,43 @@ export function App(): React.ReactElement {
     setScreen('setup');
     setPlayConfig(null);
   }, [playConfig, commitCompletion, clearCard]);
+
+  /** §16's primary next step: record the finish, then straight to a real photo. */
+  const handleFirstRunOwnPhoto = handleNewPuzzle;
+
+  /**
+   * §16's secondary next step: record the finish, then straight into today's
+   * puzzle. Never the "resume an existing daily" branch `handleStartDaily`
+   * also carries — the guided twelve is, by construction, the only puzzle
+   * that has ever existed in this profile, so today's daily cannot already
+   * have a library entry yet.
+   */
+  const handleFirstRunDaily = useCallback(async (): Promise<void> => {
+    if (!playConfig) return;
+    await commitCompletion();
+    const source = await renderCuratedPhoto(daily.photoId);
+    const entries = await listLibrary();
+    originScreen.current = 'daily';
+    setRestoreSnapshot(null);
+    photoSavedRef.current = false;
+    setDailyResult(null);
+    clearCard();
+    setLibraryEntries(entries);
+    setLiveAssists(DAILY_CONFIG.assists);
+    setLiveDifficulty(DAILY_CONFIG.difficulty);
+    setPlayConfig({
+      source,
+      seed: daily.seed,
+      puzzleId: daily.puzzleId,
+      photoId: daily.photoId,
+      targetCount: daily.targetCount,
+      mode: DAILY_CONFIG.mode,
+      rotation: DAILY_CONFIG.rotation,
+      difficulty: DAILY_CONFIG.difficulty,
+      assists: DAILY_CONFIG.assists,
+    });
+    setScreen('playing');
+  }, [playConfig, commitCompletion, clearCard, daily]);
 
   const openCollection = useCallback(async (): Promise<void> => {
     setCompletions(await listCompletions());
@@ -1214,6 +1256,18 @@ export function App(): React.ReactElement {
               nextCount={nextHarderCount(playConfig.targetCount)}
               {...(isDailyPuzzleId(playConfig.puzzleId) && dailyResult
                 ? { daily: dailyResult }
+                : {})}
+              {...(playConfig.puzzleId === FIRST_RUN_PUZZLE_ID
+                ? {
+                    firstRun: {
+                      onOwnPhoto: () => {
+                        void handleFirstRunOwnPhoto();
+                      },
+                      onDaily: () => {
+                        void handleFirstRunDaily();
+                      },
+                    },
+                  }
                 : {})}
               onAgainHarder={() => {
                 void handleAgainHarder();
