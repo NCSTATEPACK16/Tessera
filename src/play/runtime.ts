@@ -536,6 +536,17 @@ export class PlayRuntime {
   }
 
   /**
+   * True while any cluster is mid-spring. `App.tsx` polls this before reading
+   * `boardCanvas()` for the Puzzle Card or the completion thumbnail — both
+   * read the static layer, and a piece still mid-spring lives on the dynamic
+   * layer only (`PlaySession.scene()`), so composing while this is true grabs
+   * a canvas with a piece-shaped hole in it.
+   */
+  get animating(): boolean {
+    return this.session?.animating ?? false;
+  }
+
+  /**
    * §11: the completed board canvas, fully lit — what the Puzzle Card composes
    * from and `captureThumbnail` captures. The completion bloom lives on a
    * separate layer, so this is the assembled photo, seams and all, without the
