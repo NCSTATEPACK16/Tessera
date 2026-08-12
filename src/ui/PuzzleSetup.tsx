@@ -16,6 +16,7 @@ import {
   clampGhostOpacity,
   DEFAULT_PUZZLE_CONFIG,
   GHOST_OPACITY_MAX,
+  isLowResForCount,
   PIECE_COUNT_LADDER,
   pieceScreenSize,
 } from '@/play/setup';
@@ -126,6 +127,14 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
             );
           })}
         </div>
+        {isLowResForCount(source, targetCount) && (
+          // Warns, never blocks. A player who wants a soft 250-piece puzzle of
+          // a treasured low-resolution photo is allowed to have one — this
+          // only makes sure the softness is not a surprise afterwards.
+          <p role="status" className="mt-2 text-[12px] text-[var(--ink-muted)]">
+            This photo is a little small for {targetCount} pieces — they may look soft.
+          </p>
+        )}
       </div>
 
       <div>

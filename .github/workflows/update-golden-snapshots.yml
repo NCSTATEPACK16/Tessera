@@ -1,0 +1,55 @@
+name: Update golden cut snapshots
+
+# Manual only, deliberately. Playwright's screenshot comparison is not
+# cross-platform stable — font hinting and GPU rasterisation differ by OS
+# even at a pinned Chromium build — so the baseline PNGs in
+# test/browser/golden-cut.spec.ts-snapshots/ must be generated on the same
+# platform that checks them. CI runs on Linux; most contributors develop on
+# macOS or Windows, so a locally-generated baseline would just read as
+# "missing" here (Playwright's default naming embeds the OS in the filename)
+# rather than silently comparing across platforms — which is the good case,
+# but it means every fresh baseline still needs one run of this workflow.
+#
+# Run this once after `test/browser/golden-cut.spec.ts` is added or changed
+# in a way that legitimately changes the expected pixels (a real cut-geometry
+# change, not a regression). It commits the regenerated PNGs directly to the
+# branch that triggered it — check the diff before merging, the same as any
+# other generated-file change (curated-manifest.ts, for instance).
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to update snapshots on and commit back to
+        required: true
+        default: main
+
+permissions:
+  contents: write
+
+jobs:
+  update-snapshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: Regenerate golden snapshots
+        run: npx playwright test test/browser/golden-cut.spec.ts --update-snapshots
+
+      - name: Commit updated snapshots
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add test/browser/golden-cut.spec.ts-snapshots/
+          git diff --staged --quiet && echo "No snapshot changes." && exit 0
+          git commit -m "Update golden cut snapshots (Linux baseline)"
+          git push origin HEAD:${{ github.event.inputs.branch }}

@@ -25,6 +25,12 @@ export interface PhotoPickerProps {
   /** Surfaced by `App.tsx` when a previously chosen upload failed to decode. */
   error?: string | null;
   /**
+   * A chosen photo is still decoding. HEIC conversion is the slow case, and
+   * the seconds it takes must never read as a freeze — an older player takes
+   * silence as their own mistake and starts tapping again.
+   */
+  busy?: boolean;
+  /**
    * Step 6: a first-run player never sees the library, so this is their only
    * route to the daily.
    */
@@ -41,6 +47,7 @@ type Source = 'curated' | 'upload';
 export function PhotoPicker({
   onPhotoChosen,
   error,
+  busy,
   onDaily,
   onCollection,
 }: PhotoPickerProps): React.ReactElement {
@@ -121,6 +128,15 @@ export function PhotoPicker({
             {source === 'upload' ? '✓ ' : ''}+ Upload Photo
           </button>
         </div>
+
+        {busy && (
+          <div
+            role="status"
+            className="rounded-[var(--radius-sm)] border border-[var(--edge-hair)] p-3 text-[13px] text-[var(--ink-primary)]"
+          >
+            Getting your photo ready…
+          </div>
+        )}
 
         {error && (
           <div role="alert" className="rounded-[var(--radius-sm)] border border-[var(--accent)] p-3 text-[13px] text-[var(--ink-primary)]">
@@ -216,7 +232,10 @@ export function PhotoPicker({
             <input
               ref={fileInput}
               type="file"
-              accept="image/*"
+              // `image/*` already surfaces HEIC assets in the iOS sheet; the
+              // explicit types are for the desktop and Android file dialogs,
+              // which filter on the list rather than on the wildcard.
+              accept="image/*,image/heic,image/heif,.heic,.heif"
               aria-label="Upload a photo"
               className="sr-only"
               onChange={(e) => handleFile(e.target.files?.[0])}

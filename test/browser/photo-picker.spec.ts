@@ -77,6 +77,67 @@ test.describe('photo picker and crop', () => {
     await expect(page.getByRole('button', { name: 'Curated photos' })).toBeVisible();
   });
 
+  test('a HEIC mislabelled as a JPEG is still routed to the HEIC decoder', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'load' });
+    await page.getByRole('button', { name: 'Upload photo' }).click();
+
+    // The case the container sniff exists for: iOS share paths and Windows
+    // both hand over HEIC bytes under a JPEG name and MIME type. Neither
+    // signal can be trusted, so the `ftyp` box is what decides.
+    //
+    // The payload after the header is deliberately garbage — libvips ships no
+    // HEVC encoder (patent licensing), so no real HEIC fixture can be built in
+    // this repo. What this asserts is the *routing*: these bytes reach the
+    // decoder rather than the generic "couldn't open that photo" path. That a
+    // real HEIC then decodes is the iPad gate, and only a device can prove it.
+    const heicWorkers: string[] = [];
+    page.on('worker', (w) => {
+      if (w.url().includes('heic.worker')) heicWorkers.push(w.url());
+    });
+
+    const header = Buffer.alloc(24);
+    header.writeUInt32BE(24, 0);
+    header.write('ftyp', 4, 'ascii');
+    header.write('heic', 8, 'ascii');
+    await page.getByLabel('Upload a photo').setInputFiles({
+      name: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      buffer: Buffer.concat([header, Buffer.from('garbage payload')]),
+    });
+
+    // The reassurance is on screen before the decoder has even loaded.
+    await expect(page.getByRole('status')).toContainText('Getting your photo ready');
+
+    // Generous, and deliberately so: the first HEIC of a session pays a cold
+    // ~3 MB WASM fetch and compile, which overruns the 5s default. That cost
+    // is the reason the busy state above is not optional.
+    await expect(page.getByRole('alert')).toContainText(/HEIC photos aren/, { timeout: 30_000 });
+    await expect(page.getByRole('status')).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Curated photos' })).toBeVisible();
+    expect(heicWorkers).toHaveLength(1);
+  });
+
+  test('a JPEG upload never wakes the HEIC decoder', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'load' });
+
+    // The other half of the sniff's job, and the expensive half to get wrong:
+    // libheif is ~3 MB of WASM, and the happy path must never pay for it.
+    const heicWorkers: string[] = [];
+    page.on('worker', (w) => {
+      if (w.url().includes('heic.worker')) heicWorkers.push(w.url());
+    });
+
+    await page.getByRole('button', { name: 'Upload photo' }).click();
+    await page.getByLabel('Upload a photo').setInputFiles({
+      name: 'sample.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(TINY_PNG_BASE64, 'base64'),
+    });
+
+    await expect(page.getByRole('button', { name: 'Use this photo' })).toBeVisible();
+    expect(heicWorkers).toHaveLength(0);
+  });
+
   test('a portrait JPEG with EXIF orientation 6 is not sliced sideways', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
     await page.getByRole('button', { name: 'Upload photo' }).click();

@@ -62,6 +62,35 @@ export function pieceScreenSize(
   return fitScale(viewport, boardW, boardH);
 }
 
+/**
+ * The narrowest a piece may be *in source pixels* before it starts to look
+ * soft on screen.
+ *
+ * Chosen, not measured — flagged the way `hints.ts` flags its escalation
+ * thresholds. The reasoning: a piece is displayed at roughly its fitted screen
+ * width, and below ~64 source pixels a piece rasterised at `min(dpr, 2)` is
+ * being upscaled on any modern display, which reads as mush along the cut
+ * edges where the eye is actually looking. Revisit on hardware.
+ */
+export const MIN_PIECE_IMAGE_PX = 64;
+
+/**
+ * Whether this photo is too small for this piece count to look sharp.
+ *
+ * "Too small" is a property of the photo *and* the count together, never of
+ * the photo alone — the same picture that is mush at 250 pieces is fine at 50.
+ * The caller warns; it must never block. A player who wants a soft 250-piece
+ * puzzle of a treasured low-resolution photo is allowed to have one.
+ */
+export function isLowResForCount(photo: PhotoSize, targetCount: number): boolean {
+  const grid = chooseGrid({
+    imageWidth: photo.width,
+    imageHeight: photo.height,
+    targetCount,
+  });
+  return grid.cellW < MIN_PIECE_IMAGE_PX;
+}
+
 export type PuzzleMode = 'classic' | 'zen';
 
 export interface PuzzleAssists {

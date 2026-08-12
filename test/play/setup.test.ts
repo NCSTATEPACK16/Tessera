@@ -6,6 +6,8 @@ import {
   nextHarderCount,
   PIECE_COUNT_LADDER,
   pieceScreenSize,
+  isLowResForCount,
+  MIN_PIECE_IMAGE_PX,
 } from '@/play/setup';
 
 describe('PIECE_COUNT_LADDER', () => {
@@ -98,5 +100,32 @@ describe('nextHarderCount', () => {
       current = nextHarderCount(current);
     }
     expect(walked).toEqual([...PIECE_COUNT_LADDER]);
+  });
+});
+
+describe('isLowResForCount', () => {
+  it('is false for a full-resolution photo anywhere on the ladder', () => {
+    // 2560px is CLAUDE.md's downscale ceiling, so this is the best case there
+    // is: even 250 pieces leaves each one ~135 source px wide.
+    const photo = { width: 2560, height: 1707 };
+    for (const count of PIECE_COUNT_LADDER) {
+      expect(isLowResForCount(photo, count)).toBe(false);
+    }
+  });
+
+  it('is true for a small photo cut fine, and false for the same photo cut coarse', () => {
+    // The whole point: "too small" is not a property of the photo, it is a
+    // property of the photo *and* the count the player picked.
+    const photo = { width: 640, height: 480 };
+    expect(isLowResForCount(photo, 50)).toBe(false); // ~80 source px per piece
+    expect(isLowResForCount(photo, 250)).toBe(true); // ~36 source px per piece
+  });
+
+  it('turns over within 3% of the threshold, not somewhere vague near it', () => {
+    // Per CLAUDE.md: a test that passes at both extremes of the constant it
+    // guards is not testing that constant. These two straddle it by ~4 px.
+    expect(MIN_PIECE_IMAGE_PX).toBe(64);
+    expect(isLowResForCount({ width: 1150, height: 863 }, 250)).toBe(true); // cellW 63.9
+    expect(isLowResForCount({ width: 1250, height: 938 }, 250)).toBe(false); // cellW 69.4
   });
 });

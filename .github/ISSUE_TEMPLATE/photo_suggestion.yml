@@ -1,0 +1,58 @@
+name: Photo suggestion
+description: Suggest a photo for the curated library. Requires licence proof — read ASSETS-LICENSE.md first.
+labels: ["photo-suggestion"]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        **Read `ASSETS-LICENSE.md` before filling this in.** The curated library is licensed
+        separately from the code (Unsplash License), and every entry needs a real, verifiable
+        licence claim — `validateManifest` only checks that the licence fields are non-empty, not
+        that they're true, so this is a human review every time. A maintainer merges photo
+        additions; a contributor's own claim of "this is fine to use" is not sufficient by itself.
+  - type: input
+    id: url
+    attributes:
+      label: Link to the photo
+      description: The photo's own page (not a search results page), so its licence badge is visible.
+    validations:
+      required: true
+  - type: dropdown
+    id: licence
+    attributes:
+      label: Licence
+      options:
+        - Unsplash License
+        - Other (explain below — a new licence type needs its own review in ASSETS-LICENSE.md, not just an entry)
+    validations:
+      required: true
+  - type: input
+    id: photographer
+    attributes:
+      label: Photographer / attribution credit
+      description: Exactly as it should appear on the Puzzle Card and in the manifest's `licence.attribution`.
+    validations:
+      required: true
+  - type: dropdown
+    id: shelf
+    attributes:
+      label: Which shelf does it belong on
+      description: The picker groups by feeling, not folder — see §15 of the design doc, or the existing three shelves for examples.
+      options:
+        - Wide and calm
+        - Dense and busy
+        - One animal, close
+        - None of these — explain below
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why this photo cuts well
+      description: >
+        A puzzle photo needs enough real detail that pieces aren't interchangeable, but not so much
+        uniform texture that a solved region looks the same shuffled — see
+        scripts/build-curated-manifest.ts's cuttability check for the actual heuristic. A photo of
+        mostly flat sky or a single uniform texture usually cuts poorly.
+    validations:
+      required: true

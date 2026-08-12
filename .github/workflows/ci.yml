@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same PR cancels the run already in flight for it —
+# npm run test:browser alone runs 16+ minutes at one worker (deliberately,
+# see playwright.config.ts), so queuing every push in full would make CI
+# slower than the review cycle it's meant to gate.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: typecheck, unit tests, build, bundle budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # tsc --noEmit already ran as part of typecheck; `npm run build` runs
+      # it again (see package.json) plus vite build, which is what actually
+      # produces dist/ for the bundle-budget check below.
+      - run: npm run build
+
+      - name: Bundle budget (Track 1's libheif code-split)
+        run: node scripts/check-bundle-budget.mjs
+
+  manifest-integrity:
+    name: curated photo manifest integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      # Deliberately no `npm ci` — this script only reads
+      # assets/curated/manifest.json and the directory listing, so the job
+      # stays fast and has nothing to do with the app actually building.
+      - run: node scripts/check-manifest-integrity.mjs
+
+  browser:
+    name: browser suite (dock + phone)
+    runs-on: ubuntu-latest
+    # This is CLAUDE.md's real gate, not an optional extra: a green `test`
+    # job above is several hundred assertions about pure functions, and it
+    # stays green while the app fails to boot. Two invariants — the board
+    # never re-renders through React, and an idle board draws nothing at
+    # all — are only observable here.
+    #
+    # NOTE for the first run after test/browser/golden-cut.spec.ts is added:
+    # that spec's baseline PNGs must be generated on Linux before this job
+    # can pass — see .github/workflows/update-golden-snapshots.yml. Locally
+    # generated (non-Linux) baselines read as "missing" here rather than
+    # comparing falsely, which is why this failure mode is loud and specific
+    # rather than a flaky-looking pixel diff.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      # The version is pinned in package.json deliberately (see
+      # playwright.config.ts's own doc comment) — installing here rather
+      # than caching keeps this workflow honest about that pin.
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run test:browser
+
+      # playwright.config.ts uses the 'github' reporter in CI (annotates the
+      # run inline), not 'html' — there is no playwright-report/ to upload.
+      # `trace: 'retain-on-failure'` and `screenshot: 'only-on-failure'`
+      # still write into test-results/ regardless of reporter, which is what
+      # actually helps debug a failure from outside the runner.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 14

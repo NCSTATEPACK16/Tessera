@@ -1,0 +1,9 @@
+# The cut and the union-find are the two places a silent bug corrupts a
+# player's saved puzzle rather than throwing — see CLAUDE.md's Invariants.
+# The curated library carries a licence obligation per photo (see
+# ASSETS-LICENSE.md), which is a legal review, not a code review.
+/src/cut/                        @NCSTATEPACK16
+/src/board/                      @NCSTATEPACK16
+/assets/curated/                 @NCSTATEPACK16
+/assets/curated/manifest.json    @NCSTATEPACK16
+/src/play/curated-manifest.ts    @NCSTATEPACK16
