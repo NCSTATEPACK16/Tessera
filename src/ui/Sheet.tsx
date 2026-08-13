@@ -175,7 +175,14 @@ export function Sheet({
     <section
       ref={rootRef}
       aria-label="Pieces"
-      className="pointer-events-auto fixed inset-x-0 bottom-0 z-10 flex flex-col rounded-t-[22px] border-t border-[var(--edge-hair)] bg-[var(--mat-raised)]"
+      // `overflow-hidden`: `height` here is a fixed, JS-computed detent value
+      // and pinned content (`shrink-0`) does not get squeezed to fit it —
+      // without clipping, content taller than the current detent spills
+      // past the section's own rounded-corner boundary, landing wherever it
+      // lands underneath, which once put the select-mode action bar's hit
+      // area directly over a piece chip above it (nothing looked wrong on
+      // screen; taps just landed on the wrong thing).
+      className="pointer-events-auto fixed inset-x-0 bottom-0 z-10 flex flex-col overflow-hidden rounded-t-[22px] border-t border-[var(--edge-hair)] bg-[var(--mat-raised)]"
       style={{
         height,
         paddingBottom: 'env(safe-area-inset-bottom)',

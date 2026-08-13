@@ -75,29 +75,32 @@ export function ReferencePanel({
   }
 
   return (
-    <div className="flex flex-col gap-[4px] px-[12px] pb-[8px]">
-      <div className="flex items-center justify-between">
-        <span className="text-1 text-[var(--ink-muted)]">Reference photo</span>
-        <button
-          type="button"
-          aria-label="Hide reference photo"
-          onClick={onToggle}
-          className="touch-target text-1 text-[var(--ink-muted)]"
-        >
-          Hide
-        </button>
-      </div>
+    <div className="flex items-center gap-[8px] px-[12px] pb-[8px]">
       {failed ? (
-        <div className="text-1 text-[var(--ink-muted)]">Not available yet</div>
+        <div
+          aria-hidden
+          className="h-[44px] w-[44px] shrink-0 rounded-[var(--radius-sm)] border border-[var(--edge-hair)]"
+        />
       ) : (
         <canvas
           ref={canvasRef}
-          width={320}
-          height={64}
-          className="w-full rounded-[var(--radius-sm)]"
+          width={88}
+          height={88}
+          className="h-[44px] w-[44px] shrink-0 rounded-[var(--radius-sm)]"
           aria-label="Reference photo thumbnail"
         />
       )}
+      <span className="flex-1 text-1 text-[var(--ink-muted)]">
+        {failed ? 'Reference photo not available yet' : 'Reference photo'}
+      </span>
+      <button
+        type="button"
+        aria-label="Hide reference photo"
+        onClick={onToggle}
+        className="touch-target text-1 text-[var(--ink-muted)]"
+      >
+        Hide
+      </button>
     </div>
   );
 }
