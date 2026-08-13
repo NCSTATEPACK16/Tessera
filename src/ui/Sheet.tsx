@@ -43,6 +43,12 @@ export interface SheetProps {
   shelf?: React.ReactNode;
   /** Whether `shelf` will actually render a row, so peek can grow to fit it. */
   shelfVisible?: boolean;
+  /**
+   * §C: the box-lid reference panel, rendered in the same pinned region as
+   * `shelf`, after it. Grows/shrinks peek automatically through the existing
+   * `ResizeObserver` on `pinned` — no new measurement needed.
+   */
+  reference?: React.ReactNode;
   /** The lens row. Pinned too, but the first thing peek is allowed to clip. */
   lenses: React.ReactNode;
   children: React.ReactNode;
@@ -90,6 +96,7 @@ export function Sheet({
   header,
   shelf,
   shelfVisible = false,
+  reference,
   lenses,
   children,
 }: SheetProps): React.ReactElement {
@@ -197,6 +204,7 @@ export function Sheet({
 
         {/* The one thing in the sheet that must survive peek — see `shelf`. */}
         {shelf}
+        {reference}
       </div>
 
       {/* Pinned too, so the lenses stay in the thumb's arc at half and full.
