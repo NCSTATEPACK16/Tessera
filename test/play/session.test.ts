@@ -324,9 +324,13 @@ describe('hit-testing', () => {
     const play = session();
     const cluster = play.board.clusterIdOf(id(1, 0));
     play.board.moveCluster(cluster, 4, 4);
-    play.dragBy(cluster, 3, 0);
+    // Within the drag boundary (§B): this 6-piece board's bound rect right
+    // edge is at boardW + margin = 3 + 4 = 7, so a drag of 3 from x=4 (piece
+    // right edge would land at 8) is exactly what the boundary now exists to
+    // stop — see `the drag boundary` below. 1 stays inside it.
+    play.dragBy(cluster, 1, 0);
 
-    expect(play.pickCluster({ x: 7.5, y: 4.5 })).toBe(cluster);
+    expect(play.pickCluster({ x: 5.5, y: 4.5 })).toBe(cluster);
     expect(play.pickCluster({ x: 4.5, y: 4.5 })).toBeNull();
   });
 });
@@ -383,6 +387,72 @@ describe('contentBounds', () => {
     expect(bounds.y).toBeLessThanOrEqual(0);
     expect(bounds.x + bounds.w).toBeGreaterThanOrEqual(COLS);
     expect(bounds.y + bounds.h).toBeGreaterThanOrEqual(ROWS);
+  });
+});
+
+describe('the drag boundary', () => {
+  // 6 pieces (COLS=3 * ROWS=2), so margin = clamp(sqrt(6) * 0.8, 4, 18) = clamp(1.96, 4, 18) = 4.
+  // boardW = COLS = 3, boardH = ROWS = 2, so the bound rect is
+  // x: -4..7, y: -4..6. `session()` scatters every piece out to x≈50+ on
+  // construction (see the fixture's own comment), well outside that rect, so
+  // each case here first re-homes the cluster under test with `moveCluster`
+  // (which bypasses the clamp — only `dragBy` is clamped) before exercising
+  // `dragBy` itself.
+
+  it('lets an ordinary drag inside the bound through untouched', () => {
+    const play = session();
+    const clusterId = play.board.clusterIdOf(id(0, 0));
+    play.board.moveCluster(clusterId, 0, 0);
+    play.dragBy(clusterId, 1, 1);
+    const cluster = play.board.cluster(clusterId);
+    expect(cluster.x).toBeCloseTo(1);
+    expect(cluster.y).toBeCloseTo(1);
+  });
+
+  it('clamps a drag that would push the cluster past the right/bottom edge', () => {
+    const play = session();
+    const clusterId = play.board.clusterIdOf(id(0, 0));
+    play.board.moveCluster(clusterId, 0, 0);
+    play.dragBy(clusterId, 10_000, 10_000);
+    const cluster = play.board.cluster(clusterId);
+    const piece = play.board.piece(id(0, 0));
+    // The piece's right/bottom edge must land exactly on the bound rect's
+    // right/bottom edge (boardW + margin, boardH + margin), never beyond it.
+    expect(cluster.x + piece.localX + piece.w).toBeCloseTo(3 + 4, 1);
+    expect(cluster.y + piece.localY + piece.h).toBeCloseTo(2 + 4, 1);
+  });
+
+  it('clamps a drag that would push the cluster past the left/top edge', () => {
+    const play = session();
+    const clusterId = play.board.clusterIdOf(id(0, 0));
+    play.board.moveCluster(clusterId, 0, 0);
+    play.dragBy(clusterId, -10_000, -10_000);
+    const cluster = play.board.cluster(clusterId);
+    const piece = play.board.piece(id(0, 0));
+    expect(cluster.x + piece.localX).toBeCloseTo(-4, 1);
+    expect(cluster.y + piece.localY).toBeCloseTo(-4, 1);
+  });
+
+  it('applies partial progress up to the boundary rather than blocking outright', () => {
+    const play = session();
+    const clusterId = play.board.clusterIdOf(id(0, 0));
+    play.board.moveCluster(clusterId, 0, 0);
+    const piece = play.board.piece(id(0, 0));
+    const startRight = play.board.cluster(clusterId).x + piece.localX + piece.w;
+    const room = 3 + 4 - startRight; // distance to the right bound
+    play.dragBy(clusterId, room + 5, 0); // ask for 5 more than there is room
+    const cluster = play.board.cluster(clusterId);
+    expect(cluster.x + piece.localX + piece.w).toBeCloseTo(3 + 4, 1);
+  });
+
+  it('scales the margin with piece count via the ladder formula', () => {
+    // 250 pieces: clamp(sqrt(250) * 0.8, 4, 18) = clamp(12.6, 4, 18) ≈ 12.65,
+    // well above the 6-piece test board's margin of 4 — asserted directly
+    // against the formula itself, since the fixture always has 6 pieces.
+    const margin = (n: number): number => Math.min(18, Math.max(4, Math.sqrt(n) * 0.8));
+    expect(margin(6)).toBeCloseTo(4); // floors at 4
+    expect(margin(250)).toBeCloseTo(12.65, 1);
+    expect(margin(1000)).toBe(18); // ceilings at 18
   });
 });
 
