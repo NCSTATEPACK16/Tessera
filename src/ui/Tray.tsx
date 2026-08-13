@@ -20,6 +20,7 @@ import type { Lens } from '@/tray/lenses';
 import { TraySelection } from '@/tray/selection';
 import { LensChips } from './LensChips';
 import { PieceGrid } from './PieceGrid';
+import { ReferencePanel } from './ReferencePanel';
 import { SelectionBar } from './SelectionBar';
 import { Shelf } from './Shelf';
 import { Sheet } from './Sheet';
@@ -77,6 +78,11 @@ export interface TrayProps {
   onScroll?: ((top: number) => void) | undefined;
   /** Step 5c: where a restored session left the grid scrolled. */
   initialScrollTop?: number | undefined;
+  /** §C: the box-lid reference panel's open/closed state (`PuzzleAssists.referencePanelOpen`). */
+  referenceOpen: boolean;
+  onReferenceToggle: () => void;
+  /** See `ReferencePanel`'s own prop doc for why this is a loader, not a bitmap. */
+  loadReferenceBitmap: () => Promise<ImageBitmap>;
 }
 
 export function Tray(props: TrayProps): React.ReactElement {
@@ -199,6 +205,14 @@ export function Tray(props: TrayProps): React.ReactElement {
   // *before* rendering it, to grow peek by exactly a shelf row and no more.
   const shelfVisible = chrome.shelf.length > 0 || props.dragging;
 
+  const reference = (
+    <ReferencePanel
+      loadBitmap={props.loadReferenceBitmap}
+      open={props.referenceOpen}
+      onToggle={props.onReferenceToggle}
+    />
+  );
+
   const grid = (
     <PieceGrid
       ids={props.ids}
@@ -244,6 +258,7 @@ export function Tray(props: TrayProps): React.ReactElement {
         header={title}
         shelf={shelf}
         shelfVisible={shelfVisible}
+        reference={reference}
         lenses={lenses}
       >
         {grid}
@@ -266,6 +281,7 @@ export function Tray(props: TrayProps): React.ReactElement {
         {title}
         {lenses}
       </div>
+      {reference}
       {shelf}
       {grid}
       {selectionBar}

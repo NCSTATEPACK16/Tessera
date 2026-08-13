@@ -734,6 +734,31 @@ export function App(): React.ReactElement {
   }, [playConfig]);
 
   /**
+   * §C: a fresh decode of the source photo for the box-lid reference panel.
+   * Never `playConfig.source` — that bitmap is handed to the cutter worker
+   * and detached before `start()` runs (see the photo-save effect below),
+   * so by the time a puzzle is playable it is unusable. `photoWrite.current`
+   * is the in-flight, fire-and-forget `savePhoto` write kicked off once per
+   * puzzle; awaiting it first is what makes `loadPhoto` reliable instead of
+   * racing an IndexedDB row that may not exist yet on a freshly started
+   * puzzle. Memoized on `puzzleId` alone — `ReferencePanel`'s effect depends
+   * on this function's identity, and `App` re-renders far more often than
+   * the puzzle changes.
+   */
+  const loadReferenceBitmap = useCallback((): Promise<ImageBitmap> => {
+    const puzzleId = playConfig!.puzzleId;
+    return photoWrite.current.then(() => loadPhoto(puzzleId));
+  }, [playConfig?.puzzleId]);
+
+  const handleReferenceToggle = useCallback((): void => {
+    const assists = liveAssists ?? playConfig?.assists;
+    if (!assists) return;
+    const next = { ...assists, referencePanelOpen: !assists.referencePanelOpen };
+    setLiveAssists(next);
+    runtime.current?.setAssists(next);
+  }, [liveAssists, playConfig?.assists]);
+
+  /**
    * The completion card's meta, assembled from the frozen run numbers and the
    * photo. A resumed daily recovers its `photoId` from the date, since the
    * snapshot does not store it (§15 attribution still shows on a resumed daily).
@@ -1401,6 +1426,9 @@ export function App(): React.ReactElement {
             trayScrollRef.current = top;
           }}
           initialScrollTop={restoreSnapshot?.tray.scroll}
+          referenceOpen={(liveAssists ?? playConfig.assists).referencePanelOpen}
+          onReferenceToggle={handleReferenceToggle}
+          loadReferenceBitmap={loadReferenceBitmap}
         />
       )}
 
