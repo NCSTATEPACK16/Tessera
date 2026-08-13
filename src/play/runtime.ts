@@ -57,6 +57,7 @@ const DEFAULT_ASSISTS: PuzzleAssists = {
   edgeHighlight: false,
   largePieceMode: false,
   comfort: false,
+  referencePanelOpen: true,
 };
 
 /**
