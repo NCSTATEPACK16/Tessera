@@ -265,6 +265,13 @@ export class PlayRuntime {
     this.liveDifficulty = floorDifficulty(this.liveDifficulty, assists.comfort);
     this.session?.setDifficulty(this.liveDifficulty);
     this.render();
+    // §C: `snapshot()` reads `this.liveAssists` fresh, but nothing else in
+    // this method schedules a write — only play events (snap/return/deploy)
+    // do. Without this, an assist change (the reference panel's own
+    // open/closed state included) is only ever saved as a side effect of a
+    // piece moving afterward, which is not a promise this method's callers
+    // can rely on.
+    this.scheduleSave();
   }
 
   setDifficulty(difficulty: SnapDifficulty): void {

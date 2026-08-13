@@ -49,6 +49,14 @@ export interface SheetProps {
    * `ResizeObserver` on `pinned` — no new measurement needed.
    */
   reference?: React.ReactNode;
+  /**
+   * Whether `reference` is currently rendering its expanded (open) form, so
+   * peek can grow to fit it — same reasoning as `shelfVisible`. The panel's
+   * collapsed strip is slim enough to leave peek at its floor; the open
+   * thumbnail is not, and without this peek stays flat at `PEEK_PX` and the
+   * panel is clipped by the sheet's own height.
+   */
+  referenceVisible?: boolean;
   /** The lens row. Pinned too, but the first thing peek is allowed to clip. */
   lenses: React.ReactNode;
   children: React.ReactNode;
@@ -76,12 +84,12 @@ export interface SheetProps {
 function heightOf(
   detent: SheetDetent,
   viewport: number,
-  shelfVisible: boolean,
+  growPeek: boolean,
   pinnedPx: number | null,
 ): number {
   switch (detent) {
     case 'peek':
-      return shelfVisible ? Math.max(PEEK_PX, pinnedPx ?? PEEK_PX) : PEEK_PX;
+      return growPeek ? Math.max(PEEK_PX, pinnedPx ?? PEEK_PX) : PEEK_PX;
     case 'half':
       return Math.round(viewport * 0.5);
     case 'full':
@@ -97,6 +105,7 @@ export function Sheet({
   shelf,
   shelfVisible = false,
   reference,
+  referenceVisible = false,
   lenses,
   children,
 }: SheetProps): React.ReactElement {
@@ -140,16 +149,20 @@ export function Sheet({
     return () => observer.disconnect();
   }, []);
 
-  const resting = heightOf(detent, viewport, shelfVisible, pinnedPx);
+  // Either the shelf or the open reference panel is enough on its own to
+  // pull peek off its floor — whichever is asking, the measured box is the
+  // same `pinnedPx`.
+  const growPeek = shelfVisible || referenceVisible;
+  const resting = heightOf(detent, viewport, growPeek, pinnedPx);
   const height = dragHeight ?? resting;
-  const peekFloor = heightOf('peek', viewport, shelfVisible, pinnedPx);
+  const peekFloor = heightOf('peek', viewport, growPeek, pinnedPx);
 
   const nearest = (target: number): SheetDetent => {
     const options: SheetDetent[] = ['peek', 'half', 'full'];
     let best: SheetDetent = 'peek';
     let bestDistance = Infinity;
     for (const option of options) {
-      const distance = Math.abs(heightOf(option, viewport, shelfVisible, pinnedPx) - target);
+      const distance = Math.abs(heightOf(option, viewport, growPeek, pinnedPx) - target);
       if (distance < bestDistance) {
         bestDistance = distance;
         best = option;

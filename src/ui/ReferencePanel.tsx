@@ -92,8 +92,8 @@ export function ReferencePanel({
       ) : (
         <canvas
           ref={canvasRef}
-          width={280}
-          height={140}
+          width={320}
+          height={64}
           className="w-full rounded-[var(--radius-sm)]"
           aria-label="Reference photo thumbnail"
         />

@@ -259,6 +259,7 @@ export function Tray(props: TrayProps): React.ReactElement {
         shelf={shelf}
         shelfVisible={shelfVisible}
         reference={reference}
+        referenceVisible={props.referenceOpen}
         lenses={lenses}
       >
         {grid}
