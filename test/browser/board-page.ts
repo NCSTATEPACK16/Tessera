@@ -97,7 +97,27 @@ export class BoardPage {
         }),
     );
     await page.reload({ waitUntil: 'load' });
-    await page.getByRole('button', { name: 'Choose this photo' }).click();
+    // §16: a truly fresh profile has never seen the guided twelve, so
+    // `App.tsx`'s entry-screen effect (empty library, no completions, no
+    // first-run flag) opens there instead of the picker. Every spec here
+    // except `first-run.spec.ts` wants the ordinary picker flow, so skip it —
+    // the same "reachable from any beat" exit a real player has, and it lands
+    // on exactly the picker screen this helper expects next.
+    //
+    // That entry-screen decision is itself async (it awaits the library and
+    // completion-count IndexedDB reads before choosing), so the picker and
+    // the first-run overlay are both "not there yet" for a beat after reload
+    // — racing for whichever shows up first, rather than probing one on a
+    // short fixed timeout, is what keeps this from settling on the wrong
+    // branch before the app has decided.
+    const picker = page.getByRole('button', { name: 'Choose this photo' });
+    const skip = page.getByRole('button', { name: 'Skip' });
+    await Promise.race([picker.waitFor({ state: 'visible' }), skip.waitFor({ state: 'visible' })]);
+    if (await skip.isVisible()) {
+      await skip.click();
+      await picker.waitFor({ state: 'visible' });
+    }
+    await picker.click();
     await page.getByRole('button', { name: 'Use this photo' }).click();
     // Step 5b's setup screen sits between the crop and the cut. Every default
     // is accepted here — `DEFAULT_PUZZLE_CONFIG`, 150 pieces, Classic, every
