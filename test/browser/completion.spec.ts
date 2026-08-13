@@ -40,6 +40,35 @@ test.describe('completion', () => {
     void board;
   });
 
+  test('the composed card is never missing the last piece', async ({ page }) => {
+    test.setTimeout(600_000);
+    await BoardPage.openZenAndComplete(page);
+
+    // The static canvas the card and the completion thumbnail both read from.
+    // With the fix, by the time the card is on screen the last piece's spring
+    // has already been waited out, so ink coverage here must already equal
+    // what it is after a further, generous wait — no more piece can arrive.
+    const inkOf = (): Promise<number> =>
+      page.evaluate(() => {
+        const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-layer="static"]');
+        if (!canvas) throw new Error('no static layer');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('no 2d context');
+        const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let lit = 0;
+        for (let i = 3; i < data.length; i += 4) {
+          if ((data[i] as number) > 0) lit++;
+        }
+        return lit;
+      });
+
+    const atCardVisible = await inkOf();
+    await page.waitForTimeout(400); // past the ~120ms spring, generously
+    const afterSettle = await inkOf();
+
+    expect(atCardVisible).toBe(afterSettle);
+  });
+
   test('a finished puzzle leaves the library and joins the completions', async ({ page }) => {
     test.setTimeout(600_000);
     await BoardPage.openZenAndComplete(page);

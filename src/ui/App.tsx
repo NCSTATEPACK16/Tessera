@@ -147,6 +147,19 @@ async function decodeUpload(file: File): Promise<ImageBitmap> {
 }
 
 /**
+ * A settling spring is ~120ms (`CLAUDE.md`'s "Snap spring" row), so this
+ * resolves in one or two frames in practice. The 500ms cap is defense against
+ * a future bug in the settle logic hanging card composition forever — it must
+ * never block the player from finishing.
+ */
+async function waitForSettled(rt: PlayRuntime): Promise<void> {
+  const deadline = performance.now() + 500;
+  while (rt.animating && performance.now() < deadline) {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+}
+
+/**
  * The daily's fixed configuration. Everyone plays the same puzzle, so there is
  * no setup screen in the daily flow and nothing here is a player choice.
  * Classic (the hint economy is part of the shared challenge), rotation off
@@ -755,6 +768,7 @@ export function App(): React.ReactElement {
       const photoId =
         playConfig.photoId ?? (isDailyPuzzleId(playConfig.puzzleId) ? daily.photoId : null);
       const curated = photoId ? curatedPhotoById(photoId) : undefined;
+      await waitForSettled(rt);
       const thumbnailBlob = await captureThumbnail(rt.boardCanvas());
       await saveCompletion({
         puzzleId: playConfig.puzzleId,
@@ -955,6 +969,11 @@ export function App(): React.ReactElement {
       // Fonts first: `ctx.font` falls back silently if the webfont has not
       // arrived, and a card in the wrong typeface is a defect nothing reports.
       await document.fonts.ready;
+      // And the board itself: a piece that just completed the puzzle is still
+      // mid-spring on the dynamic layer for ~120ms, absent from the static
+      // layer this reads from. See `waitForSettled`.
+      await waitForSettled(rt);
+      if (cancelled) return;
       const blob = await composeCard(rt.boardCanvas(), meta);
       if (cancelled) return;
       setCardBlob(blob);
