@@ -217,6 +217,7 @@ Do not drift from these without changing the design doc first.
 | Bloom / hint / X-Ray | 0.90 max / 0.55 peak / 0.35 dim |
 | Save | IndexedDB, debounced 800ms + synchronous write on `visibilitychange` |
 | Touch target | 44pt floor, everywhere |
+| Drag boundary margin | `clamp(√pieces × 0.8, 4, 18)` piece-widths each side, centered on the board frame |
 
 ## Commands
 

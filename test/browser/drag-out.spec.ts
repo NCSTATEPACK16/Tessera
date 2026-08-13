@@ -9,7 +9,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage } from './board-page';
+import { boardInk, BoardPage } from './board-page';
 
 test.describe('pulling a piece out of the tray', () => {
   test('the piece leaves the tray and lands on the mat', async ({ page }) => {
@@ -72,6 +72,50 @@ test.describe('pulling a piece out of the tray', () => {
     await board.pick('Recent');
     await expect(board.matChip(first)).toHaveCount(1);
     expect(await board.remaining()).toBeGreaterThan(0);
+  });
+
+  test('a piece dragged far past the mat stops at a fixed boundary', async ({ page }) => {
+    // Once on the mat, a piece is canvas-drawn rather than a DOM chip
+    // (`board-page.ts`'s own doc comment on `boardInk`), so its screen
+    // position has to be read back from pixels, the same technique
+    // `puzzle-setup.spec.ts`'s large-piece-mode test uses.
+    const board = await BoardPage.open(page, { pieceCount: 50, mode: 'Zen' });
+    const mat = await board.matPoint();
+    const first = (await board.mountedIds())[0]!;
+
+    // Onto the mat first — the boundary only governs mat drags.
+    await board.dragOut(first, mat);
+
+    // The camera never auto-follows a drag, and the clamp is world-space —
+    // at the default (fitted) zoom, the far corner of a 50-piece board's
+    // reachable margin can genuinely sit off-screen, by design (that's what
+    // `Fit` and the zoom range are for). Zoom out first, same technique
+    // `puzzle-setup.spec.ts`'s large-piece-mode test uses, so the whole
+    // reachable area stays on screen and a clamped position is actually
+    // there to read back.
+    await board.zoom(-40);
+    const onMat = (await boardInk(page)).pieces;
+    expect(onMat, 'no piece ink on the mat after the drag').not.toBeNull();
+
+    // A huge drag, then a second, larger huge drag from wherever the first
+    // landed. If the boundary is a fixed edge rather than an ever-tracking
+    // offset, both land at the same clamped position.
+    await board.dragOnMat(
+      { x: onMat!.x + onMat!.w / 2, y: onMat!.y + onMat!.h / 2 },
+      { x: mat.x + 5000, y: mat.y + 5000 },
+    );
+    const firstDrag = (await boardInk(page)).pieces;
+    expect(firstDrag, 'no piece ink on the mat after the first huge drag').not.toBeNull();
+
+    await board.dragOnMat(
+      { x: firstDrag!.x + firstDrag!.w / 2, y: firstDrag!.y + firstDrag!.h / 2 },
+      { x: mat.x + 8000, y: mat.y + 8000 },
+    );
+    const secondDrag = (await boardInk(page)).pieces;
+    expect(secondDrag, 'no piece ink on the mat after the second huge drag').not.toBeNull();
+
+    expect(secondDrag!.x).toBeCloseTo(firstDrag!.x, 0);
+    expect(secondDrag!.y).toBeCloseTo(firstDrag!.y, 0);
   });
 });
 
