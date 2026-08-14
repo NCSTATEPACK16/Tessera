@@ -185,6 +185,27 @@ test('skip is always reachable and never modal', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Choose this photo/i })).toBeVisible();
 });
 
+test('skipping before the cut finishes streaming raises no console error', async ({ page }) => {
+  // Regression: `PlayRuntime.start()`'s worker-streaming handlers
+  // (`onGrid`/`onPieces`) called `render()`/`materialise()` with no
+  // `this.destroyed` guard, unlike the check just below the awaited
+  // `cutInWorker(...)` call. Skipping fast enough to destroy the runtime
+  // while the 12-piece cut is still streaming landed a callback on an
+  // already torn-down `Renderer` (its layer map cleared by `destroy()`),
+  // throwing "Renderer: unknown layer". `openFreshProfile` reloads to a
+  // blank page, so this test's own tap on Skip races the cut by
+  // construction — no artificial delay needed to hit the window.
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+
+  await openFreshProfile(page);
+  await page.getByLabel('Skip').click();
+  await expect(page.getByRole('button', { name: /Choose this photo/i })).toBeVisible();
+  await page.waitForTimeout(500); // let any in-flight worker message land
+
+  expect(errors).toEqual([]);
+});
+
 test('a skipped tutorial writes no completion — the wall stays earned', async ({ page }) => {
   test.setTimeout(90_000);
   await openFreshProfile(page);

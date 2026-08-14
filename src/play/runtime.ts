@@ -294,7 +294,14 @@ export class PlayRuntime {
         seed: this.options.seed,
         targetCount: this.options.targetCount,
         handlers: {
+          // The worker streams results asynchronously, so a skip/leave/restart
+          // fast enough to call `destroy()` before the cut finishes can land
+          // either callback after `this.renderer` has already been torn down
+          // (`renderer.destroy()` clears its layer map) — calling `render()`
+          // or `materialise()` on it then throws "unknown layer". Same guard
+          // as the one below `await cutInWorker(...)`, just reached earlier.
           onGrid: (grid) => {
+            if (this.destroyed) return;
             this.boardW = grid.boardW;
             this.boardH = grid.boardH;
             this.pathScale = grid.scale;
@@ -304,6 +311,7 @@ export class PlayRuntime {
             this.render();
           },
           onPieces: (batch, done, total) => {
+            if (this.destroyed) return;
             this.materialise(batch);
             this.patch({ cut: { ...this.summary.cut, done, total } });
             this.render();
