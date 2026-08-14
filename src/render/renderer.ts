@@ -44,10 +44,6 @@ import { emptyScene } from './scene';
 const HINT_OUTLINE_HOLD_MS = HINT_GLOW_DECAY_END_MS;
 /** Fallback accent, matching `ACCENT_FALLBACK` in `render/accent.ts` — used until `setAccent` is called. */
 const DEFAULT_ACCENT = 'rgba(111, 168, 255, 0.9)';
-/** §09/CLAUDE.md's `--xray-dim`: placed pieces without a connecting edge drop to this contrast. */
-const XRAY_CONTRAST = 0.35;
-/** How long the dim takes to lift once the cluster is released. */
-const XRAY_RESTORE_MS = 160;
 /** World-space stroke weight for the edge-highlight assist, before the /zoom conversion. */
 const EDGE_HIGHLIGHT_WIDTH = 2;
 
@@ -109,14 +105,6 @@ export class Renderer {
   private mergeSeamStartMs: number | null = null;
   /** §09's edge-frame trace, or null when it has not fired / has finished. */
   private edgeFrameStartMs: number | null = null;
-  /**
-   * §07/§09's X-Ray focus. Non-null while a cluster is held or fading back
-   * out after release — `scene.xray` itself goes straight to `null` on
-   * release, so this is the renderer's own snapshot of the last set, kept
-   * alive only long enough for `paintXray` to fade it out.
-   */
-  private xrayCandidates: ReadonlySet<number> | null = null;
-  private xrayFadeStartMs: number | null = null;
   /** Step 5b's ghost-underlay assist: the source photo, drawn under placed pieces. */
   private ghostBitmap: ImageBitmap | null = null;
   private ghostOpacity = 0;
@@ -174,19 +162,6 @@ export class Renderer {
     const boardChanged = scene.boardW !== this.scene.boardW || scene.boardH !== this.scene.boardH;
     const placedChanged = scene.placed !== this.scene.placed || scene.completion !== this.scene.completion;
     const finishChanged = scene.finish !== this.scene.finish;
-
-    // X-Ray (§07/§09): the model drops straight to `xray: null` on release —
-    // the 160ms restore is a renderer-only presentation detail, the same
-    // division of labour the settle spring already draws between the two.
-    if (this.scene.xray !== null && scene.xray === null) {
-      this.xrayCandidates = this.scene.xray;
-      this.xrayFadeStartMs = performance.now();
-      this.scheduler.startAnimating('xray-fade');
-    } else if (scene.xray !== null) {
-      this.xrayCandidates = scene.xray;
-      this.xrayFadeStartMs = null;
-      this.scheduler.stopAnimating('xray-fade');
-    }
 
     this.scene = scene;
     this.camera = { ...camera };
@@ -590,42 +565,6 @@ export class Renderer {
     }
   }
 
-  /**
-   * §07/§09's X-Ray focus: every placed piece the held cluster does not
-   * connect to drops to `XRAY_CONTRAST`, restoring over `XRAY_RESTORE_MS`
-   * once the cluster is released.
-   *
-   * Dims the piece's bounding box rather than its cut silhouette — close
-   * enough at the zoom levels a drag happens at, and it avoids building a
-   * second `Path2D` per placed piece on every frame of the drag.
-   */
-  private paintXray(ctx: CanvasRenderingContext2D): void {
-    if (this.xrayCandidates === null) return;
-
-    let strength = 1 - XRAY_CONTRAST;
-    if (this.xrayFadeStartMs !== null) {
-      const elapsed = performance.now() - this.xrayFadeStartMs;
-      if (elapsed >= XRAY_RESTORE_MS) {
-        this.xrayCandidates = null;
-        this.xrayFadeStartMs = null;
-        this.scheduler.stopAnimating('xray-fade');
-        return;
-      }
-      strength *= 1 - elapsed / XRAY_RESTORE_MS;
-    }
-    if (strength <= 0) return;
-
-    const candidates = this.xrayCandidates;
-    ctx.save();
-    this.applyCamera(ctx);
-    ctx.fillStyle = `rgba(0, 0, 0, ${strength})`;
-    for (const piece of this.scene.placed) {
-      if (candidates.has(piece.id)) continue;
-      ctx.fillRect(piece.x, piece.y, piece.w, piece.h);
-    }
-    ctx.restore();
-  }
-
   private paintOverlay(): void {
     const ctx = this.layerContext('overlay');
     ctx.clearRect(0, 0, this.viewport.w, this.viewport.h);
@@ -634,7 +573,6 @@ export class Renderer {
     this.paintHintOutline(ctx);
     this.paintMergeSeam(ctx);
     this.paintEdgeFrame(ctx);
-    this.paintXray(ctx);
     if (this.scene.held.length === 0) return;
 
     this.applyCamera(ctx);
