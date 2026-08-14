@@ -166,6 +166,10 @@ test('the tray is not on screen before four pieces are placed', async ({ page })
 
   await expect(page.getByLabel('Pieces')).toBeVisible();
   await expect(page.getByText('Pieces live here. Filter them.')).toBeVisible();
+
+  // §16 Track 4: the lens chips pulse once, exactly on this reveal — the
+  // tray mounts fresh only for this beat, never for ordinary play.
+  await expect(page.getByLabel('Pieces').locator('.lens-chip-pulse')).toHaveCount(1);
 });
 
 test('skip is always reachable and never modal', async ({ page }) => {

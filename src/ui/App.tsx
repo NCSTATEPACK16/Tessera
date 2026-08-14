@@ -1382,6 +1382,7 @@ export function App(): React.ReactElement {
             trayScrollRef.current = top;
           }}
           initialScrollTop={restoreSnapshot?.tray.scroll}
+          pulseLenses={screen === 'first-run'}
         />
       )}
 

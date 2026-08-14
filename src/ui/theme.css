@@ -118,6 +118,20 @@ button,
   min-width: var(--touch-min);
 }
 
+/* §16 Track 4: the guided twelve's tray-reveal beat, once, on mount. The
+   reduced-motion rule below already zeroes this out — no separate guard. */
+@keyframes lens-chip-pulse {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.lens-chip-pulse {
+  animation: lens-chip-pulse var(--duration-base) var(--ease-standard);
+}
+
 /*
  * Reduced motion is honoured by the OS setting, not by a switch in here.
  * §09 keeps the light bloom and the audio and drops only the movement — this

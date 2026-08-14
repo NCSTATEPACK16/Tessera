@@ -31,6 +31,8 @@ export interface LensChipsProps {
   bins: readonly ColourBin[];
   binCount: (bin: number) => number;
   onPick: (lens: Lens, arg?: number | null) => void;
+  /** §16 Track 4: a single opacity beat on mount — the guided twelve's tray reveal only. */
+  pulse?: boolean;
 }
 
 export function LensChips({
@@ -40,10 +42,11 @@ export function LensChips({
   bins,
   binCount,
   onPick,
+  pulse = false,
 }: LensChipsProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-[8px]">
-      <div className="flex flex-wrap gap-[8px]">
+      <div className={`flex flex-wrap gap-[8px] ${pulse ? 'lens-chip-pulse' : ''}`}>
         {LENSES.map((entry) => {
           const meta = counts.get(entry);
           const enabled = meta?.enabled ?? true;
