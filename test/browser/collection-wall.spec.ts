@@ -9,7 +9,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage } from './board-page';
+import { BoardPage, reachPicker } from './board-page';
 
 test.describe('collection wall', () => {
   test.skip(({ viewport }) => (viewport?.width ?? 0) < 768, 'one solve is enough');
@@ -30,6 +30,9 @@ test.describe('collection wall', () => {
         }),
     );
     await page.reload({ waitUntil: 'load' });
+    // §16: a truly fresh profile lands on the guided twelve, which has no
+    // "Collection" entry point — see `reachPicker`'s own doc.
+    await reachPicker(page);
 
     await page.getByRole('button', { name: 'Collection' }).click();
     await expect(page.getByText(/finished puzzles/i)).toBeVisible();

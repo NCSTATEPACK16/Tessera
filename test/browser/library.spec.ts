@@ -2,13 +2,18 @@
  * The library (step 5c).
  *
  * The regression guard that matters most here is the *absence* of a screen: a
- * first visit with nothing saved must go straight to the picker. An empty
- * library apologising to a first-time player is the failure mode the design
- * decision was made against, and it is one line of `App.tsx` away.
+ * first visit with nothing saved must never show an empty library apologising
+ * to a first-time player — the failure mode the design decision was made
+ * against, and it is one line of `App.tsx` away. §16's guided twelve now sits
+ * between a truly fresh profile and the picker (covered on its own in
+ * `first-run.spec.ts`'s "a brand-new player lands on the guided twelve, not
+ * the picker"), so this test reaches the picker via skip, the same "reachable
+ * from any beat" exit a real player has, and re-asserts the one thing that is
+ * still this file's to guard: no empty-library screen anywhere on the way.
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage } from './board-page';
+import { BoardPage, reachPicker } from './board-page';
 
 test('a fresh, empty library is never rendered — the first visit lands on the picker', async ({
   page,
@@ -17,6 +22,7 @@ test('a fresh, empty library is never rendered — the first visit lands on the 
     indexedDB.deleteDatabase('tessera');
   });
   await page.goto('/', { waitUntil: 'load' });
+  await reachPicker(page);
 
   await expect(page.getByRole('button', { name: 'Choose this photo' })).toBeVisible();
   await expect(page.getByLabel('Your Puzzles')).toHaveCount(0);
