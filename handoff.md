@@ -1182,3 +1182,154 @@ Comfort mode existing (offering it by name during onboarding), which is why Trac
 first. The real-hardware gate for this track — **whether 60pt targets and the damped drag actually
 read as comfort rather than sluggishness on an iPad with an assistive-touch user** — has not been
 run; Chromium cannot answer it.
+
+---
+
+## 10. Session — 2026-08-13: Track 4 lands (step 7, the guided twelve), and this session's own
+bookkeeping catch-up
+
+Same branch (`fix/photo-picker-thumbnails-and-layout`). The bulk of Track 4 — the four-beat coach
+in `first-run.ts`, the overlay, the completion handoff, two spec amendments (the `localStorage`
+first-run cache carve-out, Comfort offered by name) — landed in a prior session's commits
+(`ecff6b4`..`ed32316`), following `docs/superpowers/plans/2026-08-03-plan-7-first-run.md`
+task-by-task. That session ended without running its own Task 5 (bookkeeping: `PLAN.md` ticks,
+`CLAUDE.md` invariants, this handoff section) — `CLAUDE.md` had already picked up the two new
+invariants along the way, but `PLAN.md`'s Step 7 boxes were still unchecked and this file had no
+entry. This session found that gap, closed it, and finished the one sub-detail the plan's Task 3
+called for but the commit that landed the overlay never actually wired up.
+
+**What landed this session:**
+
+- **The tray-reveal beat's lens-chip pulse** — the plan's own text ("pulse the lens chips once — a
+  single `--dur-base` (200ms) opacity beat on `LensChips`, skipped entirely under
+  `prefers-reduced-motion`") was never implemented; the overlay commit shipped the coach and the
+  copy but not this one animation detail. `LensChips` gains a `pulse` prop driving a
+  `lens-chip-pulse` CSS animation (`theme.css`); `Tray` threads it through as `pulseLenses`; `App.tsx`
+  sets it whenever `Tray` mounts for the first-run screen — already exactly the reveal moment, since
+  `App` never conditionally mounts `Tray` this way for any other puzzle, so "pulse on mount" is
+  "pulse on reveal" with no separate trigger needed. The reduced-motion rule already zeroes out all
+  keyframe animations, so no separate guard was needed either. Regression: a browser assertion in
+  `first-run.spec.ts`'s existing tray-reveal test, not a new test file.
+- **`PLAN.md` Step 7**, all seven boxes ticked.
+- **This handoff section.**
+
+**Judgment call carried over from the prior session** (recorded here since it was never written
+down): Zen mode for the guided twelve so the hint rescue cannot run out of tier budget mid-tutorial,
+`generous` snap tolerance so the very first snap lands, and a 1s coach tick (not per-frame) since the
+only time-based threshold is the 20-second hint-rescue window.
+
+**Gates:** `npm test` 627/627, `npm run typecheck` clean, `npm run build` clean,
+`npm run test:browser` on `first-run.spec.ts` (dock): **8/8 passed**, including the new pulse
+assertion.
+
+The real-hardware gate for this step — **whether sixty seconds on the guided twelve actually feels
+like the best sixty seconds in the product** — has still not been run; Chromium cannot answer it,
+and it is the only question that matters here.
+
+### 10.1. What's next
+
+Track 4 is done and gated (modulo the real-hardware pass above). Track 5 (step 9, PWA) is next per
+the spec's ordering. Separately, §11 below covers a second, independent plan
+(`completion-card-race-and-piece-safety`) that landed this same session on its own worktree branch,
+not yet merged into `fix/photo-picker-thumbnails-and-layout` — see that section for merge status.
+
+---
+
+## 11. Session — 2026-08-13 (continued): completion-card race, drag boundary, box-lid reference
+panel — landed on a separate worktree, and the bug its own gate found
+
+**Branch:** `completion-card-race-and-piece-safety`, a worktree at
+`.worktrees/completion-card-race-and-piece-safety`, branched from this branch's `1f48666` (the spec
+commit) — **not yet merged into `fix/photo-picker-thumbnails-and-layout`**. Plan at
+`docs/superpowers/plans/2026-08-12-completion-card-race-and-piece-safety.md`, spec at
+`docs/superpowers/specs/2026-08-12-completion-card-race-and-piece-safety-design.md`. All three parts
+(A, B, C) plus the plan's own "Final integration pass" are done and gated on that branch as of
+commit `5e31dd1`.
+
+**What landed (on the worktree branch):**
+
+- **Part A** — `PlayRuntime.animating` (delegates to `PlaySession.animating`) and `App.tsx`'s
+  `waitForSettled()`, a `requestAnimationFrame` poll with a 500ms safety cap, wired into both the
+  Puzzle Card compose effect and `commitCompletion`'s thumbnail capture. Fixes a real, reproducible
+  gap: a piece that completes the puzzle is still mid-spring on the dynamic layer for ~120ms, absent
+  from the static layer the card and the completion thumbnail both read from.
+- **Part B** — `PlaySession.dragBy` now clamps to a hard, invisible boundary
+  (`clamp(√pieces × 0.8, 4, 18)` piece-widths each side, centered on the board frame — documented in
+  `CLAUDE.md`'s Hard Numbers table), via a new `dragBounds()`/`clampAxis()` pair. Soft resistance,
+  same technique `clampZoom` already uses for the zoom limits, applied to position; a release outside
+  the bound rect is now geometrically impossible rather than corrected after the fact, honouring the
+  "no bounce-back on a failed drop, ever" invariant.
+- **Part C** — `ReferencePanel.tsx`, a box-lid reference thumbnail docked in the tray
+  (`PuzzleAssists.referencePanelOpen`, default `true`, persisted through `SessionSnapshot.assists`
+  the ordinary way). **Corrected one stale spec assumption before writing it**: the design doc said
+  `App.tsx` still holds `playConfig.source` to draw from, but `App.tsx`'s own comment says the
+  opposite — `source` is transferred to the cutter worker and detached before `start()` runs. The
+  panel decodes its own fresh copy from IndexedDB via `loadPhoto()`, the same pattern
+  `PauseSheet.tsx`'s reference viewer already used for the identical problem. Two real bugs surfaced
+  by this part's own browser test and fixed in the same session (not left for later): `Sheet.tsx`'s
+  peek height only grew to fit measured pinned content when a shelf was visible, never for the
+  reference panel, so an open panel at peek could overflow past the sheet's own boundary (no
+  overflow clipping); and `PlayRuntime.setAssists()` updated `liveAssists` but never called
+  `scheduleSave()`, so the panel's open/closed state only ever persisted as a side effect of a piece
+  moving afterward. A third, tighter bug found by direct measurement rather than a browser
+  assertion: the open panel's original 280×140 canvas plus label row (~104px) was consuming most of
+  a 332px half-detent budget already spent on two wrapped rows of lens chips, squeezing the piece
+  grid to 0px in select mode — fixed by collapsing the open panel to a single inline 44×44 row
+  (matching the chip grid's own `CELL=56` density) and giving `Sheet`'s outer section
+  `overflow-hidden` so bounded content can never spill past its own box regardless of exactly how
+  tall anything inside gets.
+
+**The bug this session's own full-gate run found, root-caused, and fixed (not part of the original
+plan)**: `PlayRuntime.start()` streams cut results from the worker via `onGrid`/`onPieces`
+callbacks, called *during* the cut, before the awaited `cutInWorker(...)` promise resolves. Only the
+code *after* that await checked `this.destroyed` before touching the renderer; the streaming
+callbacks did not. Skipping the guided twelve fast enough to call `destroy()` while the 12-piece cut
+was still streaming let a late `onGrid`/`onPieces` callback call `render()`/`materialise()` on an
+already torn-down `Renderer` (`destroy()` clears its layer map), throwing `Renderer: unknown layer
+"static"` as an uncaught page error. This is a **real, pre-existing defect** — any player skipping
+first-run quickly enough could have hit it in production — not something Parts A/B/C introduced; it
+was simply never exercised until this plan's own `BoardPage.open()` fix (`8200fd2`, needed so the
+test harness could reach the picker past the now-existing first-run screen) started racing every
+single browser test through that exact skip-during-cut window. Root-caused via a throwaway
+instrumented `Renderer` (logging construct/destroy/missing-layer with a per-instance id) rather than
+guessed at — confirmed reproducible 3/3 before touching any code, per `systematic-debugging`. Fixed
+by guarding both streaming callbacks with the same `if (this.destroyed) return;` the post-await path
+already had. Regression: a new browser test in `first-run.spec.ts`, verified to fail without the fix
+and pass with it.
+
+**A second, larger pre-existing gap the same full-gate run found**: six browser spec files
+(`collection-wall`, `daily`, `library`, `photo-picker`, `puzzle-setup`, plus `BoardPage.open()`
+itself) had their own, now-stale copy of "clear IndexedDB, reload, wait for the picker button" —
+written before Track 4's first-run screen existed, so on every truly fresh profile they now hang or
+time out waiting for a picker that no longer shows first. Not a regression from this plan's own
+changes; a latent gap from Track 4 landing without a matching sweep through every spec file's own
+fresh-profile setup (`BoardPage.open()` itself had already been patched for this by an earlier
+commit in this same plan). Fixed once, at the root, by extracting the existing
+race-picker-against-skip logic out of `BoardPage.open()` into an exported `reachPicker()` helper in
+`board-page.ts`, and calling it from each of the six affected setups instead of duplicating the race
+six more times.
+
+**Why the first full run of `npm run test:browser` showed 47 failures and the second showed 165
+passed / 0 failed, same code**: both of the bugs above are real, but neither is flaky — every
+individual failing test passed reliably on isolated reruns once actually fixed. The one failure that
+*was* noise (`a HEIC mislabelled as a JPEG...`, the ~3MB WASM-compile-budget test) is the same
+resource-sensitive test §7.3/§8.1/§9.1 already document; it passed alone in 2.2s. **Worth restating
+for whoever reads this next:** a failure list this large from one browser-gate run is not
+automatically "the machine was busy" — root-cause each failure family before writing any of them off,
+the same discipline §7.3's isolated-4-failures case earned, just at ten times the count this time.
+
+**Gates (worktree branch, final run):** `npm test` 633/633, `npm run typecheck` clean, `npm run build`
+clean, `npm run test:browser` **165 passed / 13 skipped / 0 failed**, both `dock` and `phone`, 22.6
+minutes, no failures on this run at all.
+
+### 11.1. What's next
+
+This branch is fully implemented and gated but **not merged**. Options for whoever picks this up:
+merge `completion-card-race-and-piece-safety` into `fix/photo-picker-thumbnails-and-layout` directly
+(no conflicts expected — the two branches touch almost entirely disjoint files, the only overlap
+being `CLAUDE.md`'s Hard Numbers table and this handoff file, both append-only), or open it as its
+own PR against `main` alongside this branch. The plan's own "Final integration pass" Step 2 — a
+manual pass on real hardware confirming (a) the card never shows a gap, (b) a piece dragged hard in
+every direction stops rather than tracking the finger past a point, (c) the reference panel never
+blocks the shelf or lens chips at peek — has not been run; it is the one thing in this section
+Chromium cannot answer, same as every other real-hardware gate in this file.
