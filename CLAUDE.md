@@ -214,7 +214,7 @@ Do not drift from these without changing the design doc first.
 | Snap spring | stiffness 520, damping 26, mass 1, integrated from release velocity |
 | Lift | scale 1.06, 8pt above the finger, never under it |
 | Zoom | 0.5× to 4×, rubber-banded; region lens unlocks above 1.5×. **Relative to the fitted board — 1× is the board filling the viewport.** `camera.zoom` itself is screen px per world unit, so clamping it to these numbers directly means "pieces are four pixels across" |
-| Bloom / hint / X-Ray | 0.90 max / 0.55 peak / 0.35 dim |
+| Bloom / hint | 0.90 max / 0.55 peak |
 | Save | IndexedDB, debounced 800ms + synchronous write on `visibilitychange` |
 | Touch target | 44pt floor, everywhere |
 | Drag boundary margin | `clamp(√pieces × 0.8, 4, 18)` piece-widths each side, centered on the board frame |

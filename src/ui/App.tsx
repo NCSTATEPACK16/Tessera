@@ -1395,8 +1395,16 @@ export function App(): React.ReactElement {
 
       {/* §16: the tray is genuinely not mounted before the reveal beat —
           "slides in on its own" means absent, not collapsed. Ordinary play
-          (screen !== 'first-run') is unaffected. */}
-      {(screen !== 'first-run' || trayRevealed) && (
+          (screen !== 'first-run') is unaffected.
+
+          Also gone once the puzzle is complete: nothing here — the piece
+          grid, the lens chips, the box-lid reference panel — is relevant
+          once there is nothing left to place, and left mounted it sat
+          beside or behind the completion card (docked: a flex sibling
+          eating half the screen; phone: the sheet's own overlay), which is
+          how the reference thumbnail ended up visible next to "Your photo"
+          on the completion screen. */}
+      {summary.status !== 'complete' && (screen !== 'first-run' || trayRevealed) && (
         <Tray
           rootRef={trayRef}
           shelfRef={shelfRef}
