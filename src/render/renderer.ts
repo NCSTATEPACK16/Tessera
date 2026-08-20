@@ -44,12 +44,17 @@ import { emptyScene } from './scene';
 const HINT_OUTLINE_HOLD_MS = HINT_GLOW_DECAY_END_MS;
 /** Fallback accent, matching `ACCENT_FALLBACK` in `render/accent.ts` — used until `setAccent` is called. */
 const DEFAULT_ACCENT = 'rgba(111, 168, 255, 0.9)';
-/** §09/CLAUDE.md's `--xray-dim`: placed pieces without a connecting edge drop to this contrast. */
-const XRAY_CONTRAST = 0.35;
-/** How long the dim takes to lift once the cluster is released. */
-const XRAY_RESTORE_MS = 160;
 /** World-space stroke weight for the edge-highlight assist, before the /zoom conversion. */
 const EDGE_HIGHLIGHT_WIDTH = 2;
+
+/** §C Track 3: one ghost-underlay slot, world units, with its own adaptive alpha. */
+export interface GhostSlot {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  alpha: number;
+}
 
 export interface RendererStats {
   frames: number;
@@ -100,17 +105,11 @@ export class Renderer {
   private mergeSeamStartMs: number | null = null;
   /** §09's edge-frame trace, or null when it has not fired / has finished. */
   private edgeFrameStartMs: number | null = null;
-  /**
-   * §07/§09's X-Ray focus. Non-null while a cluster is held or fading back
-   * out after release — `scene.xray` itself goes straight to `null` on
-   * release, so this is the renderer's own snapshot of the last set, kept
-   * alive only long enough for `paintXray` to fade it out.
-   */
-  private xrayCandidates: ReadonlySet<number> | null = null;
-  private xrayFadeStartMs: number | null = null;
   /** Step 5b's ghost-underlay assist: the source photo, drawn under placed pieces. */
   private ghostBitmap: ImageBitmap | null = null;
   private ghostOpacity = 0;
+  /** §C Track 3's adaptive per-slot alpha, or null when the caller has none built. */
+  private ghostSlots: readonly GhostSlot[] | null = null;
   /** Step 5b's edge-highlight assist, and its lazily built per-piece outline cache. */
   private edgeHighlightEnabled = false;
   private readonly edgePaths = new Map<number, Path2D>();
@@ -163,19 +162,6 @@ export class Renderer {
     const boardChanged = scene.boardW !== this.scene.boardW || scene.boardH !== this.scene.boardH;
     const placedChanged = scene.placed !== this.scene.placed || scene.completion !== this.scene.completion;
     const finishChanged = scene.finish !== this.scene.finish;
-
-    // X-Ray (§07/§09): the model drops straight to `xray: null` on release —
-    // the 160ms restore is a renderer-only presentation detail, the same
-    // division of labour the settle spring already draws between the two.
-    if (this.scene.xray !== null && scene.xray === null) {
-      this.xrayCandidates = this.scene.xray;
-      this.xrayFadeStartMs = performance.now();
-      this.scheduler.startAnimating('xray-fade');
-    } else if (scene.xray !== null) {
-      this.xrayCandidates = scene.xray;
-      this.xrayFadeStartMs = null;
-      this.scheduler.stopAnimating('xray-fade');
-    }
 
     this.scene = scene;
     this.camera = { ...camera };
@@ -254,10 +240,20 @@ export class Renderer {
    * Step 5b's ghost-underlay assist: a dimmed copy of the source photo, drawn
    * inside `paintStatic` under the placed pieces so it pans and zooms with the
    * board. Pass `null` (or opacity 0) to turn it off.
+   *
+   * `slots` (§C Track 3) is the adaptive per-piece alpha built from
+   * `CutPiece.meanColor` — when present, `paintStatic` draws each slot
+   * separately instead of the whole board in one pass. Omitting it keeps the
+   * pre-Track-3 single-draw behaviour, so a two-argument call stays valid.
    */
-  setGhostUnderlay(bitmap: ImageBitmap | null, opacity: number): void {
+  setGhostUnderlay(
+    bitmap: ImageBitmap | null,
+    opacity: number,
+    slots: readonly GhostSlot[] | null = null,
+  ): void {
     this.ghostBitmap = bitmap;
     this.ghostOpacity = opacity;
+    this.ghostSlots = slots;
   }
 
   /** Step 5b's edge-highlight assist: stroke every piece's cut silhouette. */
@@ -343,8 +339,32 @@ export class Renderer {
     this.applyCamera(ctx);
     if (this.ghostBitmap && this.ghostOpacity > 0) {
       ctx.save();
-      ctx.globalAlpha = this.ghostOpacity;
-      ctx.drawImage(this.ghostBitmap, 0, 0, this.scene.boardW, this.scene.boardH);
+      if (this.ghostSlots && this.ghostSlots.length > 0) {
+        // Per-slot alpha (§C Track 3): source rect in the bitmap's own pixel
+        // space, dest rect in world units — same px-per-world-unit ratio
+        // `pathScale` already names for piece outlines, computed once here
+        // since the ghost bitmap's natural size and the board's world size
+        // are both constant for the puzzle's lifetime.
+        const pxPerUnit = this.ghostBitmap.width / this.scene.boardW;
+        for (const slot of this.ghostSlots) {
+          if (slot.alpha <= 0) continue;
+          ctx.globalAlpha = slot.alpha;
+          ctx.drawImage(
+            this.ghostBitmap,
+            slot.x * pxPerUnit,
+            slot.y * pxPerUnit,
+            slot.w * pxPerUnit,
+            slot.h * pxPerUnit,
+            slot.x,
+            slot.y,
+            slot.w,
+            slot.h,
+          );
+        }
+      } else {
+        ctx.globalAlpha = this.ghostOpacity;
+        ctx.drawImage(this.ghostBitmap, 0, 0, this.scene.boardW, this.scene.boardH);
+      }
       ctx.restore();
     }
     this.drawBoardOutline(ctx);
@@ -545,42 +565,6 @@ export class Renderer {
     }
   }
 
-  /**
-   * §07/§09's X-Ray focus: every placed piece the held cluster does not
-   * connect to drops to `XRAY_CONTRAST`, restoring over `XRAY_RESTORE_MS`
-   * once the cluster is released.
-   *
-   * Dims the piece's bounding box rather than its cut silhouette — close
-   * enough at the zoom levels a drag happens at, and it avoids building a
-   * second `Path2D` per placed piece on every frame of the drag.
-   */
-  private paintXray(ctx: CanvasRenderingContext2D): void {
-    if (this.xrayCandidates === null) return;
-
-    let strength = 1 - XRAY_CONTRAST;
-    if (this.xrayFadeStartMs !== null) {
-      const elapsed = performance.now() - this.xrayFadeStartMs;
-      if (elapsed >= XRAY_RESTORE_MS) {
-        this.xrayCandidates = null;
-        this.xrayFadeStartMs = null;
-        this.scheduler.stopAnimating('xray-fade');
-        return;
-      }
-      strength *= 1 - elapsed / XRAY_RESTORE_MS;
-    }
-    if (strength <= 0) return;
-
-    const candidates = this.xrayCandidates;
-    ctx.save();
-    this.applyCamera(ctx);
-    ctx.fillStyle = `rgba(0, 0, 0, ${strength})`;
-    for (const piece of this.scene.placed) {
-      if (candidates.has(piece.id)) continue;
-      ctx.fillRect(piece.x, piece.y, piece.w, piece.h);
-    }
-    ctx.restore();
-  }
-
   private paintOverlay(): void {
     const ctx = this.layerContext('overlay');
     ctx.clearRect(0, 0, this.viewport.w, this.viewport.h);
@@ -589,7 +573,6 @@ export class Renderer {
     this.paintHintOutline(ctx);
     this.paintMergeSeam(ctx);
     this.paintEdgeFrame(ctx);
-    this.paintXray(ctx);
     if (this.scene.held.length === 0) return;
 
     this.applyCamera(ctx);

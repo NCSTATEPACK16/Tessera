@@ -112,7 +112,7 @@ export function DailyHub({
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-5">
       <div className="flex items-center justify-between gap-3">
-        <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
+        <div className="font-[var(--font-display)] text-5 text-[var(--ink-primary)]">
           Daily
         </div>
         <div className="flex gap-2">
@@ -120,7 +120,7 @@ export function DailyHub({
             type="button"
             aria-label="Your puzzles"
             onClick={onLibrary}
-            className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+            className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
           >
             Your puzzles
           </button>
@@ -128,7 +128,7 @@ export function DailyHub({
             type="button"
             aria-label="New puzzle"
             onClick={onNewPuzzle}
-            className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+            className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
           >
             New puzzle
           </button>
@@ -153,15 +153,15 @@ export function DailyHub({
               </div>
             )}
             {doneToday && (
-              <div className="absolute right-2 top-2 rounded-[var(--radius-sm)] bg-[var(--accent)] px-2 py-1 text-[11px] text-[var(--mat-void)]">
+              <div className="absolute right-2 top-2 rounded-[var(--radius-sm)] bg-[var(--accent)] px-2 py-1 text-1 text-[var(--mat-void)]">
                 ✓ Done today
               </div>
             )}
           </div>
-          <div className="text-[14px] text-[var(--ink-primary)]">
+          <div className="text-2 text-[var(--ink-primary)]">
             {dateLabel} · {photoName}
           </div>
-          <div className="font-[var(--font-data)] text-[12px] tabular-nums text-[var(--ink-muted)]">
+          <div className="font-[var(--font-data)] text-1 tabular-nums text-[var(--ink-muted)]">
             {progress
               ? `${progress.placed} / ${progress.total} placed`
               : `${daily.targetCount} pieces`}
@@ -171,7 +171,7 @@ export function DailyHub({
         {/* Streak */}
         <div className="flex min-w-[240px] flex-1 flex-col justify-between gap-3">
           <StreakFlame streak={streak} freezes={freezes} tone={tone} pips={pips} />
-          <div className="text-[13px] text-[var(--ink-muted)]">
+          <div className="text-2 text-[var(--ink-muted)]">
             {streakMessage(tone, streak, canRepair)}
           </div>
           {canRepair && (
@@ -179,7 +179,7 @@ export function DailyHub({
               type="button"
               aria-label="Repair streak"
               onClick={onRepair}
-              className="min-h-[44px] self-start rounded-[var(--radius-md)] border border-[var(--accent)] px-3 text-[13px] text-[var(--accent)]"
+              className="touch-target self-start rounded-[var(--radius-md)] border border-[var(--accent)] px-3 text-2 text-[var(--accent)]"
             >
               Repair streak
             </button>
@@ -188,7 +188,7 @@ export function DailyHub({
             type="button"
             aria-label={cta}
             onClick={onStart}
-            className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--accent)] px-4 text-[14px] text-[var(--mat-void)]"
+            className="touch-target rounded-[var(--radius-md)] bg-[var(--accent)] px-4 text-2 text-[var(--mat-void)]"
           >
             {cta}
           </button>

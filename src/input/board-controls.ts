@@ -51,6 +51,8 @@ export interface BoardControlsOptions {
   interceptRelease?: (event: { clusterId: number; client: Point }) => boolean;
   /** A press that lifted without becoming a drag (§07, step 4). See `pointer.ts`. */
   onTap?: (clusterId: number) => void;
+  /** §C Track 3: comfort mode's tremor damping. Defaults off. */
+  tremorDamping?: boolean;
 }
 
 export class BoardControls {
@@ -100,7 +102,7 @@ export class BoardControls {
       onCameraBegin: () => options.onChange(),
       onCameraEnd: () => options.onChange(),
       ...(options.onTap ? { onTap: (clusterId: number) => options.onTap!(clusterId) } : {}),
-    });
+    }, { tremorDamping: options.tremorDamping ?? false });
 
     const el = options.element;
     el.addEventListener('pointerdown', this.onDown);
@@ -113,6 +115,11 @@ export class BoardControls {
   /** Step 5c: forwarded to the inner camera for the pause sheet's live assists. */
   setMinRelativeZoom(value: number): void {
     this.camera.setMinRelativeZoom(value);
+  }
+
+  /** §C Track 3: forwarded to the inner pointer machine, live. */
+  setTremorDamping(enabled: boolean): void {
+    this.machine.setTremorDamping(enabled);
   }
 
   destroy(): void {

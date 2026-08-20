@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clampGhostOpacity,
   DEFAULT_PUZZLE_CONFIG,
+  floorDifficulty,
   GHOST_OPACITY_MAX,
   nextHarderCount,
   PIECE_COUNT_LADDER,
@@ -60,17 +61,34 @@ describe('clampGhostOpacity', () => {
 });
 
 describe('DEFAULT_PUZZLE_CONFIG', () => {
-  it('defaults every assist off/neutral', () => {
+  it('defaults every assist off/neutral, including comfort', () => {
     expect(DEFAULT_PUZZLE_CONFIG.assists).toEqual({
       ghostOpacity: 0,
       edgeHighlight: false,
       largePieceMode: false,
+      comfort: false,
     });
   });
 
   it('defaults rotation off and mode classic', () => {
     expect(DEFAULT_PUZZLE_CONFIG.rotation).toBe(false);
     expect(DEFAULT_PUZZLE_CONFIG.mode).toBe('classic');
+  });
+});
+
+describe('floorDifficulty', () => {
+  it('leaves difficulty alone when comfort is off', () => {
+    expect(floorDifficulty('precise', false)).toBe('precise');
+    expect(floorDifficulty('standard', false)).toBe('standard');
+  });
+
+  it('floors precise and standard to generous when comfort is on', () => {
+    expect(floorDifficulty('precise', true)).toBe('generous');
+    expect(floorDifficulty('standard', true)).toBe('generous');
+  });
+
+  it('leaves generous alone when comfort is on — it is already at the floor', () => {
+    expect(floorDifficulty('generous', true)).toBe('generous');
   });
 });
 

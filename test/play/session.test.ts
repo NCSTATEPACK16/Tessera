@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { BOARD_CLUSTER } from '@/board/board';
-import { PlaySession } from '@/play/session';
+import { COMFORT_LIFT_SCALE, LIFT_PX, LIFT_SCALE, PlaySession } from '@/play/session';
 import type { PlayEvent, SessionPiece } from '@/play/session';
 import { buildNeighbourGraph, pieceIdAt } from '@/cut/graph';
 import type { CubicPath, Rect } from '@/core/geom';
@@ -60,7 +60,10 @@ function pieces(): SessionPiece[] {
 
 const id = (col: number, row: number): number => pieceIdAt(COLS, col, row);
 
-function session(onEvent?: (event: PlayEvent) => void): PlaySession {
+function session(
+  onEvent?: (event: PlayEvent) => void,
+  overrides: Partial<{ comfort: boolean }> = {},
+): PlaySession {
   const play = new PlaySession({
     pieces: pieces(),
     boardW: COLS,
@@ -69,6 +72,7 @@ function session(onEvent?: (event: PlayEvent) => void): PlaySession {
     // These tests are about the mat. The tray has its own file.
     startInTray: false,
     ...(onEvent ? { onEvent } : {}),
+    ...overrides,
   });
   // Scatter, so only the adjacency a test sets up is ever in range.
   for (const piece of play.board.pieces) {
@@ -128,6 +132,27 @@ describe('scene composition', () => {
 
     play.grab(play.board.clusterIdOf(id(1, 0)));
     expect(play.scene().xray).toEqual(new Set([id(0, 0)]));
+  });
+});
+
+describe('comfort and the held lift', () => {
+  it('scenes at the ordinary lift scale by default', () => {
+    const play = session();
+    play.grab(play.board.clusterIdOf(id(1, 0)));
+    expect(play.scene().heldLift).toEqual({ offsetPx: LIFT_PX, scale: LIFT_SCALE });
+  });
+
+  it('lifts higher once comfort is set live', () => {
+    const play = session();
+    play.setComfort(true);
+    play.grab(play.board.clusterIdOf(id(1, 0)));
+    expect(play.scene().heldLift).toEqual({ offsetPx: LIFT_PX, scale: COMFORT_LIFT_SCALE });
+  });
+
+  it('takes comfort from construction too, not only from setComfort', () => {
+    const play = session(undefined, { comfort: true });
+    play.grab(play.board.clusterIdOf(id(1, 0)));
+    expect(play.scene().heldLift.scale).toBe(COMFORT_LIFT_SCALE);
   });
 });
 

@@ -31,6 +31,8 @@ export interface LensChipsProps {
   bins: readonly ColourBin[];
   binCount: (bin: number) => number;
   onPick: (lens: Lens, arg?: number | null) => void;
+  /** §16 Track 4: a single opacity beat on mount — the guided twelve's tray reveal only. */
+  pulse?: boolean;
 }
 
 export function LensChips({
@@ -40,10 +42,11 @@ export function LensChips({
   bins,
   binCount,
   onPick,
+  pulse = false,
 }: LensChipsProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-[8px]">
-      <div className="flex flex-wrap gap-[8px]">
+      <div className={`flex flex-wrap gap-[8px] ${pulse ? 'lens-chip-pulse' : ''}`}>
         {LENSES.map((entry) => {
           const meta = counts.get(entry);
           const enabled = meta?.enabled ?? true;
@@ -62,7 +65,7 @@ export function LensChips({
                   : 'Zoom past 1.5× and this shows the pieces that belong in view'
               }
               className={[
-                'flex items-center gap-[6px] rounded-[8px] border px-[12px] text-[14px]',
+                'flex items-center gap-[6px] rounded-[8px] border px-[12px] text-2',
                 'min-h-[var(--touch-min)] transition-colors',
                 active
                   ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] text-[var(--ink-primary)]'
@@ -71,7 +74,7 @@ export function LensChips({
               ].join(' ')}
             >
               {LABEL[entry]}
-              <span className="font-[var(--font-data)] text-[12px] tabular-nums opacity-70">
+              <span className="font-[var(--font-data)] text-1 tabular-nums opacity-70">
                 {meta?.count ?? 0}
               </span>
             </button>
@@ -88,7 +91,7 @@ export function LensChips({
               aria-pressed={lensArg === bin.index}
               onClick={() => onPick('colour', bin.index)}
               className={[
-                'flex items-center gap-[6px] rounded-[8px] border px-[10px] text-[12px]',
+                'flex items-center gap-[6px] rounded-[8px] border px-[10px] text-1',
                 'min-h-[var(--touch-min)] transition-colors',
                 lensArg === bin.index
                   ? 'border-[var(--accent)] text-[var(--ink-primary)]'

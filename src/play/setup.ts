@@ -97,6 +97,8 @@ export interface PuzzleAssists {
   ghostOpacity: number;
   edgeHighlight: boolean;
   largePieceMode: boolean;
+  /** §C Track 3: one flag, read by the lift, the snap floor, tremor damping, and 60pt targets. */
+  comfort: boolean;
 }
 
 export interface PuzzleConfig {
@@ -116,5 +118,15 @@ export const DEFAULT_PUZZLE_CONFIG: PuzzleConfig = {
     ghostOpacity: 0,
     edgeHighlight: false,
     largePieceMode: false,
+    comfort: false,
   },
 };
+
+/**
+ * Comfort mode floors snap tolerance at Generous — the widest band, never the
+ * player's own choice of a tighter one. `generous` is already the floor for
+ * itself; nothing below it exists on the ladder.
+ */
+export function floorDifficulty(difficulty: SnapDifficulty, comfort: boolean): SnapDifficulty {
+  return comfort ? 'generous' : difficulty;
+}

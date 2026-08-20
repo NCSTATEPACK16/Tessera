@@ -94,12 +94,15 @@ export function PauseSheet({
         onClick={onResume}
         className="fixed inset-0 z-40 bg-black/50"
       />
-      <div className="fixed inset-x-0 bottom-0 z-50 flex flex-col gap-4 rounded-t-[var(--radius-lg)] border-t border-[var(--edge-hair)] bg-[var(--mat-raised)] p-5">
+      {/* Comfort mode's 60pt rows can outgrow a short viewport where the 44pt
+          layout always fit — max-height plus scroll, never an overflow that
+          pushes Resume or Leave off-screen with no way to reach them. */}
+      <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[90vh] flex-col gap-4 overflow-y-auto rounded-t-[var(--radius-lg)] border-t border-[var(--edge-hair)] bg-[var(--mat-raised)] p-5">
         <button
           type="button"
           aria-label="Resume"
           onClick={onResume}
-          className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--accent)] py-3 text-[15px] text-[var(--mat-void)]"
+          className="touch-target rounded-[var(--radius-md)] bg-[var(--accent)] py-3 text-3 text-[var(--mat-void)]"
         >
           Resume
         </button>
@@ -108,14 +111,14 @@ export function PauseSheet({
           type="button"
           aria-label="Reference image"
           onClick={openReference}
-          className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] py-3 text-[15px] text-[var(--ink-primary)]"
+          className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] py-3 text-3 text-[var(--ink-primary)]"
         >
           Reference image
         </button>
 
         {confirmingRestart ? (
           <div className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--edge-hair)] p-3">
-            <div className="text-[13px] text-[var(--ink-primary)]">
+            <div className="text-2 text-[var(--ink-primary)]">
               Are you sure? All progress on this puzzle resets.
             </div>
             <div className="flex gap-2">
@@ -123,7 +126,7 @@ export function PauseSheet({
                 type="button"
                 aria-label="Cancel restart"
                 onClick={() => setConfirmingRestart(false)}
-                className="min-h-[44px] flex-1 rounded-[var(--radius-sm)] border border-[var(--edge-hair)] text-[13px] text-[var(--ink-muted)]"
+                className="touch-target flex-1 rounded-[var(--radius-sm)] border border-[var(--edge-hair)] text-2 text-[var(--ink-muted)]"
               >
                 Cancel
               </button>
@@ -134,7 +137,7 @@ export function PauseSheet({
                   setConfirmingRestart(false);
                   onRestart();
                 }}
-                className="min-h-[44px] flex-1 rounded-[var(--radius-sm)] border-2 border-[var(--accent)] text-[13px] text-[var(--accent)]"
+                className="touch-target flex-1 rounded-[var(--radius-sm)] border-2 border-[var(--accent)] text-2 text-[var(--accent)]"
               >
                 Restart
               </button>
@@ -145,32 +148,39 @@ export function PauseSheet({
             type="button"
             aria-label="Restart"
             onClick={() => setConfirmingRestart(true)}
-            className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] py-3 text-[15px] text-[var(--ink-primary)]"
+            className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] py-3 text-3 text-[var(--ink-primary)]"
           >
             Restart
           </button>
         )}
 
         <div className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--edge-hair)] p-3">
-          <div className="font-[var(--font-data)] text-[11px] tracking-[0.08em] text-[var(--ink-muted)]">
+          <div className="font-[var(--font-data)] text-1 tracking-[0.08em] text-[var(--ink-muted)]">
             SETTINGS
           </div>
 
           <div>
-            <div className="mb-1 text-[13px] text-[var(--ink-primary)]">Snap tolerance</div>
-            <div className="flex gap-2">
+            <div className="mb-1 text-2 text-[var(--ink-primary)]">Snap tolerance</div>
+            {/* Dynamic Type at 200% can outgrow three flex-1 labels on a phone
+                width — wrap rather than clip; flex-1 still fills a row that
+                has room, and a wrapped row is still every button at 60pt. */}
+            <div className="flex flex-wrap gap-2">
               {TOLERANCES.map(({ value, label }) => {
                 const selected = difficulty === value;
+                // Comfort mode floors tolerance at Generous — the tighter two
+                // are disabled, not just re-coloured, while it is on.
+                const disabled = assists.comfort && value !== 'generous';
                 return (
                   <button
                     key={value}
                     type="button"
                     aria-label={`Snap tolerance: ${label}`}
                     aria-pressed={selected}
+                    disabled={disabled}
                     onClick={() => onDifficultyChange(value)}
                     // Border weight as well as colour: colour is never the
                     // only signal (§13).
-                    className={`min-h-[44px] flex-1 rounded-[var(--radius-sm)] text-[11px] ${
+                    className={`touch-target flex-1 rounded-[var(--radius-sm)] text-1 disabled:opacity-40 ${
                       selected
                         ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
                         : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -184,9 +194,9 @@ export function PauseSheet({
           </div>
 
           <div>
-            <div className="mb-1 flex justify-between text-[13px] text-[var(--ink-primary)]">
+            <div className="mb-1 flex justify-between text-2 text-[var(--ink-primary)]">
               <span>Ghost underlay</span>
-              <span className="font-[var(--font-data)] text-[11px] tabular-nums text-[var(--ink-muted)]">
+              <span className="font-[var(--font-data)] text-1 tabular-nums text-[var(--ink-muted)]">
                 {Math.round((assists.ghostOpacity / GHOST_OPACITY_MAX) * 100)}%
               </span>
             </div>
@@ -200,18 +210,18 @@ export function PauseSheet({
               onChange={(e) =>
                 onAssistsChange({ ...assists, ghostOpacity: Number(e.target.value) })
               }
-              className="min-h-[44px] w-full"
+              className="min-h-[var(--touch-min)] w-full"
             />
           </div>
 
           <div className="flex items-center justify-between">
-            <div className="text-[13px] text-[var(--ink-primary)]">Edge highlight</div>
+            <div className="text-2 text-[var(--ink-primary)]">Edge highlight</div>
             <button
               type="button"
               aria-label="Edge highlight"
               aria-pressed={assists.edgeHighlight}
               onClick={() => onAssistsChange({ ...assists, edgeHighlight: !assists.edgeHighlight })}
-              className={`min-h-[44px] min-w-[44px] rounded-[var(--radius-sm)] text-[12px] ${
+              className={`touch-target rounded-[var(--radius-sm)] text-1 ${
                 assists.edgeHighlight
                   ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
                   : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -222,7 +232,7 @@ export function PauseSheet({
           </div>
 
           <div className="flex items-center justify-between">
-            <div className="text-[13px] text-[var(--ink-primary)]">Large piece mode</div>
+            <div className="text-2 text-[var(--ink-primary)]">Large piece mode</div>
             <button
               type="button"
               aria-label="Large piece mode"
@@ -230,7 +240,7 @@ export function PauseSheet({
               onClick={() =>
                 onAssistsChange({ ...assists, largePieceMode: !assists.largePieceMode })
               }
-              className={`min-h-[44px] min-w-[44px] rounded-[var(--radius-sm)] text-[12px] ${
+              className={`touch-target rounded-[var(--radius-sm)] text-1 ${
                 assists.largePieceMode
                   ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
                   : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -239,13 +249,34 @@ export function PauseSheet({
               {assists.largePieceMode ? 'On' : 'Off'}
             </button>
           </div>
+
+          <div className="flex items-center justify-between">
+            <div className="text-2 text-[var(--ink-primary)]">Comfort mode</div>
+            <button
+              type="button"
+              aria-label="Comfort mode"
+              aria-pressed={assists.comfort}
+              onClick={() => {
+                const comfort = !assists.comfort;
+                onAssistsChange({ ...assists, comfort });
+                if (comfort) onDifficultyChange('generous');
+              }}
+              className={`touch-target rounded-[var(--radius-sm)] text-1 ${
+                assists.comfort
+                  ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
+                  : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
+              }`}
+            >
+              {assists.comfort ? 'On' : 'Off'}
+            </button>
+          </div>
         </div>
 
         <button
           type="button"
           aria-label="Leave"
           onClick={onLeave}
-          className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] py-3 text-[15px] text-[var(--ink-muted)]"
+          className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] py-3 text-3 text-[var(--ink-muted)]"
         >
           Leave
         </button>

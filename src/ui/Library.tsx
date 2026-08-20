@@ -63,7 +63,7 @@ function LibraryCard({
       type="button"
       aria-label={`Open puzzle: ${cols} × ${rows}`}
       onClick={() => onOpen(entry.puzzleId)}
-      className="flex min-h-[44px] flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--edge-hair)] bg-[var(--mat-raised)] text-left"
+      className="flex touch-target flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--edge-hair)] bg-[var(--mat-raised)] text-left"
     >
       <div className="relative aspect-[4/3] w-full bg-[var(--mat-void)]">
         {url && <img src={url} alt="" className="h-full w-full object-cover" />}
@@ -72,10 +72,10 @@ function LibraryCard({
         </div>
       </div>
       <div className="flex flex-col gap-0.5 p-3">
-        <div className="text-[14px] text-[var(--ink-primary)]">
+        <div className="text-2 text-[var(--ink-primary)]">
           {cols} × {rows} · {mode === 'zen' ? 'Zen' : 'Classic'}
         </div>
-        <div className="font-[var(--font-data)] text-[11px] tabular-nums text-[var(--ink-muted)]">
+        <div className="font-[var(--font-data)] text-1 tabular-nums text-[var(--ink-muted)]">
           {placed} / {total} · {relativeTime(entry.updatedAt)}
         </div>
       </div>
@@ -95,7 +95,7 @@ export function Library({
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-5">
       <div className="flex items-center justify-between gap-3">
-        <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
+        <div className="font-[var(--font-display)] text-5 text-[var(--ink-primary)]">
           Your Puzzles
         </div>
         <div className="flex gap-2">
@@ -104,7 +104,7 @@ export function Library({
               type="button"
               aria-label="Collection"
               onClick={onCollection}
-              className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+              className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
             >
               Collection
             </button>
@@ -114,7 +114,7 @@ export function Library({
               type="button"
               aria-label="Daily"
               onClick={onDaily}
-              className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+              className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
             >
               <StreakFlame streak={streak} freezes={0} tone={streakTone} compact />
             </button>
@@ -123,7 +123,7 @@ export function Library({
             type="button"
             aria-label="New puzzle"
             onClick={onNewPuzzle}
-            className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--accent)] px-4 text-[14px] text-[var(--mat-void)]"
+            className="touch-target rounded-[var(--radius-md)] bg-[var(--accent)] px-4 text-2 text-[var(--mat-void)]"
           >
             New Puzzle
           </button>

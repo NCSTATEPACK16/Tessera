@@ -38,6 +38,19 @@ export const LONG_PRESS_MS = 120;
 /** Velocity is measured over this trailing window, in ms. */
 const VELOCITY_WINDOW_MS = 60;
 
+/**
+ * Comfort mode's tremor damping (§C Track 3): a one-pole low-pass on the drag
+ * path, plus a dead-zone that swallows sub-pixel jitter outright. Chosen, not
+ * measured — revisit on hardware, the way `hints.ts` flags its escalation
+ * thresholds.
+ *
+ * Applied only to samples already in the `dragging` phase — `move()`'s
+ * `MOVE_THRESHOLD_PX` promotion check reads the *raw* sample unconditionally,
+ * so damping can never delay the press-to-drag transition.
+ */
+const TREMOR_LOW_PASS_ALPHA = 0.35;
+const TREMOR_DEAD_ZONE_PX = 1.5;
+
 export type PointerPhase = 'idle' | 'pressing' | 'dragging' | 'camera';
 
 export interface PointerSample {
@@ -91,6 +104,10 @@ interface Tracked extends Point {
   t: number;
 }
 
+export interface PointerMachineOptions {
+  tremorDamping?: boolean;
+}
+
 export class PointerMachine {
   private phase_: PointerPhase = 'idle';
   private readonly pointers = new Map<number, Tracked>();
@@ -101,8 +118,21 @@ export class PointerMachine {
   private pressedCluster: number | null = null;
   private lastDrag: Point | null = null;
   private readonly history: Tracked[] = [];
+  private tremorDamping: boolean;
+  /** The low-pass's running estimate, in screen px, reset on every new drag. */
+  private smoothed: Point | null = null;
 
-  constructor(private readonly host: PointerHost) {}
+  constructor(
+    private readonly host: PointerHost,
+    options: PointerMachineOptions = {},
+  ) {
+    this.tremorDamping = options.tremorDamping ?? false;
+  }
+
+  /** Step 5c's pause sheet toggles this live, same as tolerance and the other assists. */
+  setTremorDamping(enabled: boolean): void {
+    this.tremorDamping = enabled;
+  }
 
   get phase(): PointerPhase {
     return this.phase_;
@@ -187,10 +217,31 @@ export class PointerMachine {
     if (this.phase_ !== 'dragging' || !this.lastDrag || this.pressedCluster === null) return;
 
     this.history.push({ x: sample.x, y: sample.y, t: sample.t });
+
+    const damped = this.tremorDamping
+      ? this.dampen({ x: sample.x, y: sample.y })
+      : { x: sample.x, y: sample.y };
+
     const from = this.host.toWorld(this.lastDrag);
-    const to = this.host.toWorld({ x: sample.x, y: sample.y });
-    this.lastDrag = { x: sample.x, y: sample.y };
+    const to = this.host.toWorld(damped);
+    this.lastDrag = damped;
     this.host.onDragTo({ clusterId: this.pressedCluster, dx: to.x - from.x, dy: to.y - from.y });
+  }
+
+  /** The one-pole low-pass plus dead-zone. `this.smoothed` resets per-drag in `beginDrag`/`adopt`. */
+  private dampen(raw: Point): Point {
+    if (!this.smoothed) {
+      this.smoothed = raw;
+      return raw;
+    }
+    const dx = raw.x - this.smoothed.x;
+    const dy = raw.y - this.smoothed.y;
+    if (Math.hypot(dx, dy) < TREMOR_DEAD_ZONE_PX) return this.smoothed;
+    this.smoothed = {
+      x: this.smoothed.x + dx * TREMOR_LOW_PASS_ALPHA,
+      y: this.smoothed.y + dy * TREMOR_LOW_PASS_ALPHA,
+    };
+    return this.smoothed;
   }
 
   up(sample: PointerSample): void {
@@ -234,6 +285,7 @@ export class PointerMachine {
     if (this.pressedCluster === null || !this.pressedAt) return;
     this.phase_ = 'dragging';
     this.lastDrag = { x: this.pressedAt.x, y: this.pressedAt.y };
+    this.smoothed = { x: this.pressedAt.x, y: this.pressedAt.y };
     this.host.onGrab({
       clusterId: this.pressedCluster,
       world: this.host.toWorld({ x: this.pressedAt.x, y: this.pressedAt.y }),

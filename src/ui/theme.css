@@ -40,13 +40,15 @@
   --spacing-6: 40px;
   --spacing-7: 64px;
 
-  --text-1: 12px;
-  --text-2: 14px;
-  --text-3: 16px;
-  --text-4: 20px;
-  --text-5: 28px;
-  --text-6: 40px;
-  --text-7: 64px;
+  /* §C Track 3: rem, not px — Dynamic Type scales with the browser's root
+     font size only when text is expressed relative to it. 16px root. */
+  --text-1: 0.75rem; /* 12px */
+  --text-2: 0.875rem; /* 14px */
+  --text-3: 1rem; /* 16px */
+  --text-4: 1.25rem; /* 20px */
+  --text-5: 1.75rem; /* 28px */
+  --text-6: 2.5rem; /* 40px */
+  --text-7: 4rem; /* 64px */
 
   --font-ui: 'Inter Tight', system-ui, sans-serif;
   --font-data: 'IBM Plex Mono', ui-monospace, monospace;
@@ -75,6 +77,11 @@
   color-scheme: dark;
 }
 
+/* §C Track 3: comfort mode retargets the one variable every touch target reads. */
+[data-comfort] {
+  --touch-min: 60px;
+}
+
 html,
 body,
 #root {
@@ -97,6 +104,32 @@ button,
   min-height: var(--touch-min);
   font-family: inherit;
   touch-action: manipulation;
+}
+
+/*
+ * §C Track 3: one variable-driven class, so a control that also needs a
+ * min-*width* (a square icon toggle, not a full-width row) gets the same
+ * comfort retarget the bare `button` rule above already gives min-height —
+ * instead of a hardcoded `min-h-[44px] min-w-[44px]` that would ignore
+ * `--touch-min` entirely and stay 44px under comfort.
+ */
+.touch-target {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+}
+
+/* §16 Track 4: the guided twelve's tray-reveal beat, once, on mount. The
+   reduced-motion rule below already zeroes this out — no separate guard. */
+@keyframes lens-chip-pulse {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.lens-chip-pulse {
+  animation: lens-chip-pulse var(--duration-base) var(--ease-standard);
 }
 
 /*

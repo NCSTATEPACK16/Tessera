@@ -61,12 +61,12 @@ function WallTile({
       // The accessible name carries the facts the image cannot.
       aria-label={`Puzzle finished ${date}, ${entry.pieceCount} pieces`}
       onClick={() => onOpen(entry)}
-      className="relative flex aspect-square min-h-[44px] items-center justify-center overflow-hidden rounded-[var(--radius-md)] border border-[var(--edge-hair)] bg-[var(--mat-void)]"
+      className="relative flex aspect-square touch-target items-center justify-center overflow-hidden rounded-[var(--radius-md)] border border-[var(--edge-hair)] bg-[var(--mat-void)]"
     >
       {url && <img src={url} alt="" className="h-full w-full object-cover" />}
       {entry.cleanRun && (
         // A clean run is a glyph *and* a word, never colour alone (§13).
-        <span className="absolute bottom-1 left-1 rounded-[6px] bg-[color-mix(in_srgb,var(--mat-void)_70%,transparent)] px-1.5 py-0.5 font-[var(--font-data)] text-[10px] text-[var(--ink-primary)]">
+        <span className="absolute bottom-1 left-1 rounded-[6px] bg-[color-mix(in_srgb,var(--mat-void)_70%,transparent)] px-1.5 py-0.5 font-[var(--font-data)] text-1 text-[var(--ink-primary)]">
           ✓ clean
         </span>
       )}
@@ -122,21 +122,21 @@ export function CollectionWall({ entries, onBack }: CollectionWallProps): React.
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-5">
       <div className="flex items-center justify-between gap-3">
-        <div className="font-[var(--font-display)] text-[28px] text-[var(--ink-primary)]">
+        <div className="font-[var(--font-display)] text-5 text-[var(--ink-primary)]">
           Collection
         </div>
         <button
           type="button"
           aria-label="Back"
           onClick={onBack}
-          className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]"
+          className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
         >
           Back
         </button>
       </div>
 
       {entries.length === 0 ? (
-        <div className="text-[14px] text-[var(--ink-muted)]">
+        <div className="text-2 text-[var(--ink-muted)]">
           Your finished puzzles gather here. Complete one and it becomes the first.
         </div>
       ) : (

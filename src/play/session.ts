@@ -35,6 +35,8 @@ import { WORKSET_DROP_TOLERANCE, WorksetStore, escapedBounds, worksetBounds } fr
 export const LIFT_PX = 8;
 /** §05: and 1.06 larger, so the hand reads as being above the mat. */
 export const LIFT_SCALE = 1.06;
+/** §C Track 3: comfort mode's exaggerated lift — easier to track by eye and by hand. */
+export const COMFORT_LIFT_SCALE = 1.2;
 
 /** What the session needs from the cut. A structural subset of `CutPiece`. */
 export interface SessionPiece {
@@ -100,6 +102,8 @@ export interface PlaySessionOptions {
   pathScale: number;
   finish?: MatFinish;
   difficulty?: SnapDifficulty;
+  /** §C Track 3: the exaggerated held-piece lift. Defaults off. */
+  comfort?: boolean;
   /** The Rotation modifier. Defaults OFF (§01). */
   rotation?: boolean;
   reducedMotion?: boolean;
@@ -203,6 +207,7 @@ export class PlaySession {
   private hintsUsed = 0;
   private cleanRun_ = true;
   private difficulty: SnapDifficulty;
+  private comfort: boolean;
   private readonly startedAtMs: number;
 
   constructor(private readonly options: PlaySessionOptions) {
@@ -210,6 +215,7 @@ export class PlaySession {
     this.hintsUsed = options.restoreHintsUsed ?? 0;
     this.cleanRun_ = options.restoreCleanRun ?? true;
     this.difficulty = options.difficulty ?? 'standard';
+    this.comfort = options.comfort ?? false;
 
     const boardInput = options.pieces.map((piece) => ({
       id: piece.id,
@@ -292,6 +298,11 @@ export class PlaySession {
    */
   setDifficulty(difficulty: SnapDifficulty): void {
     this.difficulty = difficulty;
+  }
+
+  /** Step 5c's pause sheet toggles this live, same as tolerance and the other assists. */
+  setComfort(comfort: boolean): void {
+    this.comfort = comfort;
   }
 
   get summary(): PlaySummary {
@@ -707,7 +718,7 @@ export class PlaySession {
       loose,
       groups,
       held,
-      heldLift: { offsetPx: LIFT_PX, scale: LIFT_SCALE },
+      heldLift: { offsetPx: LIFT_PX, scale: this.comfort ? COMFORT_LIFT_SCALE : LIFT_SCALE },
       completion: this.summary.completion,
       xray: this.held === null ? null : this.board.candidateSockets(this.held),
     };

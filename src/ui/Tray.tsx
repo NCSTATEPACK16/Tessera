@@ -77,6 +77,15 @@ export interface TrayProps {
   onScroll?: ((top: number) => void) | undefined;
   /** Step 5c: where a restored session left the grid scrolled. */
   initialScrollTop?: number | undefined;
+  /**
+   * §16 Track 4: the guided twelve's tray-reveal beat pulses the lens chips
+   * once. `Tray` (and `LensChips` inside it) mounts fresh at exactly the
+   * reveal moment for that puzzle — App.tsx does not conditionally mount it
+   * for any other puzzle — so "pulse on mount" already is "pulse on reveal"
+   * with no separate trigger needed. Defaults false for ordinary play, where
+   * the tray is never freshly mounted mid-session this way.
+   */
+  pulseLenses?: boolean;
 }
 
 export function Tray(props: TrayProps): React.ReactElement {
@@ -162,8 +171,8 @@ export function Tray(props: TrayProps): React.ReactElement {
   // The dock has no peek to collide with and stacks them straight back up.
   const title = (
     <div className="flex items-baseline justify-between">
-      <h2 className="text-[16px] font-medium text-[var(--ink-primary)]">Pieces</h2>
-      <span className="font-[var(--font-data)] text-[12px] tabular-nums text-[var(--ink-muted)]">
+      <h2 className="text-3 font-medium text-[var(--ink-primary)]">Pieces</h2>
+      <span className="font-[var(--font-data)] text-1 tabular-nums text-[var(--ink-muted)]">
         {props.remaining} left
       </span>
     </div>
@@ -176,6 +185,7 @@ export function Tray(props: TrayProps): React.ReactElement {
       counts={props.counts}
       bins={props.bins}
       binCount={props.binCount}
+      pulse={props.pulseLenses ?? false}
       onPick={props.onPick}
     />
   );

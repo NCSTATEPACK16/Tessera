@@ -39,10 +39,10 @@ export function TopBar({
       <div className="pointer-events-auto flex items-center gap-[12px] rounded-[14px] border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[14px] py-[8px] backdrop-blur-[12px]">
         <ProgressRing completion={completion} size={32} />
         <div className="flex flex-col">
-          <span className="font-[var(--font-data)] text-[14px] tabular-nums text-[var(--ink-primary)]">
+          <span className="font-[var(--font-data)] text-2 tabular-nums text-[var(--ink-primary)]">
             {placed} / {total}
           </span>
-          <span className="text-[12px] text-[var(--ink-muted)]">
+          <span className="text-1 text-[var(--ink-muted)]">
             {status === 'cutting'
               ? cut.total > 0
                 ? `Cutting ${cut.done} of ${cut.total}`
@@ -58,7 +58,7 @@ export function TopBar({
         <button
           type="button"
           onClick={onFit}
-          className="pointer-events-auto min-h-[44px] rounded-[14px] border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-[14px] text-[var(--ink-primary)] backdrop-blur-[12px]"
+          className="pointer-events-auto touch-target rounded-[14px] border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-2 text-[var(--ink-primary)] backdrop-blur-[12px]"
         >
           Fit
         </button>
@@ -66,7 +66,7 @@ export function TopBar({
           type="button"
           aria-label="Pause"
           onClick={onPause}
-          className="pointer-events-auto min-h-[44px] rounded-[14px] border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-[14px] text-[var(--ink-primary)] backdrop-blur-[12px]"
+          className="pointer-events-auto touch-target rounded-[14px] border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-2 text-[var(--ink-primary)] backdrop-blur-[12px]"
         >
           Pause
         </button>

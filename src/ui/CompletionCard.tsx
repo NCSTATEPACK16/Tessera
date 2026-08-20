@@ -25,6 +25,13 @@ export interface CompletionCardProps {
    * 10, "Daily variant with streak increment").
    */
   daily?: { streak: number; freezeEarned: boolean };
+  /**
+   * §16: the guided twelve ends here too, but offers what comes *next*
+   * rather than "again, harder" or "new puzzle" — there is no harder rung on
+   * a fixed 12-piece tutorial, and "new puzzle" undersells the two real
+   * choices. Present only for that one completion.
+   */
+  firstRun?: { onOwnPhoto: () => void; onDaily: () => void };
 }
 
 export function CompletionCard({
@@ -35,6 +42,7 @@ export function CompletionCard({
   onDone,
   onNewPuzzle,
   daily,
+  firstRun,
 }: CompletionCardProps): React.ReactElement {
   const [imgUrl, setImgUrl] = useState<string | null>(null);
 
@@ -72,17 +80,17 @@ export function CompletionCard({
   };
 
   const secondary =
-    'min-h-[44px] rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-[13px] text-[var(--ink-primary)]';
+    'touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]';
 
   return (
     <div className="pointer-events-auto absolute inset-0 z-10 flex flex-col items-center justify-center gap-[16px] overflow-y-auto bg-[color-mix(in_srgb,var(--mat-void)_86%,transparent)] p-[24px] backdrop-blur-[12px]">
       {daily && (
         <div className="flex flex-col items-center">
-          <div className="text-[14px] text-[var(--ink-primary)]">
+          <div className="text-2 text-[var(--ink-primary)]">
             {`Daily done · ${daily.streak} day streak`}
           </div>
           {daily.freezeEarned && (
-            <div className="font-[var(--font-data)] text-[11px] text-[var(--ink-muted)]">
+            <div className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
               Freeze earned — one missed day is covered.
             </div>
           )}
@@ -98,12 +106,15 @@ export function CompletionCard({
       )}
 
       <div className="flex flex-wrap items-center justify-center gap-2">
-        {canGoHarder && nextCount !== null && (
+        {/* §16: no harder rung on a fixed 12-piece tutorial, and "new puzzle"
+            undersells the two real next steps — replaced entirely, not added
+            alongside. */}
+        {!firstRun && canGoHarder && nextCount !== null && (
           <button
             type="button"
             aria-label={`Again, at ${nextCount} pieces`}
             onClick={onAgainHarder}
-            className="min-h-[44px] rounded-[var(--radius-md)] border border-[var(--accent)] px-3 text-[13px] text-[var(--accent)]"
+            className="touch-target rounded-[var(--radius-md)] border border-[var(--accent)] px-3 text-2 text-[var(--accent)]"
           >
             {`Again, at ${nextCount} pieces`}
           </button>
@@ -114,16 +125,27 @@ export function CompletionCard({
         <button type="button" aria-label="Save" onClick={download} className={secondary}>
           Save
         </button>
-        <button type="button" aria-label="New puzzle" onClick={onNewPuzzle} className={secondary}>
-          New puzzle
-        </button>
+        {firstRun ? (
+          <button
+            type="button"
+            aria-label="Today's puzzle"
+            onClick={firstRun.onDaily}
+            className={secondary}
+          >
+            Today&rsquo;s puzzle
+          </button>
+        ) : (
+          <button type="button" aria-label="New puzzle" onClick={onNewPuzzle} className={secondary}>
+            New puzzle
+          </button>
+        )}
         <button
           type="button"
-          aria-label="Done"
-          onClick={onDone}
-          className="min-h-[44px] rounded-[var(--radius-md)] bg-[var(--accent)] px-3 text-[13px] text-[var(--mat-void)]"
+          aria-label={firstRun ? 'Now use your own photo' : 'Done'}
+          onClick={firstRun ? firstRun.onOwnPhoto : onDone}
+          className="touch-target rounded-[var(--radius-md)] bg-[var(--accent)] px-3 text-2 text-[var(--mat-void)]"
         >
-          Done
+          {firstRun ? 'Now use your own photo' : 'Done'}
         </button>
       </div>
     </div>

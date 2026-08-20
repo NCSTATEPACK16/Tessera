@@ -41,8 +41,12 @@ import type { LibraryEntry } from '@/persist/library';
 import { loadPhoto, savePhoto } from '@/persist/photos';
 import { captureThumbnail } from '@/persist/thumbnail';
 import type { SessionSnapshot } from '@/persist/snapshot';
-import { listCompletions, saveCompletion } from '@/persist/completions';
+import { completionCount, listCompletions, saveCompletion } from '@/persist/completions';
 import type { CompletionRecord } from '@/persist/completions';
+import { hasSeenFirstRunSync, loadFirstRunDone, markFirstRunDone } from '@/persist/first-run';
+import { FIRST_RUN_PIECES, firstRunStart, firstRunTick } from '@/play/first-run';
+import type { FirstRunBeat, FirstRunState } from '@/play/first-run';
+import { FirstRunOverlay } from './FirstRun';
 import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
 import { Library } from './Library';
@@ -156,6 +160,32 @@ const DAILY_CONFIG = {
   assists: DEFAULT_PUZZLE_CONFIG.assists,
 } as const;
 
+/**
+ * §16: no mode picker, and "rotation never appears in the guided first
+ * puzzle." Twelve passes straight through — `PuzzleConfig.targetCount` is a
+ * plain number, so `PIECE_COUNT_LADDER` is not widened and 12 never becomes
+ * an offerable count on the setup screen. Zen, so the rescue hint at eight
+ * can never run out of budget mid-tutorial. `generous` so the first snap
+ * lands.
+ */
+const FIRST_RUN_CONFIG = {
+  targetCount: FIRST_RUN_PIECES,
+  mode: 'zen',
+  rotation: false,
+  difficulty: 'generous',
+  assists: DEFAULT_PUZZLE_CONFIG.assists,
+} as const;
+
+/**
+ * The guided twelve's fixed photo. No "hero" designation exists in the
+ * curated manifest — a judgment call, not a spec requirement: the "easy"
+ * rating on the same "wide and calm" shelf `banff-sunrise-lake` (the
+ * manifest's first entry, but rated "hard") sits on, so the very first
+ * puzzle a new player sees is never the harder cut.
+ */
+const FIRST_RUN_PHOTO_ID = 'mountain-lake-reflection';
+const FIRST_RUN_PUZZLE_ID = 'first-run';
+
 export function App(): React.ReactElement {
   const boardRef = useRef<HTMLDivElement>(null);
   const trayRef = useRef<HTMLDivElement>(null);
@@ -190,8 +220,21 @@ export function App(): React.ReactElement {
    * IndexedDB read on mount that decides between the library and the picker —
    * a first-time player must never see an empty library apologising to them.
    */
-  type Screen = 'checking' | 'daily' | 'library' | 'setup' | 'playing' | 'wall';
+  type Screen = 'checking' | 'daily' | 'library' | 'setup' | 'playing' | 'first-run' | 'wall';
   const [screen, setScreen] = useState<Screen>('checking');
+
+  /**
+   * §16's coach. `firstRunModel` is the machine's own opaque state (latches);
+   * `trayRevealed` is separate React state because the tray-reveal *beat*
+   * fires only on the one tick it happens, but the tray, once mounted, must
+   * never un-mount — a later beat like 'playing' or 'hint-rescue' must not
+   * take it away.
+   */
+  const [firstRunBeat, setFirstRunBeat] = useState<FirstRunBeat>('cold-open');
+  const [trayRevealed, setTrayRevealed] = useState(false);
+  const firstRunModel = useRef<FirstRunState>(firstRunStart());
+  const lastPlacementAt = useRef(Date.now());
+  const prevFirstRunPlaced = useRef(0);
   /** The collection wall's rows, loaded on entry; the screen to return to. */
   const [completions, setCompletions] = useState<readonly CompletionRecord[]>([]);
   const beforeWall = useRef<Screen>('setup');
@@ -233,8 +276,14 @@ export function App(): React.ReactElement {
 
   const [setupPhase, setSetupPhase] = useState<SetupPhase>({ kind: 'picker', error: null });
   const [playConfig, setPlayConfig] = useState<
-    | ({ source: ImageBitmap; seed: number; puzzleId: string; photoId: string | null } &
-        PuzzleConfig)
+    | ({
+        source: ImageBitmap;
+        seed: number;
+        puzzleId: string;
+        photoId: string | null;
+        /** §16's guided twelve: pieces begin loose on the mat, not in the tray. */
+        startInTray?: boolean;
+      } & PuzzleConfig)
     | null
   >(null);
   /** The composed Puzzle Card PNG and its meta, ready once a puzzle completes. */
@@ -321,14 +370,96 @@ export function App(): React.ReactElement {
     }
   }, [docked]);
 
-  // The one read that decides the entry screen. Resolves in a single
-  // IndexedDB round trip, fast enough that `'checking'` renders nothing
-  // rather than a spinner that would flash for one frame.
+  // The one read that decides the entry screen. Three conditions, not one —
+  // each alone is wrong: a player who finished the guided twelve and then
+  // deleted everything must not be taught it again, and neither must one who
+  // has a real completion on the wall but no puzzle currently in progress.
   useEffect(() => {
-    void listLibrary().then((entries) => {
+    // The synchronous cache first: when it already says "seen", there is no
+    // reason to make the IndexedDB round trip below wait on a read whose
+    // answer is already known, and it can never be wrong in the direction
+    // that matters — a stale/missing cache only ever costs one extra read,
+    // never traps a returning player.
+    const cachedDone = hasSeenFirstRunSync();
+    void (async () => {
+      const [entries, completions, firstRunDone] = await Promise.all([
+        listLibrary(),
+        completionCount(),
+        cachedDone ? Promise.resolve(true) : loadFirstRunDone(),
+      ]);
       setLibraryEntries(entries);
+
+      if (entries.length === 0 && completions === 0 && !firstRunDone) {
+        const source = await renderCuratedPhoto(FIRST_RUN_PHOTO_ID);
+        setRestoreSnapshot(null);
+        photoSavedRef.current = false;
+        setLiveAssists(FIRST_RUN_CONFIG.assists);
+        setLiveDifficulty(FIRST_RUN_CONFIG.difficulty);
+        setPlayConfig({
+          source,
+          seed: seedFromPuzzleId(FIRST_RUN_PUZZLE_ID),
+          puzzleId: FIRST_RUN_PUZZLE_ID,
+          photoId: FIRST_RUN_PHOTO_ID,
+          targetCount: FIRST_RUN_CONFIG.targetCount,
+          mode: FIRST_RUN_CONFIG.mode,
+          rotation: FIRST_RUN_CONFIG.rotation,
+          difficulty: FIRST_RUN_CONFIG.difficulty,
+          assists: FIRST_RUN_CONFIG.assists,
+          startInTray: false,
+        });
+        setScreen('first-run');
+        return;
+      }
+
       setScreen(entries.length > 0 ? 'library' : 'setup');
-    });
+    })();
+  }, []);
+
+  // Resets the coach's idle clock whenever `summary.placed` actually rises —
+  // the only time-based threshold §16 has is twenty seconds, so this is the
+  // one place that reads the wall clock.
+  useEffect(() => {
+    if (screen !== 'first-run') return;
+    if (summary.placed > prevFirstRunPlaced.current) lastPlacementAt.current = Date.now();
+    prevFirstRunPlaced.current = summary.placed;
+  }, [screen, summary.placed]);
+
+  // The coach's tick — a 1s interval, not per frame: the only time-based
+  // threshold is twenty seconds, and a per-frame tick would violate "an idle
+  // board draws nothing" for no benefit. Ticks immediately on mount and on
+  // every placement change too, so a reveal never waits up to a second.
+  useEffect(() => {
+    if (screen !== 'first-run') return;
+
+    const tick = (): void => {
+      const out = firstRunTick(firstRunModel.current, {
+        placed: summary.placed,
+        total: summary.total,
+        msSinceLastPlacement: Date.now() - lastPlacementAt.current,
+        skipped: false,
+      });
+      firstRunModel.current = out.state;
+      setFirstRunBeat(out.beat);
+      if (out.state.trayRevealed) setTrayRevealed(true);
+      if (out.fireHint) runtime.current?.fireHint(1);
+    };
+
+    tick();
+    const interval = window.setInterval(tick, 1000);
+    return () => window.clearInterval(interval);
+  }, [screen, summary.placed, summary.total]);
+
+  /** §16: skip is reachable from any beat. Writes no completion. */
+  const handleFirstRunSkip = useCallback((): void => {
+    void markFirstRunDone();
+    runtime.current?.interrupt();
+    setSetupPhase({ kind: 'picker', error: null });
+    setScreen('setup');
+    setPlayConfig(null);
+    void saveInFlight.current
+      .catch(() => {})
+      .then(() => listLibrary())
+      .then(setLibraryEntries);
   }, []);
 
   // Settle on open, once: `settle` walks up to yesterday, spending banked
@@ -638,6 +769,11 @@ export function App(): React.ReactElement {
       });
     }
     await deleteLibraryEntry(playConfig.puzzleId);
+    // §16: finishing the guided twelve is a real completion, so it earns the
+    // same "never taught again" write every skip already gets — one gate,
+    // covers every action this card offers (Done, New puzzle, or the
+    // first-run-only pair below).
+    if (playConfig.puzzleId === FIRST_RUN_PUZZLE_ID) void markFirstRunDone();
   }, [playConfig, daily, summary.elapsedMs, summary.total, summary.cleanRun]);
 
   const clearCard = useCallback((): void => {
@@ -675,6 +811,43 @@ export function App(): React.ReactElement {
     setPlayConfig(null);
   }, [playConfig, commitCompletion, clearCard]);
 
+  /** §16's primary next step: record the finish, then straight to a real photo. */
+  const handleFirstRunOwnPhoto = handleNewPuzzle;
+
+  /**
+   * §16's secondary next step: record the finish, then straight into today's
+   * puzzle. Never the "resume an existing daily" branch `handleStartDaily`
+   * also carries — the guided twelve is, by construction, the only puzzle
+   * that has ever existed in this profile, so today's daily cannot already
+   * have a library entry yet.
+   */
+  const handleFirstRunDaily = useCallback(async (): Promise<void> => {
+    if (!playConfig) return;
+    await commitCompletion();
+    const source = await renderCuratedPhoto(daily.photoId);
+    const entries = await listLibrary();
+    originScreen.current = 'daily';
+    setRestoreSnapshot(null);
+    photoSavedRef.current = false;
+    setDailyResult(null);
+    clearCard();
+    setLibraryEntries(entries);
+    setLiveAssists(DAILY_CONFIG.assists);
+    setLiveDifficulty(DAILY_CONFIG.difficulty);
+    setPlayConfig({
+      source,
+      seed: daily.seed,
+      puzzleId: daily.puzzleId,
+      photoId: daily.photoId,
+      targetCount: daily.targetCount,
+      mode: DAILY_CONFIG.mode,
+      rotation: DAILY_CONFIG.rotation,
+      difficulty: DAILY_CONFIG.difficulty,
+      assists: DAILY_CONFIG.assists,
+    });
+    setScreen('playing');
+  }, [playConfig, commitCompletion, clearCard, daily]);
+
   const openCollection = useCallback(async (): Promise<void> => {
     setCompletions(await listCompletions());
     beforeWall.current = screen;
@@ -699,6 +872,7 @@ export function App(): React.ReactElement {
       rotation: playConfig.rotation,
       mode: playConfig.mode,
       assists: playConfig.assists,
+      ...(playConfig.startInTray !== undefined ? { startInTray: playConfig.startInTray } : {}),
       ...(restoreSnapshot ? { restore: { snapshot: restoreSnapshot } } : {}),
       onSave: (rt, canvas) => {
         saveInFlight.current = handleAutosave(rt, canvas);
@@ -872,6 +1046,16 @@ export function App(): React.ReactElement {
     root.setProperty('--color-accent-bloom', summary.accent.accentBloom);
     root.setProperty('--color-accent-tray', summary.accent.accentTray);
   }, [summary.accent]);
+
+  // §C Track 3: the one place comfort's 60pt control-target retarget happens.
+  // `theme.css`'s `--touch-min` is already what every button and `.touch-target`
+  // element reads — flipping this attribute is the whole mechanism. No puzzle
+  // configured yet (library/setup screens) reads as comfort off, same as
+  // `DEFAULT_PUZZLE_CONFIG.assists.comfort`.
+  useEffect(() => {
+    const comfort = (liveAssists ?? playConfig?.assists)?.comfort ?? false;
+    document.documentElement.toggleAttribute('data-comfort', comfort);
+  }, [liveAssists, playConfig?.assists]);
 
   // -- the tray --------------------------------------------------------------
 
@@ -1079,6 +1263,18 @@ export function App(): React.ReactElement {
               {...(isDailyPuzzleId(playConfig.puzzleId) && dailyResult
                 ? { daily: dailyResult }
                 : {})}
+              {...(playConfig.puzzleId === FIRST_RUN_PUZZLE_ID
+                ? {
+                    firstRun: {
+                      onOwnPhoto: () => {
+                        void handleFirstRunOwnPhoto();
+                      },
+                      onDaily: () => {
+                        void handleFirstRunDaily();
+                      },
+                    },
+                  }
+                : {})}
               onAgainHarder={() => {
                 void handleAgainHarder();
               }}
@@ -1126,48 +1322,69 @@ export function App(): React.ReactElement {
               autoFocus
               aria-label="Group name"
               defaultValue={runtime.current?.groupLabel(renaming) ?? ''}
-              className="min-h-[44px] rounded-[6px] bg-transparent px-[8px] font-[var(--font-data)] text-[14px]"
+              className="touch-target rounded-[6px] bg-transparent px-[8px] font-[var(--font-data)] text-2"
               onKeyDown={(event) => {
                 if (event.key === 'Escape') setRenaming(null);
               }}
             />
-            <button type="submit" className="min-h-[44px] px-[12px] text-[14px]">
+            <button type="submit" className="touch-target px-[12px] text-2">
               Rename
             </button>
           </form>
         )}
+
+        {screen === 'first-run' && summary.status !== 'complete' && (
+          <FirstRunOverlay
+            beat={firstRunBeat}
+            onSkip={handleFirstRunSkip}
+            comfort={(liveAssists ?? playConfig?.assists)?.comfort ?? false}
+            onToggleComfort={() => {
+              const assists = liveAssists ?? playConfig?.assists;
+              if (!assists) return;
+              const next = { ...assists, comfort: !assists.comfort };
+              setLiveAssists(next);
+              runtime.current?.setAssists(next);
+            }}
+          />
+        )}
       </div>
 
-      <Tray
-        rootRef={trayRef}
-        shelfRef={shelfRef}
-        docked={docked}
-        width={chrome.trayWidth}
-        detent={chrome.detent}
-        onWidth={chrome.setTrayWidth}
-        onDetent={chrome.setDetent}
-        lens={chrome.lens}
-        lensArg={chrome.lensArg}
-        counts={view.counts}
-        bins={tray?.bins ?? []}
-        binCount={binCount}
-        onPick={(lens, arg) => chrome.setLens(lens, arg ?? null)}
-        ids={view.ids}
-        remaining={summary.total - summary.placed}
-        bitmapOf={(id) => runtime.current?.bitmapOf(id) ?? null}
-        isEdge={(id) => tray?.isEdge(id) ?? false}
-        isOnMat={(id) => session?.locationOf(id) === 'mat'}
-        onPullOut={(pieceId, event) => runtime.current?.pullFromTray(pieceId, event) ?? false}
-        onLocate={(id) => runtime.current?.locate(id)}
-        dragging={dragging}
-        onPullSelection={(pieceIds) => {
-          runtime.current?.pullOut(pieceIds);
-        }}
-        onScroll={(top) => {
-          trayScrollRef.current = top;
-        }}
-        initialScrollTop={restoreSnapshot?.tray.scroll}
-      />
+      {/* §16: the tray is genuinely not mounted before the reveal beat —
+          "slides in on its own" means absent, not collapsed. Ordinary play
+          (screen !== 'first-run') is unaffected. */}
+      {(screen !== 'first-run' || trayRevealed) && (
+        <Tray
+          rootRef={trayRef}
+          shelfRef={shelfRef}
+          docked={docked}
+          width={chrome.trayWidth}
+          detent={chrome.detent}
+          onWidth={chrome.setTrayWidth}
+          onDetent={chrome.setDetent}
+          lens={chrome.lens}
+          lensArg={chrome.lensArg}
+          counts={view.counts}
+          bins={tray?.bins ?? []}
+          binCount={binCount}
+          onPick={(lens, arg) => chrome.setLens(lens, arg ?? null)}
+          ids={view.ids}
+          remaining={summary.total - summary.placed}
+          bitmapOf={(id) => runtime.current?.bitmapOf(id) ?? null}
+          isEdge={(id) => tray?.isEdge(id) ?? false}
+          isOnMat={(id) => session?.locationOf(id) === 'mat'}
+          onPullOut={(pieceId, event) => runtime.current?.pullFromTray(pieceId, event) ?? false}
+          onLocate={(id) => runtime.current?.locate(id)}
+          dragging={dragging}
+          onPullSelection={(pieceIds) => {
+            runtime.current?.pullOut(pieceIds);
+          }}
+          onScroll={(top) => {
+            trayScrollRef.current = top;
+          }}
+          initialScrollTop={restoreSnapshot?.tray.scroll}
+          pulseLenses={screen === 'first-run'}
+        />
+      )}
 
       {/* An overlay, never a replacement: the board stays mounted underneath,
           so pausing does not tear down `PlayRuntime` and re-cut on resume. */}

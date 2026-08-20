@@ -116,7 +116,7 @@ export function PieceGrid({
   return (
     <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[12px]">
       {ids.length === 0 ? (
-        <p className="px-[4px] py-[24px] text-[14px] text-[var(--ink-muted)]">
+        <p className="px-[4px] py-[24px] text-2 text-[var(--ink-muted)]">
           Nothing under this lens. Every other one is a tap away.
         </p>
       ) : (
