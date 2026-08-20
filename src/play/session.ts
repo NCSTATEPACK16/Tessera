@@ -486,8 +486,42 @@ export class PlaySession {
     this.emit({ type: 'grab', clusterId });
   }
 
+  /**
+   * §B: a hard, invisible boundary — soft resistance, the same technique
+   * `clampZoom` uses for the zoom limits, applied to position. Centered on the
+   * board frame and expanded by a margin that scales with piece count, so a
+   * 12-piece puzzle stays easy to reach and a 250-piece puzzle has room to
+   * spread pieces out. Margin is in world units, which are piece widths
+   * (CLAUDE.md's coordinate-space table), so no further conversion.
+   */
+  private dragBounds(): Rect {
+    const margin = Math.min(18, Math.max(4, Math.sqrt(this.options.pieces.length) * 0.8));
+    return {
+      x: -margin,
+      y: -margin,
+      w: this.options.boardW + margin * 2,
+      h: this.options.boardH + margin * 2,
+    };
+  }
+
   dragBy(clusterId: number, dx: number, dy: number): void {
-    this.board.moveClusterBy(clusterId, dx, dy);
+    const bounds = this.dragBounds();
+    const cluster = this.board.cluster(clusterId);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const pieceId of cluster.pieceIds) {
+      const piece = this.board.piece(pieceId);
+      const origin = this.board.worldOf(pieceId);
+      minX = Math.min(minX, origin.x);
+      minY = Math.min(minY, origin.y);
+      maxX = Math.max(maxX, origin.x + piece.w);
+      maxY = Math.max(maxY, origin.y + piece.h);
+    }
+    const clampedDx = clampAxis(dx, minX, maxX, bounds.x, bounds.x + bounds.w);
+    const clampedDy = clampAxis(dy, minY, maxY, bounds.y, bounds.y + bounds.h);
+    this.board.moveClusterBy(clusterId, clampedDx, clampedDy);
     this.syncCluster(clusterId);
   }
 
@@ -868,4 +902,25 @@ export class PlaySession {
 function addRotated(origin: Point, offset: Point, rot: number): Point {
   const turned = rotateVector(offset, rot);
   return { x: origin.x + turned.x, y: origin.y + turned.y };
+}
+
+/**
+ * How far `delta` may move a span currently at `[min, max]` before it would
+ * cross outside `[boundMin, boundMax]`. `Math.max(0, ...)` / `Math.min(0,
+ * ...)` guard the case where the span is already outside the bound (should
+ * not happen given this runs on every drag, but a defensive clamp here is one
+ * line, and the alternative — letting `boundMax - max` go negative — would
+ * yank an already-out-of-bounds cluster backward instead of simply refusing
+ * to move it further out).
+ */
+function clampAxis(
+  delta: number,
+  min: number,
+  max: number,
+  boundMin: number,
+  boundMax: number,
+): number {
+  if (delta > 0) return Math.min(delta, Math.max(0, boundMax - max));
+  if (delta < 0) return Math.max(delta, Math.min(0, boundMin - min));
+  return delta;
 }

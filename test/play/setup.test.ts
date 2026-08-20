@@ -61,18 +61,23 @@ describe('clampGhostOpacity', () => {
 });
 
 describe('DEFAULT_PUZZLE_CONFIG', () => {
-  it('defaults every assist off/neutral, including comfort', () => {
+  it('defaults every assist off/neutral, including comfort, but shows the reference panel', () => {
     expect(DEFAULT_PUZZLE_CONFIG.assists).toEqual({
       ghostOpacity: 0,
       edgeHighlight: false,
       largePieceMode: false,
       comfort: false,
+      referencePanelOpen: true,
     });
   });
 
   it('defaults rotation off and mode classic', () => {
     expect(DEFAULT_PUZZLE_CONFIG.rotation).toBe(false);
     expect(DEFAULT_PUZZLE_CONFIG.mode).toBe('classic');
+  });
+
+  it('defaults the reference panel open', () => {
+    expect(DEFAULT_PUZZLE_CONFIG.assists.referencePanelOpen).toBe(true);
   });
 });
 

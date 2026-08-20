@@ -147,6 +147,19 @@ async function decodeUpload(file: File): Promise<ImageBitmap> {
 }
 
 /**
+ * A settling spring is ~120ms (`CLAUDE.md`'s "Snap spring" row), so this
+ * resolves in one or two frames in practice. The 500ms cap is defense against
+ * a future bug in the settle logic hanging card composition forever — it must
+ * never block the player from finishing.
+ */
+async function waitForSettled(rt: PlayRuntime): Promise<void> {
+  const deadline = performance.now() + 500;
+  while (rt.animating && performance.now() < deadline) {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+}
+
+/**
  * The daily's fixed configuration. Everyone plays the same puzzle, so there is
  * no setup screen in the daily flow and nothing here is a player choice.
  * Classic (the hint economy is part of the shared challenge), rotation off
@@ -721,6 +734,31 @@ export function App(): React.ReactElement {
   }, [playConfig]);
 
   /**
+   * §C: a fresh decode of the source photo for the box-lid reference panel.
+   * Never `playConfig.source` — that bitmap is handed to the cutter worker
+   * and detached before `start()` runs (see the photo-save effect below),
+   * so by the time a puzzle is playable it is unusable. `photoWrite.current`
+   * is the in-flight, fire-and-forget `savePhoto` write kicked off once per
+   * puzzle; awaiting it first is what makes `loadPhoto` reliable instead of
+   * racing an IndexedDB row that may not exist yet on a freshly started
+   * puzzle. Memoized on `puzzleId` alone — `ReferencePanel`'s effect depends
+   * on this function's identity, and `App` re-renders far more often than
+   * the puzzle changes.
+   */
+  const loadReferenceBitmap = useCallback((): Promise<ImageBitmap> => {
+    const puzzleId = playConfig!.puzzleId;
+    return photoWrite.current.then(() => loadPhoto(puzzleId));
+  }, [playConfig?.puzzleId]);
+
+  const handleReferenceToggle = useCallback((): void => {
+    const assists = liveAssists ?? playConfig?.assists;
+    if (!assists) return;
+    const next = { ...assists, referencePanelOpen: !assists.referencePanelOpen };
+    setLiveAssists(next);
+    runtime.current?.setAssists(next);
+  }, [liveAssists, playConfig?.assists]);
+
+  /**
    * The completion card's meta, assembled from the frozen run numbers and the
    * photo. A resumed daily recovers its `photoId` from the date, since the
    * snapshot does not store it (§15 attribution still shows on a resumed daily).
@@ -755,6 +793,7 @@ export function App(): React.ReactElement {
       const photoId =
         playConfig.photoId ?? (isDailyPuzzleId(playConfig.puzzleId) ? daily.photoId : null);
       const curated = photoId ? curatedPhotoById(photoId) : undefined;
+      await waitForSettled(rt);
       const thumbnailBlob = await captureThumbnail(rt.boardCanvas());
       await saveCompletion({
         puzzleId: playConfig.puzzleId,
@@ -955,6 +994,11 @@ export function App(): React.ReactElement {
       // Fonts first: `ctx.font` falls back silently if the webfont has not
       // arrived, and a card in the wrong typeface is a defect nothing reports.
       await document.fonts.ready;
+      // And the board itself: a piece that just completed the puzzle is still
+      // mid-spring on the dynamic layer for ~120ms, absent from the static
+      // layer this reads from. See `waitForSettled`.
+      await waitForSettled(rt);
+      if (cancelled) return;
       const blob = await composeCard(rt.boardCanvas(), meta);
       if (cancelled) return;
       setCardBlob(blob);
@@ -1351,8 +1395,16 @@ export function App(): React.ReactElement {
 
       {/* §16: the tray is genuinely not mounted before the reveal beat —
           "slides in on its own" means absent, not collapsed. Ordinary play
-          (screen !== 'first-run') is unaffected. */}
-      {(screen !== 'first-run' || trayRevealed) && (
+          (screen !== 'first-run') is unaffected.
+
+          Also gone once the puzzle is complete: nothing here — the piece
+          grid, the lens chips, the box-lid reference panel — is relevant
+          once there is nothing left to place, and left mounted it sat
+          beside or behind the completion card (docked: a flex sibling
+          eating half the screen; phone: the sheet's own overlay), which is
+          how the reference thumbnail ended up visible next to "Your photo"
+          on the completion screen. */}
+      {summary.status !== 'complete' && (screen !== 'first-run' || trayRevealed) && (
         <Tray
           rootRef={trayRef}
           shelfRef={shelfRef}
@@ -1383,6 +1435,9 @@ export function App(): React.ReactElement {
           }}
           initialScrollTop={restoreSnapshot?.tray.scroll}
           pulseLenses={screen === 'first-run'}
+          referenceOpen={(liveAssists ?? playConfig.assists).referencePanelOpen}
+          onReferenceToggle={handleReferenceToggle}
+          loadReferenceBitmap={loadReferenceBitmap}
         />
       )}
 

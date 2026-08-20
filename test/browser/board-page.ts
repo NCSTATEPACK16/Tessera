@@ -39,6 +39,29 @@ const CUT_TIMEOUT_MS = 30_000;
  */
 const HOLD_SLACK_MS = 250;
 
+/**
+ * Reach the picker from wherever a fresh, empty profile actually lands.
+ *
+ * §16: a truly fresh profile (empty library, zero completions, no first-run
+ * flag) opens on the guided twelve, not the picker — every spec whose own
+ * fresh-profile setup predates that feature and waits on the picker directly
+ * needs this, not just `BoardPage.open()`. That entry-screen decision is
+ * itself async (it awaits the library and completion-count IndexedDB reads
+ * before choosing), so the picker and the first-run overlay are both "not
+ * there yet" for a beat after reload — racing for whichever shows up first,
+ * rather than probing one on a short fixed timeout, is what keeps this from
+ * settling on the wrong branch before the app has decided.
+ */
+export async function reachPicker(page: Page): Promise<void> {
+  const picker = page.getByRole('button', { name: 'Choose this photo' });
+  const skip = page.getByRole('button', { name: 'Skip' });
+  await Promise.race([picker.waitFor({ state: 'visible' }), skip.waitFor({ state: 'visible' })]);
+  if (await skip.isVisible()) {
+    await skip.click();
+    await picker.waitFor({ state: 'visible' });
+  }
+}
+
 export class BoardPage {
   readonly tray: Locator;
   readonly chips: Locator;
@@ -97,6 +120,7 @@ export class BoardPage {
         }),
     );
     await page.reload({ waitUntil: 'load' });
+    await reachPicker(page);
     await page.getByRole('button', { name: 'Choose this photo' }).click();
     await page.getByRole('button', { name: 'Use this photo' }).click();
     // Step 5b's setup screen sits between the crop and the cut. Every default

@@ -9,7 +9,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage } from './board-page';
+import { BoardPage, reachPicker } from './board-page';
 
 /**
  * A clean database and the picker, which is where a first visit lands.
@@ -32,6 +32,10 @@ async function freshVisit(page: import('@playwright/test').Page): Promise<void> 
       }),
   );
   await page.reload({ waitUntil: 'load' });
+  // §16: a truly fresh profile lands on the guided twelve, not the picker
+  // directly — see `reachPicker`'s own doc for why this races rather than
+  // waits on the picker alone.
+  await reachPicker(page);
   await expect(page.getByRole('button', { name: 'Choose this photo' })).toBeVisible();
 }
 
