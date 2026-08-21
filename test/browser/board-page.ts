@@ -352,13 +352,22 @@ export class BoardPage {
    * Drag a chip straight down the tray with a genuine **touch** pointer.
    *
    * Playwright's `mouse` cannot produce `pointerType: 'touch'` and its
-   * `touchscreen` can only tap, so this drives CDP directly:
-   * `Input.synthesizeScrollGesture` with `gestureSourceType: 'touch'` emits real
-   * touch events through Chromium's own gesture recogniser, which is the only
-   * way to get both `pointerType === 'touch'` on the chip *and* native
-   * scrolling out of one gesture. A mouse-driven version of this test would
-   * exercise the wrong branch of `TrayDrag.move` and prove nothing: the axis
-   * rule is deliberately touch-only, because a mouse never scrolls from a drag.
+   * `touchscreen` can only tap, so this drives CDP directly. A mouse-driven
+   * version of this test would exercise the wrong branch of `TrayDrag.move` and
+   * prove nothing: the axis rule is deliberately touch-only, because a mouse
+   * never scrolls from a drag.
+   *
+   * **This dispatches the touch points itself rather than asking Chromium to
+   * synthesise a gesture.** `Input.synthesizeScrollGesture` was the obvious
+   * call and it works on macOS, but on the Linux CI runner it delivers
+   * `touchStart` and `touchEnd` with *no `touchMove` in between* — so there is
+   * no pan for the gesture recogniser to act on, the tray never scrolls, and
+   * the test failed on CI from the day CI was introduced while passing locally.
+   * That was measured, not guessed: an instrumented run confirmed identical
+   * layout, identical `scrollHeight`/`clientHeight`, a working programmatic
+   * scroll and a correct `touch-action: pan-y` on the chip, with the event log
+   * as the single difference. Explicit `Input.dispatchTouchEvent` steps remove
+   * the platform-dependent step entirely.
    *
    * `Emulation.setTouchEmulationEnabled` is sent explicitly so this works at the
    * dock viewport too, where the device descriptor has `hasTouch: false`.
@@ -369,17 +378,29 @@ export class BoardPage {
     const box = await this.chip(pieceId).boundingBox();
     expect(box, `piece ${pieceId} is not a mounted chip`).not.toBeNull();
 
+    const x = box!.x + box!.width / 2;
+    const startY = box!.y + box!.height / 2;
+
     const cdp = await this.page.context().newCDPSession(this.page);
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
-    await cdp.send('Input.synthesizeScrollGesture', {
-      x: box!.x + box!.width / 2,
-      y: box!.y + box!.height / 2,
-      xDistance: 0,
-      // Negative is a finger travelling *up* the screen, which scrolls down.
-      yDistance: -distance,
-      gestureSourceType: 'touch',
-      speed: 800,
+
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x, y: startY }],
     });
+    // Enough intermediate points that this reads as a pan rather than a flick:
+    // the recogniser needs several moves past the slop threshold before it
+    // takes over the scroll, and one large jump can be discarded as noise.
+    const STEPS = 10;
+    for (let step = 1; step <= STEPS; step++) {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        // Negative is a finger travelling *up* the screen, which scrolls down.
+        touchPoints: [{ x, y: startY - (distance * step) / STEPS }],
+      });
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
     await this.page.waitForTimeout(400);
     await cdp.detach();
 
