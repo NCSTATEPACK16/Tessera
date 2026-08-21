@@ -10,7 +10,7 @@
 
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { BoardPage, boardInk } from './board-page';
+import { BoardPage, boardInk, reachPicker } from './board-page';
 
 async function toSetupScreen(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -33,6 +33,11 @@ async function toSetupScreen(page: Page): Promise<void> {
       }),
   );
   await page.reload({ waitUntil: 'load' });
+  // §16: the first of the two calls in a test lands on a truly fresh
+  // profile, which opens on the guided twelve rather than the picker — see
+  // `reachPicker`'s own doc. The second call has an autosaved entry by then,
+  // so this is a no-op race that resolves on the picker branch immediately.
+  await reachPicker(page);
   await page.getByRole('button', { name: 'Choose this photo' }).click();
   await page.getByRole('button', { name: 'Use this photo' }).click();
   await expect(page.getByRole('button', { name: 'Start cutting' })).toBeVisible();

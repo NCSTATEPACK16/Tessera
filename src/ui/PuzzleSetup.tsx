@@ -72,6 +72,7 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
         // Comfort is toggled later, mid-play, from the pause sheet — not a
         // choice offered at setup.
         comfort: DEFAULT_PUZZLE_CONFIG.assists.comfort,
+        referencePanelOpen: DEFAULT_PUZZLE_CONFIG.assists.referencePanelOpen,
       },
     });
   };

@@ -99,6 +99,13 @@ export interface PuzzleAssists {
   largePieceMode: boolean;
   /** §C Track 3: one flag, read by the lift, the snap floor, tremor damping, and 60pt targets. */
   comfort: boolean;
+  /**
+   * §C: the box-lid reference thumbnail docked in the tray. Shown by default
+   * so the feature is discoverable. Persisted through `SessionSnapshot.assists`
+   * — ordinary session state, not the `hasSeenFirstRunSync` localStorage
+   * carve-out.
+   */
+  referencePanelOpen: boolean;
 }
 
 export interface PuzzleConfig {
@@ -119,6 +126,7 @@ export const DEFAULT_PUZZLE_CONFIG: PuzzleConfig = {
     edgeHighlight: false,
     largePieceMode: false,
     comfort: false,
+    referencePanelOpen: true,
   },
 };
 

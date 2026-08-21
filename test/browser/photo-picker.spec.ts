@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { BoardPage } from './board-page';
+import { BoardPage, reachPicker } from './board-page';
 import { withExifOrientation } from './fixtures/exif';
 
 // A minimal valid 160x120 solid-red PNG, inlined so the spec has no on-disk
@@ -25,6 +25,9 @@ test.describe('photo picker and crop', () => {
 
   test('uploading a photo skips the curated grid and reaches the crop screen', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
+    // §16: a fresh Playwright context is a fresh profile, which lands on the
+    // guided twelve rather than the picker — see `reachPicker`'s own doc.
+    await reachPicker(page);
     await page.getByRole('button', { name: 'Upload photo' }).click();
 
     const input = page.getByLabel('Upload a photo');
@@ -46,6 +49,9 @@ test.describe('photo picker and crop', () => {
 
   test('a corrupt upload shows an inline error and stays on the picker', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
+    // §16: a fresh Playwright context is a fresh profile, which lands on the
+    // guided twelve rather than the picker — see `reachPicker`'s own doc.
+    await reachPicker(page);
     await page.getByRole('button', { name: 'Upload photo' }).click();
 
     const input = page.getByLabel('Upload a photo');
@@ -62,6 +68,9 @@ test.describe('photo picker and crop', () => {
 
   test('a HEIC upload gets the HEIC-specific error, not the generic one', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
+    // §16: a fresh Playwright context is a fresh profile, which lands on the
+    // guided twelve rather than the picker — see `reachPicker`'s own doc.
+    await reachPicker(page);
     await page.getByRole('button', { name: 'Upload photo' }).click();
 
     const input = page.getByLabel('Upload a photo');
@@ -79,6 +88,9 @@ test.describe('photo picker and crop', () => {
 
   test('a HEIC mislabelled as a JPEG is still routed to the HEIC decoder', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
+    // §16: a fresh Playwright context is a fresh profile, which lands on the
+    // guided twelve rather than the picker — see `reachPicker`'s own doc.
+    await reachPicker(page);
     await page.getByRole('button', { name: 'Upload photo' }).click();
 
     // The case the container sniff exists for: iOS share paths and Windows
@@ -119,6 +131,9 @@ test.describe('photo picker and crop', () => {
 
   test('a JPEG upload never wakes the HEIC decoder', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
+    // §16: a fresh Playwright context is a fresh profile, which lands on the
+    // guided twelve rather than the picker — see `reachPicker`'s own doc.
+    await reachPicker(page);
 
     // The other half of the sniff's job, and the expensive half to get wrong:
     // libheif is ~3 MB of WASM, and the happy path must never pay for it.
@@ -140,6 +155,9 @@ test.describe('photo picker and crop', () => {
 
   test('a portrait JPEG with EXIF orientation 6 is not sliced sideways', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
+    // §16: a fresh Playwright context is a fresh profile, which lands on the
+    // guided twelve rather than the picker — see `reachPicker`'s own doc.
+    await reachPicker(page);
     await page.getByRole('button', { name: 'Upload photo' }).click();
 
     // A 200×300 portrait tagged orientation 6 ("rotate 90° CW") is *stored*
@@ -176,6 +194,9 @@ test.describe('photo picker and crop', () => {
 
   test('curated photos are grouped by feeling, not by category', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
+    // §16: a fresh Playwright context is a fresh profile, which lands on the
+    // guided twelve rather than the picker — see `reachPicker`'s own doc.
+    await reachPicker(page);
     // The three §15 shelves, by their human labels.
     await expect(page.getByRole('heading', { name: 'Wide and calm' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Dense and busy' })).toBeVisible();
@@ -184,6 +205,9 @@ test.describe('photo picker and crop', () => {
 
   test('rotate cycles in 90-degree steps without breaking the crop', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
+    // §16: a fresh Playwright context is a fresh profile, which lands on the
+    // guided twelve rather than the picker — see `reachPicker`'s own doc.
+    await reachPicker(page);
     await page.getByRole('button', { name: 'Choose this photo' }).click();
 
     const rotate = page.getByRole('button', { name: 'Rotate 90 degrees' });

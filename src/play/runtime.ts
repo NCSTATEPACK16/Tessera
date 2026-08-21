@@ -57,6 +57,7 @@ const DEFAULT_ASSISTS: PuzzleAssists = {
   edgeHighlight: false,
   largePieceMode: false,
   comfort: false,
+  referencePanelOpen: true,
 };
 
 /**
@@ -264,6 +265,13 @@ export class PlayRuntime {
     this.liveDifficulty = floorDifficulty(this.liveDifficulty, assists.comfort);
     this.session?.setDifficulty(this.liveDifficulty);
     this.render();
+    // §C: `snapshot()` reads `this.liveAssists` fresh, but nothing else in
+    // this method schedules a write — only play events (snap/return/deploy)
+    // do. Without this, an assist change (the reference panel's own
+    // open/closed state included) is only ever saved as a side effect of a
+    // piece moving afterward, which is not a promise this method's callers
+    // can rely on.
+    this.scheduleSave();
   }
 
   setDifficulty(difficulty: SnapDifficulty): void {
@@ -286,7 +294,14 @@ export class PlayRuntime {
         seed: this.options.seed,
         targetCount: this.options.targetCount,
         handlers: {
+          // The worker streams results asynchronously, so a skip/leave/restart
+          // fast enough to call `destroy()` before the cut finishes can land
+          // either callback after `this.renderer` has already been torn down
+          // (`renderer.destroy()` clears its layer map) — calling `render()`
+          // or `materialise()` on it then throws "unknown layer". Same guard
+          // as the one below `await cutInWorker(...)`, just reached earlier.
           onGrid: (grid) => {
+            if (this.destroyed) return;
             this.boardW = grid.boardW;
             this.boardH = grid.boardH;
             this.pathScale = grid.scale;
@@ -296,6 +311,7 @@ export class PlayRuntime {
             this.render();
           },
           onPieces: (batch, done, total) => {
+            if (this.destroyed) return;
             this.materialise(batch);
             this.patch({ cut: { ...this.summary.cut, done, total } });
             this.render();
@@ -533,6 +549,17 @@ export class PlayRuntime {
 
     this.hintTarget = pieceId;
     this.patch({ hintTarget: pieceId });
+  }
+
+  /**
+   * True while any cluster is mid-spring. `App.tsx` polls this before reading
+   * `boardCanvas()` for the Puzzle Card or the completion thumbnail — both
+   * read the static layer, and a piece still mid-spring lives on the dynamic
+   * layer only (`PlaySession.scene()`), so composing while this is true grabs
+   * a canvas with a piece-shaped hole in it.
+   */
+  get animating(): boolean {
+    return this.session?.animating ?? false;
   }
 
   /**
