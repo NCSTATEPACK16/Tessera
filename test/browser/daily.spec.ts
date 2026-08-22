@@ -62,6 +62,10 @@ test('the hub is reachable from the library, and today’s daily is not listed t
   await board.placeViaHint(first!);
   await page.waitForTimeout(1200);
   await page.reload({ waitUntil: 'load' });
+  // A profile with history now lands on Home first (2026-08-22 spec) — this
+  // test is specifically about the library's own Daily entry point, so route
+  // through "Your Puzzles" to reach it rather than Home's own hero card.
+  await page.getByRole('button', { name: /Your Puzzles/ }).click();
 
   await expect(page.getByLabel(/Open puzzle:/).first()).toBeVisible();
   const ordinaryCards = await page.getByLabel(/Open puzzle:/).count();
@@ -116,8 +120,9 @@ test('the daily is the same board on every visit', async ({ page }) => {
 
   await page.waitForTimeout(1200);
   await page.reload({ waitUntil: 'load' });
-  // A session exists now, so the reload lands on the library; go via the hub.
-  await page.getByLabel('Daily').click();
+  // A session exists now, so the reload lands on Home (2026-08-22 spec);
+  // its own daily-preview card reaches the hub directly.
+  await page.getByRole('button', { name: /Play today.s puzzle/ }).click();
   await page.getByLabel('Continue today’s').click();
   await board.waitForCut();
 
