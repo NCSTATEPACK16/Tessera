@@ -33,7 +33,7 @@ import type { PuzzleConfig } from '@/play/setup';
 import { nextHarderCount } from '@/play/setup';
 import type { PuzzleAssists } from '@/play/setup';
 import type { SnapDifficulty } from '@/board/snap';
-import { curatedPhotoById, renderCuratedPhoto } from '@/play/curated';
+import { curatedPhotoById, curatedPhotoUrl, renderCuratedPhoto } from '@/play/curated';
 import { downscaleTarget } from '@/play/photo';
 import { seedFromPuzzleId } from '@/core/rng';
 import { deleteLibraryEntry, listLibrary, saveLibraryEntry } from '@/persist/library';
@@ -50,6 +50,7 @@ import { FirstRunOverlay } from './FirstRun';
 import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
 import { Library } from './Library';
+import { Home } from './Home';
 import { PauseSheet } from './PauseSheet';
 import { CompletionCard } from './CompletionCard';
 import { CollectionWall } from './CollectionWall';
@@ -71,6 +72,7 @@ import { loadStreak, saveStreak } from '@/persist/daily';
 import { DailyHub } from './DailyHub';
 import type { StreakTone } from './StreakFlame';
 import { DEFAULT_PUZZLE_CONFIG } from '@/play/setup';
+import { hintsAvailable } from '@/play/hints';
 import { HEIC_HEAD_BYTES, looksLikeHeic, namedLikeHeic } from '@/play/heic';
 import { decodeHeicInWorker, readHead } from '@/play/heic-client';
 
@@ -243,7 +245,15 @@ export function App(): React.ReactElement {
    * IndexedDB read on mount that decides between the library and the picker —
    * a first-time player must never see an empty library apologising to them.
    */
-  type Screen = 'checking' | 'daily' | 'library' | 'setup' | 'playing' | 'first-run' | 'wall';
+  type Screen =
+    | 'checking'
+    | 'home'
+    | 'daily'
+    | 'library'
+    | 'setup'
+    | 'playing'
+    | 'first-run'
+    | 'wall';
   const [screen, setScreen] = useState<Screen>('checking');
 
   /**
@@ -270,6 +280,8 @@ export function App(): React.ReactElement {
   const [streak, setStreak] = useState<StreakState>(() => emptyStreak());
   /** Where "Done" and "Leave" go back to. */
   const originScreen = useRef<'daily' | 'library' | 'setup'>('setup');
+  /** Home's Browse/Upload choice, read once by `<PhotoPicker>` on the next setup entry. */
+  const pickerInitialSource = useRef<'curated' | 'upload'>('curated');
   /** Guards the completion recording against re-firing on every render. */
   const recordedDaily = useRef<string | null>(null);
   const [dailyResult, setDailyResult] = useState<{ streak: number; freezeEarned: boolean } | null>(
@@ -434,7 +446,12 @@ export function App(): React.ReactElement {
         return;
       }
 
-      setScreen(entries.length > 0 ? 'library' : 'setup');
+      // Decision 2 of the Home spec: history means at least one in-progress
+      // puzzle or one completion, and a profile with history always lands on
+      // Home rather than Library — Library is still one tap away.
+      const hasHistory = entries.length > 0 || completions > 0;
+      if (hasHistory) setCompletions(await listCompletions());
+      setScreen(hasHistory ? 'home' : 'setup');
     })();
   }, []);
 
@@ -1158,6 +1175,47 @@ export function App(): React.ReactElement {
           ? 'alive'
           : 'at-risk';
 
+  if (screen === 'home') {
+    const shelved = libraryEntries.filter((entry) => entry.puzzleId !== dailyPuzzleId(today));
+    return (
+      <Home
+        dailyPreview={{
+          title: curatedPhotoById(daily.photoId)?.name ?? 'Today’s photo',
+          photoUrl: curatedPhotoUrl(daily.photoId) ?? '',
+          pieceCount: daily.targetCount,
+          resetsInMs: msUntilNextLocalMidnight(new Date()),
+          hintsIncluded: hintsAvailable(0, DAILY_CONFIG.mode),
+        }}
+        continuing={shelved.length === 1 ? shelved[0]! : null}
+        libraryCount={shelved.length}
+        streak={streakCount}
+        streakTone={streakTone}
+        weekPips={weekPips(streak, today)}
+        completions={completions}
+        onDaily={() => setScreen('daily')}
+        onContinue={(puzzleId) => {
+          void handleOpenLibraryEntry(puzzleId);
+        }}
+        onLibrary={() => setScreen('library')}
+        onBrowsePhotos={() => {
+          pickerInitialSource.current = 'curated';
+          originScreen.current = 'setup';
+          setSetupPhase({ kind: 'picker', error: null });
+          setScreen('setup');
+        }}
+        onUploadYours={() => {
+          pickerInitialSource.current = 'upload';
+          originScreen.current = 'setup';
+          setSetupPhase({ kind: 'picker', error: null });
+          setScreen('setup');
+        }}
+        onCollection={() => {
+          void openCollection();
+        }}
+      />
+    );
+  }
+
   if (screen === 'daily') {
     const todaysEntry = libraryEntries.find((entry) => entry.puzzleId === daily.puzzleId);
     return (
@@ -1191,6 +1249,7 @@ export function App(): React.ReactElement {
         }}
         onLibrary={() => setScreen('library')}
         onNewPuzzle={() => {
+          pickerInitialSource.current = 'curated';
           originScreen.current = 'setup';
           setSetupPhase({ kind: 'picker', error: null });
           setScreen('setup');
@@ -1223,6 +1282,7 @@ export function App(): React.ReactElement {
           void handleOpenLibraryEntry(puzzleId);
         }}
         onNewPuzzle={() => {
+          pickerInitialSource.current = 'curated';
           originScreen.current = 'setup';
           setSetupPhase({ kind: 'picker', error: null });
           setScreen('setup');
@@ -1238,6 +1298,7 @@ export function App(): React.ReactElement {
           onPhotoChosen={handlePhotoChosen}
           error={setupPhase.error}
           busy={setupPhase.busy ?? false}
+          initialSource={pickerInitialSource.current}
           onDaily={() => setScreen('daily')}
           onCollection={() => {
             void openCollection();
