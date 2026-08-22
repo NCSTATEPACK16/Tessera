@@ -160,6 +160,16 @@ async function waitForSettled(rt: PlayRuntime): Promise<void> {
 }
 
 /**
+ * Decorative countdown only (Home's daily-reset copy), never a date *key* —
+ * `src/daily/dates.ts`'s `localDateKey` stays the only place a local Date is
+ * read for that. This one is local to the UI layer on purpose.
+ */
+function msUntilNextLocalMidnight(now: Date): number {
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  return next.getTime() - now.getTime();
+}
+
+/**
  * The daily's fixed configuration. Everyone plays the same puzzle, so there is
  * no setup screen in the daily flow and nothing here is a player choice.
  * Classic (the hint economy is part of the shared challenge), rotation off
