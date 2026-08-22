@@ -68,7 +68,9 @@ test('a puzzle resumed with comfort already on opens floored at Generous', async
   await page.waitForTimeout(1200);
   await page.reload({ waitUntil: 'load' });
 
-  // A session exists now, so the app lands on the library, not the picker.
+  // A session exists now, so the app lands on Home, not the picker — one
+  // tap through "Your Puzzles" reaches the library (2026-08-22 spec).
+  await page.getByRole('button', { name: /Your Puzzles/ }).click();
   await page.getByLabel(/Open puzzle:/).first().click();
   await board.waitForCut();
 

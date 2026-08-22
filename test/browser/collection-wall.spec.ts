@@ -5,7 +5,12 @@
  * puzzles lands) and the library alike.
  *
  * Two of these solve a whole board, so they run on the dock project only, at
- * the smallest ladder rung — the same posture as `completion.spec.ts`.
+ * the smallest ladder rung — the same posture as `completion.spec.ts`. They
+ * also **share that one solve**: "the tile reopens its card" and "survives a
+ * reload" are two different things to check about the *same* finished
+ * puzzle, not two different puzzles, and a reload is the very first thing
+ * the second one does — so it doesn't matter what state the first one left
+ * the page in.
  */
 
 import { expect, test } from '@playwright/test';
@@ -40,28 +45,44 @@ test.describe('collection wall', () => {
     await expect(page.getByText(/^0 /)).toHaveCount(0);
   });
 
-  test('a finished puzzle becomes a tile, and the tile reopens its card', async ({ page }) => {
-    test.setTimeout(600_000);
-    await BoardPage.openZenAndComplete(page);
-    await page.getByRole('button', { name: 'Done' }).click();
-    await page.getByRole('button', { name: 'Collection' }).click();
+  test.describe('a finished puzzle on the wall', () => {
+    test.describe.configure({ mode: 'serial' });
 
-    const tiles = page.getByRole('button', { name: /Puzzle finished/ });
-    await expect(tiles).toHaveCount(1);
-    await tiles.first().click();
-    await expect(page.getByRole('img', { name: 'Puzzle card' })).toBeVisible();
-  });
+    let collectionPage: import('@playwright/test').Page;
 
-  test('the wall survives a reload — it is a possession, not session state', async ({ page }) => {
-    test.setTimeout(600_000);
-    await BoardPage.openZenAndComplete(page);
-    await page.getByRole('button', { name: 'Done' }).click();
-    // Done writes the completion, then navigates to the picker — waiting for
-    // that landing is what proves the async save committed before the reload.
-    await expect(page.getByRole('button', { name: 'Choose this photo' })).toBeVisible();
+    test.beforeAll(async ({ browser }) => {
+      test.setTimeout(600_000);
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await BoardPage.openZenAndComplete(page);
+      await page.getByRole('button', { name: 'Done' }).click();
+      // Done writes the completion, then navigates to the picker — waiting for
+      // that landing is what proves the async save committed, for both tests
+      // below (the second one reloads immediately, which is exactly the
+      // scenario this landing has to be true before).
+      await expect(page.getByRole('button', { name: 'Choose this photo' })).toBeVisible();
+      collectionPage = page;
+    });
 
-    await page.reload();
-    await page.getByRole('button', { name: 'Collection' }).click();
-    await expect(page.getByRole('button', { name: /Puzzle finished/ })).toHaveCount(1);
+    test.afterAll(async () => {
+      await collectionPage.context().close();
+    });
+
+    test('becomes a tile, and the tile reopens its card', async () => {
+      const page = collectionPage;
+      await page.getByRole('button', { name: 'Collection' }).click();
+
+      const tiles = page.getByRole('button', { name: /Puzzle finished/ });
+      await expect(tiles).toHaveCount(1);
+      await tiles.first().click();
+      await expect(page.getByRole('img', { name: 'Puzzle card' })).toBeVisible();
+    });
+
+    test('survives a reload — it is a possession, not session state', async () => {
+      const page = collectionPage;
+      await page.reload();
+      await page.getByRole('button', { name: 'Collection' }).click();
+      await expect(page.getByRole('button', { name: /Puzzle finished/ })).toHaveCount(1);
+    });
   });
 });

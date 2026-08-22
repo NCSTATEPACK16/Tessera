@@ -1333,3 +1333,85 @@ manual pass on real hardware confirming (a) the card never shows a gap, (b) a pi
 every direction stops rather than tracking the finger past a point, (c) the reference panel never
 blocks the shelf or lens chips at peek — has not been run; it is the one thing in this section
 Chromium cannot answer, same as every other real-hardware gate in this file.
+
+---
+
+## 12. Session — 2026-08-22: the Home screen lands (branch `home-screen`)
+
+Plan at `docs/superpowers/plans/2026-08-22-home-screen.md`, implementing the design spec at
+`docs/superpowers/specs/2026-08-22-home-screen-design.md`. Branch `home-screen`, off `main` post
+steps 1–8/Plan 0/Tracks 1–4 (all merged) — the Home screen is new scope beyond the original build
+order, not a `PLAN.md` step, so nothing there needed ticking.
+
+**What landed:** a new `'home'` `Screen` member and `Home` component (`src/ui/Home.tsx`) that a
+profile with any history — an in-progress puzzle or a completion, `hasHistory = entries.length > 0
+|| completions > 0` — lands on ahead of `Library`; a truly fresh profile is unaffected and still
+goes straight to the guided twelve or the picker exactly as before. `PhotoPicker` gained an
+`initialSource` prop so Home's "Browse Photos"/"Upload Yours" CTAs land the picker on the right
+toggle state in one tap instead of two. `Library` gained a back-to-Home link. `msUntilNextLocalMidnight`
+is a small helper local to `App.tsx`, not `src/daily/dates.ts` — that module's own header comment
+states `localDateKey` is *the only* function that reads a local `Date`'s fields, and this is a
+different, decorative concern (a countdown string), not date-key arithmetic; the plan originally
+misjudged this and was corrected mid-execution before writing any code.
+
+**Judgment calls, all flagged in the plan and matching the spec's own reasoning, not silent guesses:**
+Home's "Continue" card and "Your Puzzles (N)" count both read from `libraryEntries` filtered the same
+way `Library` already filters today's daily out of its own list, so a resumable daily never
+double-counts as an "in-progress puzzle." Finishing a puzzle started from Home still routes to
+`'library'` or `'setup'` on completion, never back to `'home'` — `handleDone`'s existing fallback
+logic was left untouched rather than widened, since every other setup-entry path already resolves
+this way and Home is one tap from Library regardless.
+
+**Gates:** `npm test` 633/633, `npm run typecheck` clean, `npm run build` clean, `npm run test:browser`
+**173 passed / 13 skipped / 0 failed**, both `dock` and `phone`, 21.1 minutes. Real-hardware pass not
+run — same standing gap as every other screen in this file.
+
+### 12.1. A same-session detour: the browser suite is slow, and two fixes were tried
+
+Mid-session the full `npm run test:browser` gate's ~20-25 minute cost came up as a real blocker to
+iterating on a routing-only change. Two speed levers were tried, empirically, against this repo's own
+suite rather than assumed:
+
+- **Raising `workers` above 1 is unsafe as-is.** At `workers: 3`, wall time roughly halved (~11.4m)
+  but produced 7 failures, all `BoardPage.placeViaHint`'s `expect(hintButton).toBeEnabled()` timing
+  out — real CPU contention across concurrent Chromium instances, not flaky-once noise. A follow-up
+  two-lane split (timing-sensitive tests serialized, everything else parallel) surfaced the same
+  failure mode in a plain **tap-only** test with no hold at all, and net wall time came out *worse*
+  than the single-worker baseline (~23.8m) because the genuinely expensive tests dominate either way.
+  Reverted; `playwright.config.ts` is back to `workers: 1`, undocumented in git history (never
+  committed).
+- **`page.clock` (Playwright's fake-timer API) does not work here.** It fakes `performance`,
+  `requestAnimationFrame`, and `Date` globally on the page, which is exactly what
+  `HintButton.tsx`'s hold-duration measurement uses (`performance.now()` diff between pointerdown
+  and pointerup) — the idea was to `install()` → `fastForward(1300)` → `resume()` around each hold
+  instead of a real `waitForTimeout(1300)`. Implemented in `BoardPage.placeViaHint` and tested
+  against a single cheap spec: the piece never actually got placed (`placed` stayed 0). Whatever
+  the exact interaction between the fake clock and this app's real timing is, it produces a silent
+  **correctness** bug, not just a missed speedup — reverted without landing.
+- **What did land (see the commit above this section):**
+  `completion.spec.ts` and `collection-wall.spec.ts` were the only multi-minute tests in the suite
+  (six independent full 50-piece Zen solves, ~2–2.5m each). Three of `completion.spec.ts`'s four
+  tests, and both of `collection-wall.spec.ts`'s tile tests, are pure observations of the same
+  "just finished" state from different angles — consolidated onto one `beforeAll`-built page per
+  file (`mode: 'serial'`), cutting six solves to three. The one test with real before/after timing
+  sensitivity of its own (the ink-stability check, which exists to catch a real previously-found
+  spring-settle race) keeps both its pixel readings inside the shared `beforeAll`, immediately after
+  the solve, specifically so sharing the page doesn't dilute the timing window it's checking.
+  Verified in isolation (7/7, 7.0m vs. an estimated ~12–15m before) and inside the full suite.
+
+**Net result: full suite dropped from a historical ~22.6m to 21.1m** — a real, safe, zero-new-risk
+win, but nowhere near the under-10-minute-in-parallel goal that motivated the detour. The remaining
+time is now dominated by sheer test count (186 tests, most a few seconds each for real page loads,
+drags, and settle waits) rather than by any remaining redundant solve. **Not pursued this session,
+flagged for whoever wants it next:** CI-based sharding across genuinely separate machines (the
+standard, well-supported way to parallelize without the CPU contention measured above — this repo
+has no GitHub Actions Playwright job today, only whatever CI already runs for typecheck/build, and
+that CI itself has never been green since it was introduced (a standing, separate gap, unrelated to
+this session's work)), or root-causing the actual contention race itself (the tap-only
+failure suggests it's a hit-test/render-state lag under load, not simply "waits are too short" —
+understanding it properly could make higher `workers` safe rather than working around it).
+
+### 12.2. What's next
+
+Push `home-screen` and open a PR against `main`. `completion-card-race-and-piece-safety` (§11) is
+still the older unmerged branch — unrelated to this one, still waiting on whoever picks it up.

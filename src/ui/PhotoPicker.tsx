@@ -40,6 +40,8 @@ export interface PhotoPickerProps {
    * so the collection wall must be reachable from the picker too (§15).
    */
   onCollection?: () => void;
+  /** Home's Browse Photos/Upload Yours split. Defaults to 'curated' when omitted. */
+  initialSource?: Source;
 }
 
 type Source = 'curated' | 'upload';
@@ -50,8 +52,9 @@ export function PhotoPicker({
   busy,
   onDaily,
   onCollection,
+  initialSource,
 }: PhotoPickerProps): React.ReactElement {
-  const [source, setSource] = useState<Source>('curated');
+  const [source, setSource] = useState<Source>(initialSource ?? 'curated');
   const [selectedId, setSelectedId] = useState<string>(CURATED_PHOTOS[0]!.id);
   const [dragOver, setDragOver] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
