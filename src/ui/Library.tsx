@@ -24,6 +24,8 @@ export interface LibraryProps {
   onDaily?: () => void;
   /** Step 8: the collection wall of finished puzzles (§15). */
   onCollection?: () => void;
+  /** The Home screen this library sits in front of (2026-08-22 spec). */
+  onHome?: () => void;
   streak?: number;
   streakTone?: StreakTone;
 }
@@ -89,6 +91,7 @@ export function Library({
   onNewPuzzle,
   onDaily,
   onCollection,
+  onHome,
   streak = 0,
   streakTone = 'none',
 }: LibraryProps): React.ReactElement {
@@ -99,6 +102,16 @@ export function Library({
           Your Puzzles
         </div>
         <div className="flex gap-2">
+          {onHome && (
+            <button
+              type="button"
+              aria-label="Home"
+              onClick={onHome}
+              className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
+            >
+              Home
+            </button>
+          )}
           {onCollection && (
             <button
               type="button"

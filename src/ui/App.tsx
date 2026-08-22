@@ -1274,6 +1274,7 @@ export function App(): React.ReactElement {
         entries={shelved}
         streak={streakCount}
         streakTone={streakTone}
+        onHome={() => setScreen('home')}
         onDaily={() => setScreen('daily')}
         onCollection={() => {
           void openCollection();
