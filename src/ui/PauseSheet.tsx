@@ -161,9 +161,10 @@ export function PauseSheet({
 
           <div>
             <div className="mb-1 text-2 text-[var(--ink-primary)]">Snap tolerance</div>
-            {/* Dynamic Type at 200% can outgrow three flex-1 labels on a phone
-                width — wrap rather than clip; flex-1 still fills a row that
-                has room, and a wrapped row is still every button at 60pt. */}
+            {/* flex-auto, not flex-1: a 0%-basis item reports 0 to the
+                line-breaking step, so flex-wrap never triggers before the
+                resolve step stretches "Generous" past the container anyway.
+                basis:auto lets a label that doesn't fit wrap for real. */}
             <div className="flex flex-wrap gap-2">
               {TOLERANCES.map(({ value, label }) => {
                 const selected = difficulty === value;
@@ -180,7 +181,7 @@ export function PauseSheet({
                     onClick={() => onDifficultyChange(value)}
                     // Border weight as well as colour: colour is never the
                     // only signal (§13).
-                    className={`touch-target flex-1 rounded-[var(--radius-sm)] text-1 disabled:opacity-40 ${
+                    className={`touch-target flex-auto px-2 rounded-[var(--radius-sm)] text-1 disabled:opacity-40 ${
                       selected
                         ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
                         : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
