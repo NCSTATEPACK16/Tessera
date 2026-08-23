@@ -36,6 +36,9 @@ jobs:
       - name: Bundle budget (Track 1's libheif code-split)
         run: node scripts/check-bundle-budget.mjs
 
+      - name: PWA build (Step 9 — manifest, icons, service worker precache shape)
+        run: node scripts/check-pwa-build.mjs
+
   manifest-integrity:
     name: curated photo manifest integrity
     runs-on: ubuntu-latest

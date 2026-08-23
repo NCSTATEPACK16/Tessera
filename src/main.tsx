@@ -9,6 +9,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './ui/App';
+import { PwaBanner } from './ui/PwaBanner';
 import './ui/theme.css';
 
 const root = document.getElementById('root');
@@ -17,5 +18,6 @@ if (!root) throw new Error('main: missing #root');
 createRoot(root).render(
   <StrictMode>
     <App />
+    <PwaBanner />
   </StrictMode>,
 );
