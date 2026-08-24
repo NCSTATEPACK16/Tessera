@@ -249,6 +249,48 @@ test.describe('the shelf on a phone', () => {
     expect(shelf, 'the shelf did not appear while a chip was in flight').not.toBeNull();
     expect(shelf!.y + shelf!.height).toBeLessThanOrEqual(viewport.height);
   });
+
+  test('a selection pull-out from the full detent collapses the sheet and does not compress the group', async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page);
+    const ids = (await board.mountedIds()).slice(0, 3);
+
+    // Drag the sheet handle up to reach `full`, the same technique
+    // `drag-out.spec.ts`'s own detent test uses.
+    const handle = page.locator('section[aria-label="Pieces"] [role="separator"]').first();
+    const hb = (await handle.boundingBox())!;
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(hb.x + hb.width / 2, 60, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+
+    const sheet = page.locator('section[aria-label="Pieces"]');
+    const fullHeight = (await sheet.boundingBox())!.height;
+
+    await board.enterSelect(ids[0]!);
+    for (const id of ids.slice(1)) await board.chipAny(id).click();
+    await board.pullOutButton.click();
+    await page.waitForTimeout(500);
+
+    // The sheet dropped to peek — a real, visible shrink from `full`.
+    expect((await sheet.boundingBox())!.height).toBeLessThan(fullHeight);
+
+    // Not compressed into a sliver: the dealt group does not overlap the
+    // (now-peek) sheet, the same overlap test the existing "lands on mat the
+    // player can see" pull-out test already uses.
+    const ink = (await boardInk(page)).pieces;
+    expect(ink, 'nothing was drawn for the pulled-out group').not.toBeNull();
+    const tray = (await board.tray.boundingBox())!;
+    const overlapsTray = !(
+      ink!.x + ink!.w <= tray.x ||
+      ink!.x >= tray.x + tray.width ||
+      ink!.y + ink!.h <= tray.y ||
+      ink!.y >= tray.y + tray.height
+    );
+    expect(overlapsTray, 'the pulled-out group is underneath the tray').toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

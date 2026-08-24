@@ -1500,6 +1500,13 @@ export function App(): React.ReactElement {
           onLocate={(id) => runtime.current?.locate(id)}
           dragging={dragging}
           onPullSelection={(pieceIds) => {
+            // §06: from `full` the sheet still covers most of the viewport, so
+            // `gridLayout` deals the pulled group into whatever thin strip is
+            // left. Collapse to peek first, exactly as a chip drag-out already
+            // does at `onDragStateChange` above — deliberately without a
+            // matching restore, since a selection pull-out has no release
+            // moment to hook one to.
+            useChrome.getState().collapseForDrag();
             runtime.current?.pullOut(pieceIds);
           }}
           onScroll={(top) => {
