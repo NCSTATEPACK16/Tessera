@@ -278,6 +278,53 @@ test.describe('select mode', () => {
     expect(await board.chipAny(ids[1]!).getAttribute('aria-pressed')).toBeNull();
   });
 
+  test('a mat piece cannot be selected under the Recent lens, and the count does not lie', async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page);
+    const ids = await board.mountedIds();
+    const matId = ids[0]!;
+    const other = ids[1]!;
+
+    await board.dragOut(matId, await board.matPoint());
+
+    // Enter select mode on a different, ordinary tray chip under `All` — never
+    // on the mat piece itself, so this isolates the click guard from the hold
+    // guard. `other` is still untouched and still mounted here; the Recent
+    // lens (switched to next) would show only the piece just dragged out.
+    await board.enterSelect(other);
+    const countBefore = await board.pullOutButton.textContent();
+
+    await board.pick('Recent');
+    await board.matChip(matId).click();
+
+    // Not badged: aria-pressed stays unset/false even though selecting is on.
+    await expect(board.matChip(matId)).not.toHaveAttribute('aria-pressed', 'true');
+    // The count did not silently climb past what the button claims.
+    expect(await board.pullOutButton.textContent()).toBe(countBefore);
+  });
+
+  test('locate-on-mat still works outside select mode, under the Recent lens', async ({ page }) => {
+    // Regression guard for the spec's own illustrative fix, which would have
+    // broken this: tapping a mat piece when not selecting must still locate it.
+    // `BoardPage` has no camera-position getter, so the signal used here is
+    // that the tap does not throw and the chip stays present and clickable —
+    // locate does not remove or replace the chip, only a deploy would.
+    const board = await BoardPage.open(page);
+    const matId = (await board.mountedIds())[0]!;
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+
+    await board.dragOut(matId, await board.matPoint());
+    await board.pick('Recent');
+
+    await board.matChip(matId).click();
+    await page.waitForTimeout(300);
+
+    await expect(board.matChip(matId)).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
   test('a stray tap on the board does not discard the selection', async ({ page }) => {
     const board = await BoardPage.open(page);
     const ids = (await board.mountedIds()).slice(0, 3);
