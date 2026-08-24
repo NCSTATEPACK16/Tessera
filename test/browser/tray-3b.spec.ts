@@ -442,6 +442,21 @@ test.describe('select mode', () => {
     await board.chipAny(id).click();
     await expect(board.pullOutButton).toHaveText(/Pull out 1/);
   });
+
+  test('holding a shelf chip shows the same numbered badge a tray chip would', async ({ page }) => {
+    const board = await BoardPage.open(page);
+    const id = (await board.mountedIds())[0]!;
+
+    await board.pin(id);
+    // `enterSelect` locates the chip by its unbadged label, which still works
+    // here — the pinned chip is unique on the page once pinned (it left every
+    // lens). The assertion below switches to `chipAny`: once selected the chip
+    // is badged, and `chip()`'s exact match stops matching at that point.
+    await board.enterSelect(id);
+
+    await expect(board.chipAny(id)).toHaveAttribute('aria-label', `Piece ${id}, selected 1`);
+    await expect(board.chipAny(id)).toHaveAttribute('aria-pressed', 'true');
+  });
 });
 
 // ---------------------------------------------------------------------------

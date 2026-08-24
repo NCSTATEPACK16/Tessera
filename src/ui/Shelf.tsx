@@ -25,6 +25,10 @@ export interface ShelfProps {
    * uses. `PlayRuntime` never learns this element exists; only React does.
    */
   rootRef?: React.Ref<HTMLDivElement> | undefined;
+  /** The tray is in select mode (§06): a tap toggles instead of unpinning. */
+  selecting?: boolean;
+  /** 1-based selection order for a piece, or 0. */
+  badgeOf?: (id: PieceId) => number;
 }
 
 export function Shelf({
@@ -35,6 +39,8 @@ export function Shelf({
   isEdge,
   onChipPointerDown,
   rootRef,
+  selecting,
+  badgeOf,
 }: ShelfProps): React.ReactElement | null {
   if (ids.length === 0 && !dragging) return null;
 
@@ -61,6 +67,8 @@ export function Shelf({
             pinned
             onPointerDown={onChipPointerDown}
             onActivate={() => {}}
+            badge={badgeOf ? badgeOf(id) : 0}
+            selecting={selecting ?? false}
           />
         ))
       )}

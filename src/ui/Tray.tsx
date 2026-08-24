@@ -208,6 +208,8 @@ export function Tray(props: TrayProps): React.ReactElement {
       bitmapOf={props.bitmapOf}
       isEdge={props.isEdge}
       onChipPointerDown={onChipPointerDown}
+      selecting={chrome.selecting}
+      badgeOf={(id) => selection.current.badgeOf(id)}
     />
   );
   // Mirrors `Shelf`'s own hidden-when-empty condition (`ids.length === 0 &&
