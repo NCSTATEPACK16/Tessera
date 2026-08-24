@@ -212,6 +212,27 @@ test.describe('the shelf', () => {
       await expect(board.gridBody.locator(`button[aria-label="Piece ${id}"]`)).toHaveCount(0);
     }
   });
+
+  test('tapping a pinned chip outside select mode removes it from the shelf, undeployed', async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page);
+    const id = (await board.mountedIds())[0]!;
+    const before = await board.remaining();
+
+    await board.pin(id);
+    await expect(board.shelf.locator(`button[aria-label="Piece ${id}"]`)).toHaveCount(1);
+
+    await board.chip(id).click();
+    await page.waitForTimeout(300);
+
+    // Left the shelf...
+    await expect(board.shelf.locator(`button[aria-label="Piece ${id}"]`)).toHaveCount(0);
+    // ...reappeared under All (the default lens, canonical order) rather than
+    // being deployed onto the mat.
+    await expect(board.chip(id)).toBeVisible();
+    expect(await board.remaining()).toBe(before);
+  });
 });
 
 test.describe('the shelf on a phone', () => {

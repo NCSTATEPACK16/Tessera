@@ -1509,6 +1509,7 @@ export function App(): React.ReactElement {
             useChrome.getState().collapseForDrag();
             runtime.current?.pullOut(pieceIds);
           }}
+          onUnpin={(id) => runtime.current?.unpinFromShelf(id)}
           onScroll={(top) => {
             trayScrollRef.current = top;
           }}

@@ -654,6 +654,13 @@ export class PlayRuntime {
     return id;
   }
 
+  /** §06 D: a plain tap on a pinned shelf chip sends it back, undeployed. */
+  unpinFromShelf(pieceId: PieceId): void {
+    this.tray?.unpin(pieceId);
+    this.bumpTray();
+    this.wake();
+  }
+
   /**
    * The group chip under a screen point, or null.
    *

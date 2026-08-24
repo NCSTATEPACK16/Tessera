@@ -94,6 +94,8 @@ export function PieceChip({
           if (!onMat) onActivate(pieceId);
         } else if (onMat) {
           onActivate(pieceId);
+        } else if (pinned) {
+          onActivate(pieceId);
         }
       }}
       // `pan-y`, never `none`. `none` does not lose a race with native scrolling
