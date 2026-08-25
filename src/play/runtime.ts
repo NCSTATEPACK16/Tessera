@@ -639,7 +639,8 @@ export class PlayRuntime {
 
     const first = pieceIds[0]!;
     const piece = session.board.piece(first);
-    const origins = gridLayout(pieceIds.length, piece.w, piece.h, this.safeWorldRect());
+    const avoid: Rect = { x: 0, y: 0, w: this.boardW, h: this.boardH };
+    const origins = gridLayout(pieceIds.length, piece.w, piece.h, this.safeWorldRect(), avoid);
 
     const id = session.pullOut(pieceIds, origins);
     for (const pieceId of pieceIds) {
