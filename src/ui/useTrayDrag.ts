@@ -53,24 +53,44 @@ export function useTrayDrag(options: UseTrayDragOptions): {
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', cancel);
 
-    // The select hold needs a heartbeat, exactly as the board's long press does —
-    // a player who presses a chip and holds still is deciding *which pieces*.
-    const tick = (now: number): void => {
-      if (probe.pressing) probe.tick(now);
-      frame.current = requestAnimationFrame(tick);
-    };
-    frame.current = requestAnimationFrame(tick);
-
     return () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
       cancelAnimationFrame(frame.current);
+      frame.current = 0;
       probe.cancel();
     };
   }, []);
 
+  // Not inside the effect: `tick` only ever reads `drag.current`/`frame.current`,
+  // which are refs and always current, so a fresh closure per render costs
+  // nothing and needs no dependency array to go stale over.
+  //
+  // The select hold needs a heartbeat, exactly as the board's long press does —
+  // a player who presses a chip and holds still is deciding *which pieces*. But
+  // the loop must not outlive the press: rescheduling itself unconditionally,
+  // as this used to, pins a permanent per-frame callback for the tray's entire
+  // mounted lifetime on a battery-powered target, whether or not a finger is
+  // anywhere near it. So the loop starts from `down`, below, and stops
+  // rescheduling the moment `pressing` goes false.
+  const tick = (now: number): void => {
+    const probe = drag.current!;
+    if (!probe.pressing) {
+      frame.current = 0;
+      return;
+    }
+    probe.tick(now);
+    frame.current = requestAnimationFrame(tick);
+  };
+
   return {
-    onChipPointerDown: (pieceId, event) => drag.current!.down(pieceId, event.nativeEvent),
+    onChipPointerDown: (pieceId, event) => {
+      drag.current!.down(pieceId, event.nativeEvent);
+      // Only start a loop if one is not already running — a second press
+      // while one is in flight (`TrayDrag.down` itself no-ops on this) must
+      // not spawn a duplicate rAF chain.
+      if (frame.current === 0) frame.current = requestAnimationFrame(tick);
+    },
   };
 }

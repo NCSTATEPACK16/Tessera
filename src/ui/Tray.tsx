@@ -74,6 +74,8 @@ export interface TrayProps {
   dragging: boolean;
   /** §06's pull-out. The button that calls it is disabled below two pieces. */
   onPullSelection: (pieceIds: readonly PieceId[]) => void;
+  /** §06 D: a plain tap on a pinned shelf chip. */
+  onUnpin: (pieceId: PieceId) => void;
   /** Step 5c: the grid's scroll position, captured for the save format. */
   onScroll?: ((top: number) => void) | undefined;
   /** Step 5c: where a restored session left the grid scrolled. */
@@ -208,6 +210,10 @@ export function Tray(props: TrayProps): React.ReactElement {
       bitmapOf={props.bitmapOf}
       isEdge={props.isEdge}
       onChipPointerDown={onChipPointerDown}
+      selecting={chrome.selecting}
+      badgeOf={(id) => selection.current.badgeOf(id)}
+      onToggle={toggleSelected}
+      onUnpin={props.onUnpin}
     />
   );
   // Mirrors `Shelf`'s own hidden-when-empty condition (`ids.length === 0 &&

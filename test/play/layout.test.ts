@@ -68,4 +68,37 @@ describe('gridLayout', () => {
     // player pans to, never a pile they cannot separate.
     expect(stride).toBeGreaterThanOrEqual(PULL_OUT_SPACING.tight);
   });
+
+  it('shifts the block clear of `avoid` when `safe` has slack', () => {
+    // `avoid` fills all of `safe` except a strip on the right — the only
+    // valid nudge is a rightward shift; up/left/down all run out of room.
+    const avoid: Rect = { x: 0, y: 0, w: 38, h: 30 };
+    const origins = gridLayout(1, 2, 2, safe, avoid);
+
+    // Naive centring would land at (19, 14); the only room to clear `avoid`
+    // is to the right, up to the safe rect's own edge.
+    expect(origins[0]).toEqual({ x: 38, y: 14 });
+  });
+
+  it('falls back to the naive centred placement when there is no slack to clear it', () => {
+    const avoid: Rect = { x: 0, y: 0, w: 40, h: 30 }; // fills `safe` entirely
+    const origins = gridLayout(1, 2, 2, safe, avoid);
+
+    expect(origins[0]).toEqual({ x: 19, y: 14 });
+  });
+
+  it("passing `avoid: null` reproduces today's behaviour exactly", () => {
+    const withNull = gridLayout(4, 1, 1, safe, null);
+    const withoutArg = gridLayout(4, 1, 1, safe);
+
+    expect(withNull).toEqual(withoutArg);
+  });
+
+  it('does not nudge when the naive placement does not overlap `avoid`', () => {
+    const avoid: Rect = { x: 100, y: 100, w: 5, h: 5 }; // nowhere near `safe`
+    const nudged = gridLayout(4, 1, 1, safe, avoid);
+    const plain = gridLayout(4, 1, 1, safe, null);
+
+    expect(nudged).toEqual(plain);
+  });
 });

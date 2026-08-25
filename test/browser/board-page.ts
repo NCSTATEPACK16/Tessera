@@ -718,3 +718,28 @@ export async function watchBoardPaints(page: Page): Promise<void> {
 
 export const boardPaints = (page: Page): Promise<number> =>
   page.evaluate(() => (window as unknown as { __paints: number }).__paints);
+
+/**
+ * Counts every `requestAnimationFrame` call, page-wide.
+ *
+ * Bug K: `useTrayDrag`'s heartbeat used to reschedule itself unconditionally,
+ * for the tray's entire mounted lifetime, regardless of whether a chip was
+ * ever pressed. A bare global count is enough to catch that — on a genuinely
+ * idle app (no gesture, no drag, nothing pressed) it should barely move; an
+ * unconditional per-frame loop climbs at ~60/second no matter what else the
+ * app is or is not doing.
+ */
+export async function watchRafCalls(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const store = window as unknown as { __rafCalls: number };
+    store.__rafCalls = 0;
+    const original = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (callback: FrameRequestCallback): number => {
+      store.__rafCalls++;
+      return original(callback);
+    };
+  });
+}
+
+export const rafCalls = (page: Page): Promise<number> =>
+  page.evaluate(() => (window as unknown as { __rafCalls: number }).__rafCalls);

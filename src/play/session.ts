@@ -85,8 +85,6 @@ export type PlayEvent =
   | { type: 'deploy'; pieceId: PieceId; clusterId: number }
   /** …and went back. `pinned` when it landed on the shelf rather than the grid. */
   | { type: 'return'; pieceId: PieceId; pinned: boolean }
-  /** Membership or collapse changed; the chrome needs a repaint. */
-  | { type: 'worksetChanged' }
   /** §07: a hint fired, at whatever tier was reached. */
   | { type: 'hint'; tier: HintTier };
 
@@ -434,9 +432,7 @@ export class PlaySession {
    */
   pullOut(pieceIds: readonly PieceId[], origins: readonly Point[]): number {
     const taken = this.deployMany(pieceIds, origins);
-    const id = this.worksets.create(taken);
-    if (id !== -1) this.emit({ type: 'worksetChanged' });
-    return id;
+    return this.worksets.create(taken);
   }
 
   /** A piece's world box — what the group outline is built from. */
@@ -573,7 +569,6 @@ export class PlaySession {
         if (!bounds || !box) continue;
         if (escapedBounds(box, bounds, WORKSET_DROP_TOLERANCE)) {
           this.worksets.remove(pieceId);
-          this.emit({ type: 'worksetChanged' });
         }
       }
 
@@ -593,7 +588,6 @@ export class PlaySession {
     // only ever names the dragged cluster. Done here rather than in
     // `board.ts`, which must stay unaware that Worksets exist at all.
     for (const pieceId of survivor.pieceIds) this.worksets.remove(pieceId);
-    this.emit({ type: 'worksetChanged' });
 
     const anchor = this.board.worldOf(pieceIds[0]!);
     const offset = rotateVector(local[0]!, survivor.rot);

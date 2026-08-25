@@ -212,6 +212,27 @@ test.describe('the shelf', () => {
       await expect(board.gridBody.locator(`button[aria-label="Piece ${id}"]`)).toHaveCount(0);
     }
   });
+
+  test('tapping a pinned chip outside select mode removes it from the shelf, undeployed', async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page);
+    const id = (await board.mountedIds())[0]!;
+    const before = await board.remaining();
+
+    await board.pin(id);
+    await expect(board.shelf.locator(`button[aria-label="Piece ${id}"]`)).toHaveCount(1);
+
+    await board.chip(id).click();
+    await page.waitForTimeout(300);
+
+    // Left the shelf...
+    await expect(board.shelf.locator(`button[aria-label="Piece ${id}"]`)).toHaveCount(0);
+    // ...reappeared under All (the default lens, canonical order) rather than
+    // being deployed onto the mat.
+    await expect(board.chip(id)).toBeVisible();
+    expect(await board.remaining()).toBe(before);
+  });
 });
 
 test.describe('the shelf on a phone', () => {
@@ -249,6 +270,48 @@ test.describe('the shelf on a phone', () => {
     expect(shelf, 'the shelf did not appear while a chip was in flight').not.toBeNull();
     expect(shelf!.y + shelf!.height).toBeLessThanOrEqual(viewport.height);
   });
+
+  test('a selection pull-out from the full detent collapses the sheet and does not compress the group', async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page);
+    const ids = (await board.mountedIds()).slice(0, 3);
+
+    // Drag the sheet handle up to reach `full`, the same technique
+    // `drag-out.spec.ts`'s own detent test uses.
+    const handle = page.locator('section[aria-label="Pieces"] [role="separator"]').first();
+    const hb = (await handle.boundingBox())!;
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(hb.x + hb.width / 2, 60, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+
+    const sheet = page.locator('section[aria-label="Pieces"]');
+    const fullHeight = (await sheet.boundingBox())!.height;
+
+    await board.enterSelect(ids[0]!);
+    for (const id of ids.slice(1)) await board.chipAny(id).click();
+    await board.pullOutButton.click();
+    await page.waitForTimeout(500);
+
+    // The sheet dropped to peek — a real, visible shrink from `full`.
+    expect((await sheet.boundingBox())!.height).toBeLessThan(fullHeight);
+
+    // Not compressed into a sliver: the dealt group does not overlap the
+    // (now-peek) sheet, the same overlap test the existing "lands on mat the
+    // player can see" pull-out test already uses.
+    const ink = (await boardInk(page)).pieces;
+    expect(ink, 'nothing was drawn for the pulled-out group').not.toBeNull();
+    const tray = (await board.tray.boundingBox())!;
+    const overlapsTray = !(
+      ink!.x + ink!.w <= tray.x ||
+      ink!.x >= tray.x + tray.width ||
+      ink!.y + ink!.h <= tray.y ||
+      ink!.y >= tray.y + tray.height
+    );
+    expect(overlapsTray, 'the pulled-out group is underneath the tray').toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -276,6 +339,53 @@ test.describe('select mode', () => {
     await board.cancelButton.click();
     await expect(board.pullOutButton).toHaveCount(0);
     expect(await board.chipAny(ids[1]!).getAttribute('aria-pressed')).toBeNull();
+  });
+
+  test('a mat piece cannot be selected under the Recent lens, and the count does not lie', async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page);
+    const ids = await board.mountedIds();
+    const matId = ids[0]!;
+    const other = ids[1]!;
+
+    await board.dragOut(matId, await board.matPoint());
+
+    // Enter select mode on a different, ordinary tray chip under `All` — never
+    // on the mat piece itself, so this isolates the click guard from the hold
+    // guard. `other` is still untouched and still mounted here; the Recent
+    // lens (switched to next) would show only the piece just dragged out.
+    await board.enterSelect(other);
+    const countBefore = await board.pullOutButton.textContent();
+
+    await board.pick('Recent');
+    await board.matChip(matId).click();
+
+    // Not badged: aria-pressed stays unset/false even though selecting is on.
+    await expect(board.matChip(matId)).not.toHaveAttribute('aria-pressed', 'true');
+    // The count did not silently climb past what the button claims.
+    expect(await board.pullOutButton.textContent()).toBe(countBefore);
+  });
+
+  test('locate-on-mat still works outside select mode, under the Recent lens', async ({ page }) => {
+    // Regression guard for the spec's own illustrative fix, which would have
+    // broken this: tapping a mat piece when not selecting must still locate it.
+    // `BoardPage` has no camera-position getter, so the signal used here is
+    // that the tap does not throw and the chip stays present and clickable —
+    // locate does not remove or replace the chip, only a deploy would.
+    const board = await BoardPage.open(page);
+    const matId = (await board.mountedIds())[0]!;
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+
+    await board.dragOut(matId, await board.matPoint());
+    await board.pick('Recent');
+
+    await board.matChip(matId).click();
+    await page.waitForTimeout(300);
+
+    await expect(board.matChip(matId)).toBeVisible();
+    expect(errors).toEqual([]);
   });
 
   test('a stray tap on the board does not discard the selection', async ({ page }) => {
@@ -352,6 +462,21 @@ test.describe('select mode', () => {
     await expect(board.pullOutButton).toHaveText(/Pull out 0/);
     await board.chipAny(id).click();
     await expect(board.pullOutButton).toHaveText(/Pull out 1/);
+  });
+
+  test('holding a shelf chip shows the same numbered badge a tray chip would', async ({ page }) => {
+    const board = await BoardPage.open(page);
+    const id = (await board.mountedIds())[0]!;
+
+    await board.pin(id);
+    // `enterSelect` locates the chip by its unbadged label, which still works
+    // here — the pinned chip is unique on the page once pinned (it left every
+    // lens). The assertion below switches to `chipAny`: once selected the chip
+    // is badged, and `chip()`'s exact match stops matching at that point.
+    await board.enterSelect(id);
+
+    await expect(board.chipAny(id)).toHaveAttribute('aria-label', `Piece ${id}, selected 1`);
+    await expect(board.chipAny(id)).toHaveAttribute('aria-pressed', 'true');
   });
 });
 

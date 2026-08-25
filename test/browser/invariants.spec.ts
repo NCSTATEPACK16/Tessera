@@ -14,7 +14,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage, trayMutations, watchTrayMutations } from './board-page';
+import { BoardPage, rafCalls, trayMutations, watchRafCalls, watchTrayMutations } from './board-page';
 
 /**
  * A single re-render of a ~70-chip grid is hundreds of mutations, so the gap
@@ -65,6 +65,26 @@ test.describe('the board never re-renders through React', () => {
 
     // The chip leaving the list is one legitimate re-render. Sixty are not.
     expect(await trayMutations(page)).toBeLessThan(before + RERENDER_BUDGET);
+  });
+});
+
+test.describe('an idle tray schedules no wasted work', () => {
+  test('the drag probe stops rescheduling itself once a press ends', async ({ page }) => {
+    await watchRafCalls(page);
+    const board = await BoardPage.open(page);
+
+    // Let the opening cut/settle activity quiet down before the baseline read.
+    await page.waitForTimeout(1000);
+    const before = await rafCalls(page);
+    await page.waitForTimeout(1000);
+    const after = await rafCalls(page);
+
+    // Nothing pressed, no camera gesture. Before the fix, `useTrayDrag`'s tick
+    // reschedules itself every frame for the tray's entire mounted lifetime
+    // regardless of `pressing`, so this would climb by roughly 60 over one
+    // second. 20 is comfortably below that and comfortably above incidental
+    // noise from anything else that legitimately still wakes.
+    expect(after - before).toBeLessThan(20);
   });
 });
 

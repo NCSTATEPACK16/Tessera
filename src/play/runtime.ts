@@ -639,7 +639,8 @@ export class PlayRuntime {
 
     const first = pieceIds[0]!;
     const piece = session.board.piece(first);
-    const origins = gridLayout(pieceIds.length, piece.w, piece.h, this.safeWorldRect());
+    const avoid: Rect = { x: 0, y: 0, w: this.boardW, h: this.boardH };
+    const origins = gridLayout(pieceIds.length, piece.w, piece.h, this.safeWorldRect(), avoid);
 
     const id = session.pullOut(pieceIds, origins);
     for (const pieceId of pieceIds) {
@@ -652,6 +653,13 @@ export class PlayRuntime {
     this.bumpTray();
     this.wake();
     return id;
+  }
+
+  /** §06 D: a plain tap on a pinned shelf chip sends it back, undeployed. */
+  unpinFromShelf(pieceId: PieceId): void {
+    this.tray?.unpin(pieceId);
+    this.bumpTray();
+    this.wake();
   }
 
   /**
