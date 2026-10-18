@@ -496,8 +496,12 @@ export function App(): React.ReactElement {
     setSetupPhase({ kind: 'picker', error: null });
     setScreen('setup');
     setPlayConfig(null);
+    // `interrupt()` just autosaved the tutorial board, and left there it shows
+    // up on Home as an in-progress puzzle (v2 spec, B6). Deleted only once that
+    // write has landed, so the save can never recreate the row behind it.
     void saveInFlight.current
       .catch(() => {})
+      .then(() => deleteLibraryEntry(FIRST_RUN_PUZZLE_ID))
       .then(() => listLibrary())
       .then(setLibraryEntries);
   }, []);

@@ -233,6 +233,35 @@ test('a skipped tutorial writes no completion — the wall stays earned', async 
   expect(completions).toBe(0);
 });
 
+// v2 spec B6: `interrupt()` on skip autosaves the tutorial board, which then
+// surfaced on Home as "Continue your puzzle 0 / 12". The library is
+// in-progress puzzles the player chose; the guided twelve was never one.
+test('a skipped tutorial leaves nothing in the library', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openFreshProfile(page);
+  await expect.poll(() => remaining(page)).toBe(12);
+  await page.waitForTimeout(300);
+
+  await page.getByLabel('Skip').click();
+  // Past the 800ms autosave debounce, so a late save would already have landed.
+  await page.waitForTimeout(1500);
+
+  const sessionKeys = await page.evaluate(
+    () =>
+      new Promise<string[]>((res) => {
+        const r = indexedDB.open('tessera');
+        r.onsuccess = () => {
+          const tx = r.result.transaction(['sessions', 'photos'], 'readonly');
+          const sessions = tx.objectStore('sessions').getAllKeys();
+          const photos = tx.objectStore('photos').getAllKeys();
+          tx.oncomplete = () =>
+            res([...sessions.result, ...photos.result].map((key) => String(key)));
+        };
+      }),
+  );
+  expect(sessionKeys).not.toContain('first-run');
+});
+
 test('a returning player is never taught again', async ({ page }) => {
   test.setTimeout(90_000);
   await openFreshProfile(page);
