@@ -345,6 +345,7 @@ export function App(): React.ReactElement {
     trayRevision: 0,
     hintTarget: null,
     hintsUsed: 0,
+    hintsLeft: null,
     accent: fallbackAccentTokens(),
     elapsedMs: 0,
     cleanRun: true,
@@ -1420,6 +1421,7 @@ export function App(): React.ReactElement {
         {summary.status === 'playing' && (
           <HintButton
             hasTarget={summary.hintTarget !== null}
+            count={summary.hintsLeft}
             onFire={(tier) => runtime.current?.fireHint(tier) ?? false}
             clearanceBottomPx={trayHeight}
           />

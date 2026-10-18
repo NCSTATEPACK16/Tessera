@@ -19,6 +19,7 @@ import type { CutPiece, PieceId } from '@/cut/types';
 import type { SnapDifficulty } from '@/board/snap';
 import { AudioEngine } from '@/audio/engine';
 import { BoardControls } from '@/input/board-controls';
+import { hintsLeft, msUntilNextHint } from '@/play/hints';
 import type { HintTier, PuzzleMode } from '@/play/hints';
 import { gridLayout } from '@/play/layout';
 import { PlaySession } from '@/play/session';
@@ -82,6 +83,12 @@ export interface RuntimeSummary {
   /** §07: the loose mat piece a hint would act on, or null. Set by a tap. */
   hintTarget: PieceId | null;
   hintsUsed: number;
+  /**
+   * v2 spec §5.1: what the hint pill shows — `null` in Zen, where hints are
+   * unlimited. Refreshed on spend and by one timeout at the next accrual
+   * boundary, never per frame.
+   */
+  hintsLeft: number | null;
   /** §13: the fallback until the cut finishes and the real photo is extracted from. */
   accent: AccentTokens;
   /**
@@ -166,6 +173,7 @@ export class PlayRuntime {
   private lastFrameMs = 0;
   private regionTimer: ReturnType<typeof setTimeout> | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private hintTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 
   /**
@@ -197,6 +205,7 @@ export class PlayRuntime {
     trayRevision: 0,
     hintTarget: null,
     hintsUsed: 0,
+    hintsLeft: null,
     accent: fallbackAccentTokens(),
     elapsedMs: 0,
     cleanRun: true,
@@ -233,6 +242,7 @@ export class PlayRuntime {
   constructor(private readonly options: PlayRuntimeOptions) {
     this.renderer = new Renderer({ container: options.container });
     this.mode = options.mode ?? 'classic';
+    this.summary.hintsLeft = hintsLeft(0, 0, this.mode);
     this.liveAssists = options.assists ?? DEFAULT_ASSISTS;
     // A puzzle resumed with comfort already on in its saved snapshot must not
     // open at a tighter tolerance than comfort permits.
@@ -332,6 +342,7 @@ export class PlayRuntime {
     this.destroyed = true;
     if (this.saveTimer !== null) clearTimeout(this.saveTimer);
     if (this.regionTimer !== null) clearTimeout(this.regionTimer);
+    this.clearHintAccrual();
     this.controls?.destroy();
     this.renderer.setGhostUnderlay(null, 0);
     this.renderer.destroy();
@@ -846,6 +857,7 @@ export class PlayRuntime {
       hintsUsed: session.summary.hintsUsed,
       accent,
     });
+    this.scheduleHintAccrual();
     this.frameContent();
     this.render();
     this.scheduleRegion();
@@ -901,6 +913,7 @@ export class PlayRuntime {
       // Freeze the run's numbers here — the card reads them once, and the
       // timer must not become a per-frame patch (the board never re-renders
       // through React).
+      this.clearHintAccrual();
       this.patch({
         status: 'complete',
         elapsedMs: this.session!.elapsedMs(now),
@@ -1055,7 +1068,38 @@ export class PlayRuntime {
     this.patch({ trayRevision: this.summary.trayRevision + 1 });
   }
 
+  /**
+   * One timeout to the next accrual boundary, rescheduled from itself — the
+   * count rises once every ten minutes, so a frame-loop read would be
+   * hundreds of thousands of wasted patches for each real change.
+   */
+  private scheduleHintAccrual(): void {
+    this.clearHintAccrual();
+    if (!this.session || this.destroyed) return;
+    const wait = msUntilNextHint(this.session.elapsedMs(performance.now()), this.mode);
+    if (wait === null) return;
+    this.hintTimer = setTimeout(() => {
+      this.hintTimer = null;
+      if (!this.session || this.destroyed) return;
+      this.patch({ hintsUsed: this.session.summary.hintsUsed });
+      this.scheduleHintAccrual();
+    }, wait);
+  }
+
+  private clearHintAccrual(): void {
+    if (this.hintTimer !== null) clearTimeout(this.hintTimer);
+    this.hintTimer = null;
+  }
+
   private patch(next: Partial<RuntimeSummary>): void {
+    // `hintsLeft` is derived, so it travels with every `hintsUsed` write and
+    // can never disagree with it.
+    if (next.hintsUsed !== undefined && this.session) {
+      next = {
+        ...next,
+        hintsLeft: hintsLeft(next.hintsUsed, this.session.elapsedMs(performance.now()), this.mode),
+      };
+    }
     Object.assign(this.summary, next);
     this.options.notify({ ...this.summary, cut: { ...this.summary.cut } });
   }

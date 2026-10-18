@@ -20,6 +20,11 @@ import { tierForHoldMs } from '@/play/hints';
 export interface HintButtonProps {
   /** Whether a loose piece has been tapped to receive the hint. */
   hasTarget: boolean;
+  /**
+   * v2 spec §5.1: hints left, or `null` for unlimited (Zen), which shows no
+   * number. At 0 the pill dims but stays live — tier 1 never costs anything.
+   */
+  count: number | null;
   onFire: (tier: HintTier) => boolean;
   /**
    * Height of whatever overlays the bottom of the viewport right now — the
@@ -33,6 +38,7 @@ export interface HintButtonProps {
 
 export function HintButton({
   hasTarget,
+  count,
   onFire,
   clearanceBottomPx = 0,
 }: HintButtonProps): React.ReactElement {
@@ -41,7 +47,10 @@ export function HintButton({
   return (
     <button
       type="button"
-      aria-label={hasTarget ? 'Hint' : 'Hint — tap a loose piece first'}
+      aria-label={
+        (count === null ? 'Hint' : `Hint, ${count} left`) +
+        (hasTarget ? '' : ' — tap a loose piece first')
+      }
       disabled={!hasTarget}
       // §07: "if the player places the piece mid-hint" is a model concern, not
       // this button's — `PlaySession.useHint` and the renderer's decay timers
@@ -69,9 +78,9 @@ export function HintButton({
             ? clearanceBottomPx + 16
             : 'max(16px, env(safe-area-inset-bottom))',
       }}
-      className="pointer-events-auto z-10 flex touch-target items-center justify-center rounded-full border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-2 text-[var(--ink-primary)] backdrop-blur-[12px] disabled:opacity-40"
+      className={`pointer-events-auto z-10 flex touch-target items-center justify-center rounded-full border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-2 text-[var(--ink-primary)] backdrop-blur-[12px] disabled:opacity-40 ${count === 0 ? 'opacity-60' : ''}`}
     >
-      Hint
+      {count === null ? 'Hint' : `Hint · ${count}`}
     </button>
   );
 }

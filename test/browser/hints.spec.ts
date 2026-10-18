@@ -76,3 +76,14 @@ test.describe('hints (§07)', () => {
     await expect(hintButton).toBeDisabled();
   });
 });
+
+// v2 spec §5.1: the pill says what is left, so a spend is never a surprise.
+test('a Classic puzzle shows its hint allowance on the pill', async ({ page }) => {
+  await BoardPage.open(page);
+  await expect(page.locator('button[aria-label^="Hint"]')).toHaveText('Hint · 3');
+});
+
+test('a Zen puzzle shows no count — its hints are unlimited', async ({ page }) => {
+  await BoardPage.open(page, { mode: 'Zen' });
+  await expect(page.locator('button[aria-label^="Hint"]')).toHaveText('Hint');
+});
