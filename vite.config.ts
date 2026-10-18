@@ -102,6 +102,16 @@ export default defineConfig({
   worker: {
     format: 'es',
   },
+  optimizeDeps: {
+    // Dev server only. `heic-to/next` is imported dynamically from inside
+    // `heic.worker.ts`, which the startup dependency scan never crawls (it
+    // follows `index.html`, not `new Worker(new URL(...))`). So the first HEIC
+    // upload of a cold `node_modules/.vite` discovered it at runtime,
+    // re-optimised, and force-reloaded the page mid-upload — which is why
+    // `photo-picker.spec.ts`'s mislabelled-HEIC test failed its first attempt
+    // on every CI run (always a cold cache) and passed on retry.
+    include: ['heic-to/next'],
+  },
   server: {
     // Real-hardware testing is a gate at every step, so the dev server must be
     // reachable from an iPad or iPhone on the same network.
