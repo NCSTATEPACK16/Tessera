@@ -25,12 +25,13 @@ import { SelectionBar } from './SelectionBar';
 import { Shelf } from './Shelf';
 import { Sheet } from './Sheet';
 import { TRAY_MAX_WIDTH, TRAY_MIN_WIDTH, useChrome } from './store';
+import { CHIP_CELL_PX, CHIP_GAP_PX } from './sheet-detents';
 import type { SheetDetent } from './store';
 import { useTrayDrag } from './useTrayDrag';
 
 /** 44pt floor with air around the thumbnail. */
-const CELL = 56;
-const GAP = 8;
+const CELL = CHIP_CELL_PX;
+const GAP = CHIP_GAP_PX;
 
 export interface TrayProps {
   /**

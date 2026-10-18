@@ -46,7 +46,12 @@ export function LensChips({
 }: LensChipsProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-[8px]">
-      <div className={`flex flex-wrap gap-[8px] ${pulse ? 'lens-chip-pulse' : ''}`}>
+      {/* One row that scrolls sideways rather than wrapping: a wrapped second
+          row cost the phone sheet a whole chip row of pieces (v2 spec §5.2). */}
+      <div
+        className={`-mx-[12px] flex gap-[8px] overflow-x-auto px-[12px] [scrollbar-width:none] ${pulse ? 'lens-chip-pulse' : ''}`}
+        style={{ touchAction: 'pan-x' }}
+      >
         {LENSES.map((entry) => {
           const meta = counts.get(entry);
           const enabled = meta?.enabled ?? true;
@@ -65,7 +70,7 @@ export function LensChips({
                   : 'Zoom past 1.5× and this shows the pieces that belong in view'
               }
               className={[
-                'flex items-center gap-[6px] rounded-[8px] border px-[12px] text-2',
+                'flex shrink-0 items-center gap-[6px] rounded-[8px] border px-[12px] text-2',
                 'min-h-[var(--touch-min)] transition-colors',
                 active
                   ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] text-[var(--ink-primary)]'
@@ -83,7 +88,10 @@ export function LensChips({
       </div>
 
       {lens === 'colour' && (
-        <div className="flex flex-wrap gap-[8px]">
+        <div
+          className="-mx-[12px] flex gap-[8px] overflow-x-auto px-[12px] [scrollbar-width:none]"
+          style={{ touchAction: 'pan-x' }}
+        >
           {bins.map((bin) => (
             <button
               key={bin.index}
@@ -91,7 +99,7 @@ export function LensChips({
               aria-pressed={lensArg === bin.index}
               onClick={() => onPick('colour', bin.index)}
               className={[
-                'flex items-center gap-[6px] rounded-[8px] border px-[10px] text-1',
+                'flex shrink-0 items-center gap-[6px] rounded-[8px] border px-[10px] text-1',
                 'min-h-[var(--touch-min)] transition-colors',
                 lensArg === bin.index
                   ? 'border-[var(--accent)] text-[var(--ink-primary)]'

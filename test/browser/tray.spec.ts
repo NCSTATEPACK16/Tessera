@@ -132,3 +132,27 @@ test.describe('the tray', () => {
     await expect(board.lens('All')).toHaveAttribute('aria-pressed', 'true');
   });
 });
+
+// v2 spec §5.2: the phone sheet opens at 35% so the board gets most of the
+// screen — but never so low that the pinned chrome leaves no pieces showing,
+// which is what a flat 35% did on this 664px-tall viewport.
+test('on a phone the tray opens low, with two whole rows of pieces showing', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'phone', 'the dock is a side panel, not a sheet');
+  const board = await BoardPage.open(page);
+  const viewport = page.viewportSize()!;
+  const tray = (await board.tray.boundingBox())!;
+
+  expect(tray.height).toBeGreaterThanOrEqual(Math.round(viewport.height * 0.35) - 4);
+  expect(tray.height).toBeLessThanOrEqual(Math.round(viewport.height * 0.5) + 4);
+
+  const rows = new Set<number>();
+  for (const chip of await board.chips.all()) {
+    const box = await chip.boundingBox();
+    if (box && box.y >= tray.y && box.y + box.height <= tray.y + tray.height) {
+      rows.add(Math.round(box.y));
+    }
+  }
+  expect(rows.size).toBeGreaterThanOrEqual(2);
+});

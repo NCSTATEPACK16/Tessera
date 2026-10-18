@@ -19,8 +19,10 @@ import { create } from 'zustand';
 import type { PieceId } from '@/cut/types';
 import type { Lens } from '@/tray/lenses';
 
-/** §06's three detents on iPhone: one row of pieces, half, full. */
-export type SheetDetent = 'peek' | 'half' | 'full';
+import type { SheetDetent } from './sheet-detents';
+
+/** v2 spec §5.2's four detents — peek, default (35%), half, full. */
+export type { SheetDetent };
 
 /** §06: docked right on iPad, 300–380pt, resizable by its inner edge. */
 export const TRAY_MIN_WIDTH = 300;
@@ -82,7 +84,7 @@ export const useChrome = create<ChromeState>((set) => ({
   regionUnlocked: false,
 
   trayWidth: 340,
-  detent: 'half',
+  detent: 'default',
   detentBeforeDrag: null,
 
   selecting: false,
