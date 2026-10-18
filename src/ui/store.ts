@@ -18,6 +18,7 @@
 import { create } from 'zustand';
 import type { PieceId } from '@/cut/types';
 import type { Lens } from '@/tray/lenses';
+import type { TraySide } from '@/persist/prefs';
 
 import type { SheetDetent } from './sheet-detents';
 
@@ -45,6 +46,8 @@ export interface ChromeState {
   regionUnlocked: boolean;
 
   trayWidth: number;
+  /** v2 spec §5.3: which side the landscape dock sits on. Loaded from IndexedDB. */
+  traySide: TraySide;
   detent: SheetDetent;
   /** Restored when the drag ends, so the mat is never obscured mid-drag (§06). */
   detentBeforeDrag: SheetDetent | null;
@@ -62,6 +65,7 @@ export interface ChromeState {
   setRegionUnlocked: (unlocked: boolean) => void;
   bumpRegion: () => void;
   setTrayWidth: (width: number) => void;
+  setTraySide: (side: TraySide) => void;
   setDetent: (detent: SheetDetent) => void;
   collapseForDrag: () => void;
   restoreAfterDrag: () => void;
@@ -84,6 +88,7 @@ export const useChrome = create<ChromeState>((set) => ({
   regionUnlocked: false,
 
   trayWidth: 340,
+  traySide: 'right',
   detent: 'default',
   detentBeforeDrag: null,
 
@@ -112,6 +117,7 @@ export const useChrome = create<ChromeState>((set) => ({
   setTrayWidth: (width) =>
     set({ trayWidth: Math.min(TRAY_MAX_WIDTH, Math.max(TRAY_MIN_WIDTH, Math.round(width))) }),
 
+  setTraySide: (traySide) => set({ traySide }),
   setDetent: (detent) => set({ detent, detentBeforeDrag: null }),
 
   collapseForDrag: () =>

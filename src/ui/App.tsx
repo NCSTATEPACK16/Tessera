@@ -37,6 +37,7 @@ import { curatedPhotoById, curatedPhotoUrl, renderCuratedPhoto } from '@/play/cu
 import { downscaleTarget } from '@/play/photo';
 import { seedFromPuzzleId } from '@/core/rng';
 import { deleteLibraryEntry, listLibrary, saveLibraryEntry } from '@/persist/library';
+import { loadTraySide } from '@/persist/prefs';
 import type { LibraryEntry } from '@/persist/library';
 import { loadPhoto, savePhoto } from '@/persist/photos';
 import { captureThumbnail } from '@/persist/thumbnail';
@@ -353,6 +354,12 @@ export function App(): React.ReactElement {
 
   const docked = useMediaQuery(DOCK_QUERY);
   const chrome = useChrome();
+
+  // The dock side is a preference, not session state: read once, and an
+  // unreadable row reads as the default.
+  useEffect(() => {
+    void loadTraySide().then((side) => useChrome.getState().setTraySide(side));
+  }, []);
 
   // Read through a ref so the runtime's callbacks never close over a stale
   // layout — the tray's rectangle moves every time the dock is resized.
@@ -1346,7 +1353,11 @@ export function App(): React.ReactElement {
   }
 
   return (
-    <div className="flex h-full w-full bg-[var(--mat-void)]">
+    // v2 spec §5.3: a left dock is the same row, reversed — the tray stays after
+    // the board in the DOM, so focus order and the sheet path are unchanged.
+    <div
+      className={`flex h-full w-full bg-[var(--mat-void)] ${docked && chrome.traySide === 'left' ? 'flex-row-reverse' : ''}`}
+    >
       <div className="relative min-w-0 flex-1">
         {/* The canvas layers live in here and React never touches them again. */}
         <div
@@ -1424,6 +1435,7 @@ export function App(): React.ReactElement {
             count={summary.hintsLeft}
             onFire={(tier) => runtime.current?.fireHint(tier) ?? false}
             clearanceBottomPx={trayHeight}
+            corner={docked && chrome.traySide === 'left' ? 'left' : 'right'}
           />
         )}
 
@@ -1487,6 +1499,7 @@ export function App(): React.ReactElement {
           rootRef={trayRef}
           shelfRef={shelfRef}
           docked={docked}
+          side={chrome.traySide}
           width={chrome.trayWidth}
           detent={chrome.detent}
           onWidth={chrome.setTrayWidth}

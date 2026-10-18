@@ -27,6 +27,7 @@ import { Sheet } from './Sheet';
 import { TRAY_MAX_WIDTH, TRAY_MIN_WIDTH, useChrome } from './store';
 import { CHIP_CELL_PX, CHIP_GAP_PX } from './sheet-detents';
 import type { SheetDetent } from './store';
+import type { TraySide } from '@/persist/prefs';
 import { useTrayDrag } from './useTrayDrag';
 
 /** 44pt floor with air around the thumbnail. */
@@ -47,6 +48,8 @@ export interface TrayProps {
    * just return. Same reasoning as `rootRef`, one region smaller. */
   shelfRef?: React.Ref<HTMLDivElement> | undefined;
   docked: boolean;
+  /** v2 spec §5.3: which side the dock sits on; its resize edge faces the board. */
+  side: TraySide;
   width: number;
   detent: SheetDetent;
   onWidth: (width: number) => void;
@@ -291,10 +294,14 @@ export function Tray(props: TrayProps): React.ReactElement {
     <aside
       ref={props.rootRef}
       aria-label="Pieces"
-      className="relative flex h-full shrink-0 flex-col border-l border-[var(--edge-hair)] bg-[var(--mat-raised)]"
-      style={{ width: props.width, paddingRight: 'env(safe-area-inset-right)' }}
+      className={`relative flex h-full shrink-0 flex-col border-[var(--edge-hair)] bg-[var(--mat-raised)] ${props.side === 'left' ? 'border-r' : 'border-l'}`}
+      style={
+        props.side === 'left'
+          ? { width: props.width, paddingLeft: 'env(safe-area-inset-left)' }
+          : { width: props.width, paddingRight: 'env(safe-area-inset-right)' }
+      }
     >
-      <ResizeEdge width={props.width} onWidth={props.onWidth} />
+      <ResizeEdge width={props.width} side={props.side} onWidth={props.onWidth} />
       <div className="flex shrink-0 flex-col gap-[12px] px-[12px] pb-[12px] pt-[16px]">
         {title}
         {lenses}
@@ -310,9 +317,11 @@ export function Tray(props: TrayProps): React.ReactElement {
 /** The dock's inner edge. §06: "resizable by dragging its inner edge." */
 function ResizeEdge({
   width,
+  side,
   onWidth,
 }: {
   width: number;
+  side: TraySide;
   onWidth: (width: number) => void;
 }): React.ReactElement {
   const origin = useRef<{ x: number; width: number } | null>(null);
@@ -326,7 +335,7 @@ function ResizeEdge({
       aria-valuemax={TRAY_MAX_WIDTH}
       // Wider than it looks: a 1px hairline is a 1px target, and §13 puts the
       // floor at 44pt for everything.
-      className="absolute left-[-10px] top-0 z-10 h-full w-[20px] cursor-col-resize"
+      className={`absolute top-0 z-10 h-full w-[20px] cursor-col-resize ${side === 'left' ? 'right-[-10px]' : 'left-[-10px]'}`}
       style={{ touchAction: 'none' }}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -335,7 +344,10 @@ function ResizeEdge({
       onPointerMove={(event) => {
         const start = origin.current;
         if (!start) return;
-        onWidth(start.width + (start.x - event.clientX));
+        // The inner edge faces the board: dragging toward it widens the tray,
+        // which is leftward for a right dock and rightward for a left one.
+        const travel = event.clientX - start.x;
+        onWidth(start.width + (side === 'left' ? travel : -travel));
       }}
       onPointerUp={() => {
         origin.current = null;

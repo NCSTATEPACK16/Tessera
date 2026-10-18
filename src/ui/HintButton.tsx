@@ -34,6 +34,8 @@ export interface HintButtonProps {
    * intercepts the pointer event first.
    */
   clearanceBottomPx?: number;
+  /** v2 spec §5.3: the corner opposite a left dock, so it stays thumb-adjacent. */
+  corner?: 'left' | 'right';
 }
 
 export function HintButton({
@@ -41,6 +43,7 @@ export function HintButton({
   count,
   onFire,
   clearanceBottomPx = 0,
+  corner = 'right',
 }: HintButtonProps): React.ReactElement {
   const downAt = useRef<number | null>(null);
 
@@ -72,7 +75,9 @@ export function HintButton({
       }}
       style={{
         position: 'absolute',
-        right: 'max(16px, env(safe-area-inset-right))',
+        ...(corner === 'left'
+          ? { left: 'max(16px, env(safe-area-inset-left))' }
+          : { right: 'max(16px, env(safe-area-inset-right))' }),
         bottom:
           clearanceBottomPx > 0
             ? clearanceBottomPx + 16
