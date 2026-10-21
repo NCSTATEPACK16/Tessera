@@ -38,8 +38,7 @@ test('the backdrop dismisses the sheet, same as Resume', async ({ page }) => {
 test('restart is a two-step confirm, and cancelling changes nothing', async ({ page }) => {
   test.setTimeout(90_000);
   const board = await BoardPage.open(page, { mode: 'Zen' });
-  const [first] = await board.mountedIds();
-  await board.placeViaHint(first!);
+  await board.autoPlace();
   expect((await board.placed()).placed).toBe(1);
 
   await page.getByLabel('Pause').click();
@@ -55,8 +54,7 @@ test('restart is a two-step confirm, and cancelling changes nothing', async ({ p
 test('confirming restart returns the board to zero placed', async ({ page }) => {
   test.setTimeout(90_000);
   const board = await BoardPage.open(page, { mode: 'Zen' });
-  const [first] = await board.mountedIds();
-  await board.placeViaHint(first!);
+  await board.autoPlace();
   expect((await board.placed()).placed).toBe(1);
 
   await page.getByLabel('Pause').click();

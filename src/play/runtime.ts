@@ -633,6 +633,43 @@ export class PlayRuntime {
     return true;
   }
 
+  /**
+   * Dev-only, for `src/dev/e2e.ts`: auto-place up to `count` unplaced pieces,
+   * in id order, through `session.placeHint` — the exact Tier-3 path, so every
+   * one is a real union-find merge with its event, save, and tray update. It
+   * spends no hint and needs no held button, which is what turns a 50-piece
+   * browser-test solve from minutes into one call. Returns how many it placed.
+   */
+  e2ePlace(count: number): number {
+    const session = this.session;
+    if (!session) return 0;
+    let placedNow = 0;
+    for (const pieceId of this.pieces.keys()) {
+      if (placedNow >= count) break;
+      if (session.board.isPlaced(pieceId)) continue;
+      session.placeHint(pieceId);
+      placedNow++;
+    }
+    this.wake();
+    return placedNow;
+  }
+
+  /**
+   * Dev-only, for `src/dev/e2e.ts`: the client-space centre of every loose
+   * piece on the mat, so a spec can tap one without hunting for it in pixels.
+   */
+  e2eLoosePoints(): { id: PieceId; x: number; y: number }[] {
+    if (!this.session) return [];
+    const rect = this.options.container.getBoundingClientRect();
+    return this.session.scene().loose.map((piece) => {
+      const at = worldToScreen(this.camera, this.viewport, {
+        x: piece.x + piece.w / 2,
+        y: piece.y + piece.h / 2,
+      });
+      return { id: piece.id, x: rect.left + at.x, y: rect.top + at.y };
+    });
+  }
+
   /** The part of the mat the player can actually see and reach, in world units. */
   safeWorldRect(): Rect {
     return insetWorldRect(this.camera, this.viewport, this.insets);

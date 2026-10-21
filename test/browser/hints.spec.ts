@@ -31,9 +31,7 @@ test.describe('hints (§07)', () => {
 
     // A plain tap on the mat piece — no movement, an immediate release, the
     // one gesture `PointerMachine` treats as a tap rather than a drag.
-    await page.mouse.move(dropPoint.x, dropPoint.y);
-    await page.mouse.down();
-    await page.mouse.up();
+    await board.tapAt(dropPoint);
     await page.waitForTimeout(50);
 
     await expect(hintButton).toBeEnabled();
@@ -51,9 +49,7 @@ test.describe('hints (§07)', () => {
     const dropPoint = await board.matPoint();
     await board.dragOut(pieceId!, dropPoint);
 
-    await page.mouse.move(dropPoint.x, dropPoint.y);
-    await page.mouse.down();
-    await page.mouse.up();
+    await board.tapAt(dropPoint);
 
     const hintButton = page.locator('button[aria-label^="Hint"]');
     await expect(hintButton).toBeEnabled();

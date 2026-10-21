@@ -61,6 +61,18 @@ if (!heicChunk) {
   );
 }
 
+// The browser suite's dev-only hook (src/dev/e2e.ts) must be folded away by
+// `import.meta.env.DEV` — a shipped `?e2e` would let anyone skip setup and
+// auto-solve from the console. (`PlayRuntime.e2ePlace` itself survives — class
+// methods are not tree-shaken — but with no `window.__tessera` nothing outside
+// the app holds a runtime to call it on.)
+for (const file of readdirSync(assetsDir).filter((f) => f.endsWith('.js'))) {
+  const source = readFileSync(path.join(assetsDir, file), 'utf8');
+  if (source.includes('__tessera')) {
+    problems.push(`${file} contains the dev-only e2e hook — an import of src/dev/e2e.ts escaped its DEV guard.`);
+  }
+}
+
 if (problems.length > 0) {
   console.error(`Bundle budget check failed:\n`);
   for (const problem of problems) console.error(`  - ${problem}`);

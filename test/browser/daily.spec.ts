@@ -9,7 +9,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage, reachPicker } from './board-page';
+import { BoardPage, firstCuratedPhoto, reachPicker } from './board-page';
 
 /**
  * A clean database and the picker, which is where a first visit lands.
@@ -36,12 +36,14 @@ async function freshVisit(page: import('@playwright/test').Page): Promise<void> 
   // directly — see `reachPicker`'s own doc for why this races rather than
   // waits on the picker alone.
   await reachPicker(page);
-  await expect(page.getByRole('button', { name: 'Choose this photo' })).toBeVisible();
+  await expect(firstCuratedPhoto(page)).toBeVisible();
 }
 
-test('the hub is reachable from the picker on a first visit', async ({ page }) => {
+test('the hub is reachable from Home on a first visit', async ({ page }) => {
   await freshVisit(page);
-  await page.getByLabel('Today’s puzzle').click();
+  // v2: the picker is a pushed step, not a hub — Back reaches Home's daily.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByLabel(/^Play today's puzzle/).click();
 
   // Every state of screen 11 that a brand-new player should see.
   await expect(page.getByLabel('Start today’s')).toBeVisible();
@@ -58,8 +60,7 @@ test('the hub is reachable from the library, and today’s daily is not listed t
 
   // A saved ordinary session, so the app lands on the library after a reload.
   const board = await BoardPage.open(page, { mode: 'Zen' });
-  const [first] = await board.mountedIds();
-  await board.placeViaHint(first!);
+  await board.autoPlace();
   await page.waitForTimeout(1200);
   await page.reload({ waitUntil: 'load' });
   // A profile with history now lands on Home first (2026-08-22 spec) — this
@@ -90,13 +91,15 @@ test('the hub is reachable from the library, and today’s daily is not listed t
 test('starting the daily skips the picker, the crop, and the setup screen', async ({ page }) => {
   test.setTimeout(90_000);
   await freshVisit(page);
-  await page.getByLabel('Today’s puzzle').click();
+  // v2: the picker is a pushed step, not a hub — Back reaches Home's daily.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByLabel(/^Play today's puzzle/).click();
   await page.getByLabel('Start today’s').click();
 
   const board = new BoardPage(page);
   await board.waitForCut();
 
-  await expect(page.getByRole('button', { name: 'Choose this photo' })).toHaveCount(0);
+  await expect(firstCuratedPhoto(page)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Start cutting' })).toHaveCount(0);
   await expect(page.locator('header')).toBeVisible();
 });
@@ -104,17 +107,17 @@ test('starting the daily skips the picker, the crop, and the setup screen', asyn
 test('the daily is the same board on every visit', async ({ page }) => {
   test.setTimeout(120_000);
   await freshVisit(page);
-  await page.getByLabel('Today’s puzzle').click();
+  // v2: the picker is a pushed step, not a hub — Back reaches Home's daily.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByLabel(/^Play today's puzzle/).click();
   await page.getByLabel('Start today’s').click();
 
   const board = new BoardPage(page);
   await board.waitForCut();
   // Autosave only schedules on a real play event (§14) — an untouched board
   // never fires one, so nothing to restore would exist yet. One placement
-  // (affordable: the daily's Classic economy starts with three hints) is
-  // enough to trigger it, the same way `persistence.spec.ts` does.
-  const [firstPiece] = await board.mountedIds();
-  await board.placeViaHint(firstPiece!);
+  // is enough to trigger it, the same way `persistence.spec.ts` does.
+  await board.autoPlace();
   const first = await board.placed();
   expect(first.placed).toBe(1);
 
@@ -132,18 +135,12 @@ test('the daily is the same board on every visit', async ({ page }) => {
 });
 
 /**
- * There is deliberately no "finishing the daily increments the streak" test
- * here. Solving a board from a spec needs Zen — `BoardPage.placeViaHint`
- * leans on Tier 3's auto-place being free, which is the only way a spec can
- * place a specific piece without the app growing a test-only hook — and the
- * daily is Classic by design, with three hints. `completion.spec.ts` gets away
- * with it only because it picks Zen at 50 pieces.
- *
- * So the increment is covered where it can be covered honestly:
- * `recordCompletion` and `streakLength` in `test/daily/streak.test.ts`, and the
- * wiring by inspection. Adding a solve hook to `PlayRuntime` to close this
- * would put a test-only path into production code, which this codebase has
- * declined to do twice already.
+ * There is no "finishing the daily increments the streak" test here yet. It
+ * used to be impossible without a solve hook; `window.__tessera` (src/dev/
+ * e2e.ts) now exists, so it is writable — `autoPlaceAllBut(1)` plus one real
+ * placement, within the daily's three Classic hints. Until then the increment
+ * is covered by `recordCompletion` and `streakLength` in
+ * `test/daily/streak.test.ts`, and the wiring by inspection.
  */
 
 test('upgrading the database to v2 keeps an existing session', async ({ page }) => {
@@ -151,8 +148,7 @@ test('upgrading the database to v2 keeps an existing session', async ({ page }) 
 
   // Save a real session under the current schema.
   const board = await BoardPage.open(page, { mode: 'Zen' });
-  const [first] = await board.mountedIds();
-  await board.placeViaHint(first!);
+  await board.autoPlace();
   await page.waitForTimeout(1200);
 
   // Prove the `daily` store exists alongside the three from v1, and that the

@@ -9,7 +9,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage, reachPicker } from './board-page';
+import { BoardPage, firstCuratedPhoto, reachPicker } from './board-page';
 
 test('a fresh profile with zero history skips Home', async ({ page }) => {
   await page.addInitScript(() => {
@@ -18,8 +18,11 @@ test('a fresh profile with zero history skips Home', async ({ page }) => {
   await page.goto('/', { waitUntil: 'load' });
   await reachPicker(page);
 
-  await expect(page.getByRole('button', { name: 'Choose this photo' })).toBeVisible();
+  await expect(firstCuratedPhoto(page)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Browse Photos' })).toHaveCount(0);
+  // Nor an empty library apologising to a first-time player (step 5c).
+  await expect(page.getByLabel('Your Puzzles')).toHaveCount(0);
+  await expect(page.getByLabel(/Open puzzle:/)).toHaveCount(0);
 });
 
 test('a profile with one in-progress puzzle lands on Home and shows Continue', async ({
@@ -27,8 +30,7 @@ test('a profile with one in-progress puzzle lands on Home and shows Continue', a
 }) => {
   test.setTimeout(90_000);
   const board = await BoardPage.open(page, { mode: 'Zen' });
-  const [first] = await board.mountedIds();
-  await board.placeViaHint(first!);
+  await board.autoPlace();
   await page.waitForTimeout(1200);
 
   await page.reload({ waitUntil: 'load' });
@@ -43,8 +45,7 @@ test('Browse Photos and Upload Yours each reach the picker with the right source
 }) => {
   test.setTimeout(90_000);
   const board = await BoardPage.open(page, { mode: 'Zen' });
-  const [first] = await board.mountedIds();
-  await board.placeViaHint(first!);
+  await board.autoPlace();
   await page.waitForTimeout(1200);
   await page.reload({ waitUntil: 'load' });
 
@@ -67,8 +68,7 @@ test('the Your Puzzles link reaches Library, and Library’s Home link returns',
 }) => {
   test.setTimeout(90_000);
   const board = await BoardPage.open(page, { mode: 'Zen' });
-  const [first] = await board.mountedIds();
-  await board.placeViaHint(first!);
+  await board.autoPlace();
   await page.waitForTimeout(1200);
   await page.reload({ waitUntil: 'load' });
 

@@ -136,7 +136,7 @@ test.describe('the tray', () => {
 // v2 spec §5.2: the phone sheet opens at 35% so the board gets most of the
 // screen — but never so low that the pinned chrome leaves no pieces showing,
 // which is what a flat 35% did on this 664px-tall viewport.
-test('on a phone the tray opens low, with two whole rows of pieces showing', async ({
+test('on a phone the tray opens low, with two whole rows of pieces showing', { tag: '@phone' }, async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== 'phone', 'the dock is a side panel, not a sheet');

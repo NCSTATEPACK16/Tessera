@@ -661,8 +661,12 @@ export class PlaySession {
    * responsible for only ever targeting a single-piece cluster with a hint —
    * this trusts that rather than re-checking it, the same way `release` trusts
    * its caller for `clusterId`.
+   *
+   * Public for one other caller: `PlayRuntime.e2ePlace`, the dev-only hook
+   * the browser suite solves boards with — through this same path, so a test
+   * solve is a real sequence of placements, not a rewrite of the model.
    */
-  private placeHint(pieceId: PieceId): void {
+  placeHint(pieceId: PieceId): void {
     const piece = this.board.piece(pieceId);
     let clusterId: number;
 

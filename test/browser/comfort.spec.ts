@@ -57,8 +57,7 @@ test('a puzzle resumed with comfort already on opens floored at Generous', async
   const board = await BoardPage.open(page, { mode: 'Zen' });
 
   // A library entry needs some session activity, same as persistence.spec.ts.
-  const [first] = await board.mountedIds();
-  await board.placeViaHint(first!);
+  await board.autoPlace();
 
   await page.getByLabel('Pause').click();
   await page.getByLabel('Comfort mode').click();

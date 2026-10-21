@@ -235,7 +235,7 @@ test.describe('the shelf', () => {
   });
 });
 
-test.describe('the shelf on a phone', () => {
+test.describe('the shelf on a phone', { tag: '@phone' }, () => {
   test.skip(({ viewport }) => (viewport?.width ?? 0) >= 768, 'dock viewport');
 
   test('is inside the viewport while a chip is in flight', async ({ page }) => {
@@ -255,11 +255,8 @@ test.describe('the shelf on a phone', () => {
     // screen, which is why the comparison has no slack in it.
     const board = await BoardPage.open(page);
     const id = (await board.mountedIds())[0]!;
-    const box = (await board.chip(id).boundingBox())!;
 
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(box.x - 40, box.y, { steps: 6 });
+    await board.pressAndPromote(id);
     await page.waitForTimeout(200);
 
     const shelf = await board.shelf.boundingBox();
@@ -398,9 +395,7 @@ test.describe('select mode', () => {
     const label = await board.pullOutButton.innerText();
 
     const at = await board.matPoint();
-    await page.mouse.move(at.x, at.y);
-    await page.mouse.down();
-    await page.mouse.up();
+    await board.tapAt(at);
     await page.waitForTimeout(250);
 
     // Exit is explicit — Cancel, Escape, or completing the pull-out — and never
@@ -483,7 +478,7 @@ test.describe('select mode', () => {
 // ---------------------------------------------------------------------------
 // The two invariants, extended over a Workset
 
-test('the board does not re-render through React while a group is dragged', async ({ page }) => {
+test('the board does not re-render through React while a group is dragged', { tag: '@timing' }, async ({ page }) => {
   await watchTrayMutations(page);
   const board = await BoardPage.open(page);
   await pullOut(board, page, 5);
@@ -517,7 +512,7 @@ test('the board does not re-render through React while a group is dragged', asyn
   expect(mutationsAfter - mutationsBefore).toBeLessThan(RERENDER_BUDGET);
 });
 
-test('an idle board carrying a group draws nothing at all', async ({ page }) => {
+test('an idle board carrying a group draws nothing at all', { tag: '@timing' }, async ({ page }) => {
   // §03: "on an idle board with no finger down the app draws nothing at all."
   // The dev harness publishes that as `#sched`; the product page has no such
   // readout, so `watchBoardPaints` counts the clears that begin every layer
@@ -538,7 +533,7 @@ test('an idle board carrying a group draws nothing at all', async ({ page }) => 
 // ---------------------------------------------------------------------------
 // The 3a scroll regression
 
-test('a vertical touch scrolls the tray and deploys nothing', async ({ page }) => {
+test('a vertical touch scrolls the tray and deploys nothing', { tag: '@phone' }, async ({ page }) => {
   // The chip carries `touch-action: pan-y`, never `none`. `none` does not lose a
   // race with native scrolling, it disables it — so no `pointercancel` fires,
   // the tray could not be scrolled by touch at all, and a downward flick pulled

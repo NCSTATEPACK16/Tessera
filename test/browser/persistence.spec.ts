@@ -17,13 +17,9 @@ import { BoardPage } from './board-page';
 test('a reload mid-session restores the board rather than resetting it', async ({ page }) => {
   test.setTimeout(90_000);
 
-  // Zen: every hint tier is free, which is what lets `placeViaHint` actually
-  // place a piece without inventing a test-only hook.
   const board = await BoardPage.open(page, { mode: 'Zen' });
 
-  const [first, second] = await board.mountedIds();
-  await board.placeViaHint(first!);
-  await board.placeViaHint(second!);
+  await board.autoPlace(2);
   const before = await board.placed();
   expect(before.placed).toBe(2);
 
@@ -56,8 +52,7 @@ test('the v2 to v3 bump is additive — it adds `completions` and loses nothing'
   // the same additive guarantee `daily.spec.ts` asserts for v1→v2.
   const board = await BoardPage.open(page, { mode: 'Zen' });
 
-  const [first] = await board.mountedIds();
-  await board.placeViaHint(first!);
+  await board.autoPlace();
   // Past the 800ms autosave debounce, so a real session exists to survive.
   await page.waitForTimeout(1200);
 
@@ -98,8 +93,7 @@ test('a session left through the pause sheet is still there on the next visit', 
   test.setTimeout(90_000);
   const board = await BoardPage.open(page, { mode: 'Zen' });
 
-  const [first] = await board.mountedIds();
-  await board.placeViaHint(first!);
+  await board.autoPlace();
 
   // Leave runs the synchronous save through `interrupt()` — the same path
   // `visibilitychange` uses — so the card is current the moment it appears.

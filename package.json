@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:browser": "playwright test",
+    "test:browser": "playwright test --grep-invert @slow",
+    "test:browser:full": "playwright test",
     "test:watch": "vitest",
     "curated:manifest": "node --experimental-strip-types --experimental-loader ./scripts/ts-alias-loader.mjs scripts/build-curated-manifest.ts"
   },

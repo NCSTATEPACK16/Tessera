@@ -26,14 +26,15 @@ import { TopBar } from './TopBar';
 import { HintButton } from './HintButton';
 import { PhotoPicker } from './PhotoPicker';
 import type { PhotoChoice } from './PhotoPicker';
-import { PhotoCrop } from './PhotoCrop';
-import type { PhotoCropResult } from './PhotoCrop';
 import { PuzzleSetup } from './PuzzleSetup';
+import type { PuzzleSetupResult } from './PuzzleSetup';
 import type { PuzzleConfig } from '@/play/setup';
 import { nextHarderCount } from '@/play/setup';
 import type { PuzzleAssists } from '@/play/setup';
 import type { SnapDifficulty } from '@/board/snap';
-import { curatedPhotoById, curatedPhotoUrl, renderCuratedPhoto } from '@/play/curated';
+import { curatedPhotoById, curatedPhotoUrl, photosByShelf, renderCuratedPhoto } from '@/play/curated';
+import { finishCrop, INITIAL_CROP } from './CropCanvas';
+import { E2E_PUZZLE_ID, installE2eHook, parseE2eStart } from '@/dev/e2e';
 import { downscaleTarget } from '@/play/photo';
 import { seedFromPuzzleId } from '@/core/rng';
 import { deleteLibraryEntry, listLibrary, saveLibraryEntry } from '@/persist/library';
@@ -99,7 +100,7 @@ async function probeImageSize(file: File): Promise<{ width: number; height: numb
 
 /**
  * CLAUDE.md "Hard numbers": source downscale, max 2560px long edge. Applied
- * at decode time for uploads so `PhotoCrop`'s live-preview canvas and its
+ * at decode time for uploads so `CropCanvas`'s live-preview canvas and its
  * `rasterizeCrop` pass never allocate multiple full-resolution (12MP+)
  * surfaces at once — the final cut output was already capped later in the
  * pipeline, but the intermediate canvases were not.
@@ -232,14 +233,9 @@ export function App(): React.ReactElement {
       }
     // `photoId` is the curated photo's id, or null for an upload — carried
     // through so the completion card can credit it (§15) and title it.
-    | { kind: 'cropping'; source: ImageBitmap; photoId: string | null }
-    | {
-        kind: 'configuring';
-        source: ImageBitmap;
-        seed: number;
-        puzzleId: string;
-        photoId: string | null;
-      };
+    // `source` is the *uncropped* photo: v2 folds the crop into setup, which
+    // hands back a fresh cropped bitmap on Start (spec §4).
+    | { kind: 'configuring'; source: ImageBitmap; photoId: string | null };
 
   /**
    * Where the app is, above `setupPhase`. `'checking'` is the single
@@ -352,6 +348,18 @@ export function App(): React.ReactElement {
     cleanRun: true,
   });
 
+  // The browser suite's hook (src/dev/e2e.ts). Folded away in a build.
+  const summaryRef = useRef(summary);
+  summaryRef.current = summary;
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      installE2eHook(
+        () => runtime.current,
+        () => (runtime.current ? summaryRef.current : null),
+      );
+    }
+  }, []);
+
   const docked = useMediaQuery(DOCK_QUERY);
   const chrome = useChrome();
 
@@ -424,6 +432,39 @@ export function App(): React.ReactElement {
     // that matters — a stale/missing cache only ever costs one extra read,
     // never traps a returning player.
     const cachedDone = hasSeenFirstRunSync();
+    // Dev-only: `?e2e` boots straight onto a board, for the browser suite.
+    // The flag is stripped at once so a reload restores rather than re-cuts.
+    const e2e = import.meta.env.DEV ? parseE2eStart(window.location.search) : null;
+    if (e2e) {
+      history.replaceState(null, '', window.location.pathname);
+      void (async () => {
+        // The persisted state the old picker walk left behind: the guided
+        // twelve skipped, so leaving this board never lands on it.
+        await markFirstRunDone();
+        // The picker's first tile, which is what `BoardPage.open` taps.
+        const photoId = photosByShelf('wide-and-calm')[0]!.id;
+        const uncropped = await renderCuratedPhoto(photoId);
+        const source = finishCrop(uncropped, INITIAL_CROP);
+        uncropped.close();
+        const config: PuzzleConfig = {
+          ...DEFAULT_PUZZLE_CONFIG,
+          targetCount: e2e.targetCount,
+          mode: e2e.mode,
+        };
+        setLiveAssists(config.assists);
+        setLiveDifficulty(config.difficulty);
+        setPlayConfig({
+          source,
+          seed: seedFromPuzzleId(E2E_PUZZLE_ID),
+          puzzleId: E2E_PUZZLE_ID,
+          photoId,
+          ...config,
+        });
+        originScreen.current = 'setup';
+        setScreen('playing');
+      })();
+      return;
+    }
     void (async () => {
       const [entries, completions, firstRunDone] = await Promise.all([
         listLibrary(),
@@ -529,27 +570,26 @@ export function App(): React.ReactElement {
     })();
   }, [today]);
 
-  // -- the setup flow: picker -> crop -> playConfig ---------------------------
+  // -- the setup flow: picker -> setup (crop folded in) -> playConfig ---------
 
   const handlePhotoChosen = useCallback(async (choice: PhotoChoice): Promise<void> => {
     // Set before any await, so the reassurance is on screen from the moment
     // the file lands rather than from when the decoder gets going.
     setSetupPhase((prev) => {
-      if (prev.kind === 'cropping') prev.source.close();
+      if (prev.kind === 'configuring') prev.source.close();
       return { kind: 'picker', error: null, busy: true };
     });
     try {
       const photoId = choice.kind === 'curated' ? choice.id : null;
       const bitmap =
         choice.kind === 'curated' ? await renderCuratedPhoto(choice.id) : await decodeUpload(choice.file);
-      // A previous round trip through crop (picker -> crop -> picker -> pick
-      // again) would otherwise leak that bitmap's off-heap backing store —
+      // A previous round trip through setup (picker -> setup -> picker ->
+      // pick again) would otherwise leak that bitmap's off-heap backing store —
       // GC does not reliably reclaim ImageBitmaps promptly. `onBack` already
-      // closes it on the normal path; this is the defensive twin for any
-      // other route back into this handler while a cropping phase exists.
+      // closes it on the normal path; this is the defensive twin.
       setSetupPhase((prev) => {
-        if (prev.kind === 'cropping') prev.source.close();
-        return { kind: 'cropping', source: bitmap, photoId };
+        if (prev.kind === 'configuring') prev.source.close();
+        return { kind: 'configuring', source: bitmap, photoId };
       });
     } catch (error) {
       const message =
@@ -557,47 +597,28 @@ export function App(): React.ReactElement {
           ? HEIC_MESSAGE
           : "Couldn't open that photo. Try a different file.";
       setSetupPhase((prev) => {
-        if (prev.kind === 'cropping') prev.source.close();
+        if (prev.kind === 'configuring') prev.source.close();
         return { kind: 'picker', error: message };
       });
     }
   }, []);
 
-  const handleCropConfirm = useCallback(
-    (result: PhotoCropResult): void => {
-      // `result.source` is a fresh bitmap `rasterizeCrop` produced via
-      // `transferToImageBitmap` — always a distinct instance from the
-      // uncropped original below, so this can never double-close the same
-      // object. Only the cropped result is needed from here on; the
-      // full-resolution original is not used again once the crop is confirmed.
-      const photoId = setupPhase.kind === 'cropping' ? setupPhase.photoId : null;
-      if (setupPhase.kind === 'cropping') setupPhase.source.close();
-      setSetupPhase({
-        kind: 'configuring',
-        source: result.source,
-        seed: result.seed,
-        puzzleId: result.puzzleId,
-        photoId,
-      });
-    },
-    [setupPhase],
-  );
-
   const handleSetupConfirm = useCallback(
-    (config: PuzzleConfig): void => {
+    ({ source, seed, puzzleId, config }: PuzzleSetupResult): void => {
       if (setupPhase.kind !== 'configuring') return;
+      // `source` is a fresh bitmap `finishCrop` produced, never the uncropped
+      // original — which nothing needs past this point, so it is released here
+      // and the phase reset in the same batch: a frame holding a closed bitmap
+      // in `configuring` would render `PuzzleSetup` on it and throw.
+      const { photoId } = setupPhase;
+      setupPhase.source.close();
+      setSetupPhase({ kind: 'picker', error: null });
       setRestoreSnapshot(null);
       photoSavedRef.current = false;
       setDailyResult(null);
       setLiveAssists(config.assists);
       setLiveDifficulty(config.difficulty);
-      setPlayConfig({
-        source: setupPhase.source,
-        seed: setupPhase.seed,
-        puzzleId: setupPhase.puzzleId,
-        photoId: setupPhase.photoId,
-        ...config,
-      });
+      setPlayConfig({ source, seed, puzzleId, photoId, ...config });
       originScreen.current = 'setup';
       setScreen('playing');
     },
@@ -1312,26 +1333,7 @@ export function App(): React.ReactElement {
           error={setupPhase.error}
           busy={setupPhase.busy ?? false}
           initialSource={pickerInitialSource.current}
-          onDaily={() => setScreen('daily')}
-          onCollection={() => {
-            void openCollection();
-          }}
-        />
-      );
-    }
-    if (setupPhase.kind === 'cropping') {
-      return (
-        <PhotoCrop
-          source={setupPhase.source}
-          onConfirm={handleCropConfirm}
-          onBack={() =>
-            setSetupPhase((prev) => {
-              // Leaving the crop screen for a different photo — the original
-              // bitmap it was cropping is no longer needed.
-              if (prev.kind === 'cropping') prev.source.close();
-              return { kind: 'picker', error: null };
-            })
-          }
+          onBack={() => setScreen('home')}
         />
       );
     }
@@ -1339,13 +1341,12 @@ export function App(): React.ReactElement {
       <PuzzleSetup
         source={setupPhase.source}
         onConfirm={handleSetupConfirm}
-        // Back re-enters crop on the already-cropped bitmap, not the original —
-        // the pre-crop source was released when the crop was confirmed.
         onBack={() =>
-          setSetupPhase({
-            kind: 'cropping',
-            source: setupPhase.source,
-            photoId: setupPhase.photoId,
+          setSetupPhase((prev) => {
+            // Leaving setup for a different photo — the one it was framing is
+            // no longer needed.
+            if (prev.kind === 'configuring') prev.source.close();
+            return { kind: 'picker', error: null };
           })
         }
       />

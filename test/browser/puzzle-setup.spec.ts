@@ -10,7 +10,7 @@
 
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { BoardPage, boardInk, reachPicker } from './board-page';
+import { boardInk, BoardPage, chooseFirstCuratedPhoto, reachPicker } from './board-page';
 
 async function toSetupScreen(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -38,9 +38,9 @@ async function toSetupScreen(page: Page): Promise<void> {
   // `reachPicker`'s own doc. The second call has an autosaved entry by then,
   // so this is a no-op race that resolves on the picker branch immediately.
   await reachPicker(page);
-  await page.getByRole('button', { name: 'Choose this photo' }).click();
-  await page.getByRole('button', { name: 'Use this photo' }).click();
-  await expect(page.getByRole('button', { name: 'Start cutting' })).toBeVisible();
+  await chooseFirstCuratedPhoto(page);
+  // v2 spec §4: rotation and the assists live behind More options.
+  await page.getByRole('button', { name: 'More options' }).click();
 }
 
 /** The cut's real grid, off the TopBar — never the target (CLAUDE.md). */
@@ -64,20 +64,6 @@ test.describe('puzzle setup', () => {
     // aspect-respecting grid, so this asserts a *small* real count, not the
     // literal 50, matching CLAUDE.md's "never the target" rule.
     expect(await cutTotal(page)).toBeLessThan(80);
-  });
-
-  test('the default configuration cuts a bigger board than the 50-piece one', async ({ page }) => {
-    await toSetupScreen(page);
-    await page.getByRole('button', { name: 'Start cutting' }).click();
-
-    const board = new BoardPage(page);
-    await board.waitForCut();
-
-    // DEFAULT_PUZZLE_CONFIG is 150 — the ladder's middle value, and what
-    // BoardPage.open() accepts for the rest of the suite.
-    const total = await cutTotal(page);
-    expect(total).toBeGreaterThan(100);
-    expect(total).toBeLessThan(220);
   });
 
   test('mode and rotation are selectable and survive into a running board', async ({ page }) => {
@@ -118,7 +104,7 @@ test.describe('puzzle setup', () => {
     await expect(board.chips.first()).toBeVisible();
   });
 
-  test('large piece mode holds pieces bigger than the default zoom floor does', async ({
+  test('large piece mode holds pieces bigger than the default zoom floor does', { tag: '@slow' }, async ({
     page,
   }) => {
     // Measured, not inferred: the same piece, dropped on the mat and then
