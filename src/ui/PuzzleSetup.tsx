@@ -51,8 +51,8 @@ export interface PuzzleSetupProps {
 const MAX_SWATCH_PX = 28;
 
 const MODES: { value: PuzzleMode; label: string; sub: string }[] = [
-  { value: 'classic', label: 'Classic', sub: '3 hints · timer on' },
-  { value: 'zen', label: 'Zen', sub: 'Unlimited hints · no timer' },
+  { value: 'classic', label: 'Classic', sub: '3 hints' },
+  { value: 'zen', label: 'Zen', sub: 'Unlimited hints' },
 ];
 
 const TOLERANCES: { value: SnapDifficulty; label: string }[] = [

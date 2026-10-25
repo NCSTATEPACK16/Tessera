@@ -133,13 +133,33 @@ test('the daily is the same board on every visit', async ({ page }) => {
 });
 
 /**
- * There is no "finishing the daily increments the streak" test here yet. It
- * used to be impossible without a solve hook; `window.__tessera` (src/dev/
- * e2e.ts) now exists, so it is writable — `autoPlaceAllBut(1)` plus one real
- * placement, within the daily's three Classic hints. Until then the increment
- * is covered by `recordCompletion` and `streakLength` in
- * `test/daily/streak.test.ts`, and the wiring by inspection.
+ * The increment end to end: every piece but one through the dev hook (the real
+ * Tier-3 path), then the last by a real held hint — inside the daily's three
+ * Classic hints — so `complete`, the card and the streak write all fire from a
+ * real gesture. The arithmetic is `test/daily/streak.test.ts`'s; this is the
+ * wiring between the board finishing and the hub counting it.
  */
+test('finishing the daily starts the streak', async ({ page }) => {
+  test.setTimeout(120_000);
+  await freshVisit(page);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByLabel(/^Play today's puzzle/).click();
+  await expect(page.getByText('Start a streak.')).toBeVisible();
+  await page.getByLabel('Start today’s').click();
+
+  const board = new BoardPage(page);
+  await board.waitForCut();
+  await board.autoPlaceAllBut(1);
+  const [last] = await board.mountedIds();
+  await board.placeViaHint(last!);
+
+  await page.getByRole('button', { name: 'Done' }).click();
+  // Done routes back to where the daily started — the hub.
+  await expect(page.getByLabel('Play it again')).toBeVisible();
+  await expect(page.getByText('day streak')).toBeVisible();
+  await expect(page.getByText('day streak').locator('..')).toContainText('1');
+  await expect(page.getByText('Start a streak.')).toHaveCount(0);
+});
 
 test('upgrading the database to v2 keeps an existing session', async ({ page }) => {
   test.setTimeout(90_000);
