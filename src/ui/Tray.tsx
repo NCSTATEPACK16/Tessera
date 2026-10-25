@@ -184,7 +184,7 @@ export function Tray(props: TrayProps): React.ReactElement {
   const title = (
     <div className="flex items-baseline justify-between">
       <h2 className="text-3 font-medium text-[var(--ink-primary)]">Pieces</h2>
-      <span className="font-[var(--font-data)] text-1 tabular-nums text-[var(--ink-muted)]">
+      <span className="font-data text-1 tabular-nums text-[var(--ink-muted)]">
         {props.remaining} left
       </span>
     </div>

@@ -70,6 +70,14 @@ export function firstCuratedPhoto(page: Page): Locator {
   return page.getByRole('button', { name: /^Curated photo:/ }).first();
 }
 
+/** v2 spec §3: one of the three tabs — Today, Puzzles, Collection. */
+export async function openTab(page: Page, name: 'Today' | 'Puzzles' | 'Collection'): Promise<void> {
+  await page
+    .getByRole('navigation', { name: 'Tabs' })
+    .getByRole('button', { name, exact: true })
+    .click();
+}
+
 /** Tap the first curated photo and wait for setup (crop folded in) to arrive. */
 export async function chooseFirstCuratedPhoto(page: Page): Promise<void> {
   await firstCuratedPhoto(page).click();

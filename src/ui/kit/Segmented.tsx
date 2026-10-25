@@ -45,7 +45,7 @@ export function Segmented<T extends string | number>({
             aria-pressed={selected}
             disabled={option.disabled}
             onClick={() => onChange(option.value)}
-            className={`touch-target ${wrap ? 'flex-auto' : 'flex-1'} rounded-[var(--radius-sm)] px-2 font-[var(--font-data)] text-1 transition-colors duration-[var(--duration-fast)] disabled:opacity-40 ${
+            className={`touch-target ${wrap ? 'flex-auto' : 'flex-1'} rounded-[var(--radius-sm)] px-2 font-data text-1 transition-colors duration-[var(--duration-fast)] disabled:opacity-40 ${
               selected
                 ? 'border-2 border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                 : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'

@@ -12,7 +12,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage } from './board-page';
+import { BoardPage, openTab } from './board-page';
 
 test('a reload mid-session restores the board rather than resetting it', async ({ page }) => {
   test.setTimeout(90_000);
@@ -29,8 +29,8 @@ test('a reload mid-session restores the board rather than resetting it', async (
   await page.reload({ waitUntil: 'load' });
 
   // A session exists now, so the app lands on Home, not the picker — one
-  // tap through "Your Puzzles" reaches the library (2026-08-22 spec).
-  await page.getByRole('button', { name: /Your Puzzles/ }).click();
+  // tap on the Puzzles tab reaches the library (2026-08-22 spec).
+  await openTab(page, 'Puzzles');
   const card = page.getByLabel(/Open puzzle:/).first();
   await expect(card).toBeVisible();
   await card.click();
@@ -76,10 +76,10 @@ test('the v2 to v3 bump is additive — it adds `completions` and loses nothing'
   );
 
   // The session written before this read still restores — the bump did not
-  // drop it. The app lands on Home because a save exists; "Your Puzzles"
+  // drop it. The app lands on Home because a save exists; the Puzzles tab
   // reaches the library from there (2026-08-22 spec).
   await page.reload({ waitUntil: 'load' });
-  await page.getByRole('button', { name: /Your Puzzles/ }).click();
+  await openTab(page, 'Puzzles');
   const card = page.getByLabel(/Open puzzle:/).first();
   await expect(card).toBeVisible();
   await card.click();

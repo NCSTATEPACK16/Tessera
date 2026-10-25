@@ -125,7 +125,7 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
         >
           ← Back
         </button>
-        <div className="font-[var(--font-display)] text-4 text-[var(--ink-primary)]">
+        <div className="font-display text-4 text-[var(--ink-primary)]">
           New puzzle
         </div>
       </div>
@@ -134,7 +134,7 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pb-5 md:flex-row md:items-start">
         <div className="flex shrink-0 flex-col gap-2 md:sticky md:top-0 md:w-[60%]">
           <CropCanvas source={source} state={crop} onChange={setCrop} gridCount={targetCount} />
-          <p className="text-center font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
+          <p className="text-center font-data text-1 text-[var(--ink-muted)]">
             Drag to frame · pinch to zoom
           </p>
         </div>
@@ -199,7 +199,7 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
                     >
                       {selected ? `✓ ${label}` : label}
                     </div>
-                    <div className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
+                    <div className="font-data text-1 text-[var(--ink-muted)]">
                       {sub}
                     </div>
                   </button>
@@ -263,7 +263,7 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
               <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--edge-hair)] p-3">
                 <div>
                   <div className="text-3 text-[var(--ink-primary)]">Rotation</div>
-                  <div className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
+                  <div className="font-data text-1 text-[var(--ink-muted)]">
                     Pieces can be rotated — significantly harder
                   </div>
                 </div>
@@ -291,7 +291,7 @@ export function PuzzleSetup({ source, onConfirm, onBack }: PuzzleSetupProps): Re
                 <div>
                   <div className="mb-1 flex justify-between text-2 text-[var(--ink-primary)]">
                     <span>Ghost underlay</span>
-                    <span className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
+                    <span className="font-data text-1 text-[var(--ink-muted)]">
                       {Math.round((ghostOpacity / GHOST_OPACITY_MAX) * 100)}%
                     </span>
                   </div>

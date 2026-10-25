@@ -163,7 +163,7 @@ export function PauseSheet({
           <div>
             <div className="mb-1 flex justify-between text-2 text-[var(--ink-primary)]">
               <span>Ghost underlay</span>
-              <span className="font-[var(--font-data)] text-1 tabular-nums text-[var(--ink-muted)]">
+              <span className="font-data text-1 tabular-nums text-[var(--ink-muted)]">
                 {Math.round((assists.ghostOpacity / GHOST_OPACITY_MAX) * 100)}%
               </span>
             </div>

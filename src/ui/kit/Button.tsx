@@ -11,10 +11,14 @@ export type ButtonVariant = 'primary' | 'default' | 'ghost' | 'danger';
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: 'md' | 'lg';
+  /** React 19 passes `ref` as a plain prop; `...rest` carries it to the element. */
+  ref?: React.Ref<HTMLButtonElement>;
 }
 
+// Primary is a fill with no glow: the 2026-10-25 audit flagged the coloured
+// halo on every screen, and the brief says no drop-shadow soup.
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-[var(--accent)] text-[var(--mat-void)] shadow-[var(--shadow-accent)]',
+  primary: 'bg-[var(--accent)] text-[var(--mat-void)]',
   default: 'border border-[var(--edge-hair)] bg-[var(--mat-raised)] text-[var(--ink-primary)]',
   ghost: 'border border-[var(--edge-hair)] text-[var(--ink-muted)]',
   danger:

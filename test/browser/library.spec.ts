@@ -6,7 +6,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage, firstCuratedPhoto } from './board-page';
+import { BoardPage, firstCuratedPhoto, openTab } from './board-page';
 
 test('a saved session becomes a card that opens back onto its board', async ({ page }) => {
   test.setTimeout(90_000);
@@ -18,8 +18,8 @@ test('a saved session becomes a card that opens back onto its board', async ({ p
 
   await page.reload({ waitUntil: 'load' });
   // A profile with history now lands on Home first (2026-08-22 spec) — one
-  // tap through "Your Puzzles" reaches the library exactly as before.
-  await page.getByRole('button', { name: /Your Puzzles/ }).click();
+  // tap on the Puzzles tab reaches the library exactly as before.
+  await openTab(page, 'Puzzles');
 
   // The card carries the real computed grid, never the target (§04).
   const card = page.getByLabel(/Open puzzle: \d+ × \d+/).first();
@@ -38,7 +38,7 @@ test('New Puzzle from the library reaches the picker', async ({ page }) => {
   await page.waitForTimeout(1200);
   await page.reload({ waitUntil: 'load' });
   // A profile with history now lands on Home first (2026-08-22 spec).
-  await page.getByRole('button', { name: /Your Puzzles/ }).click();
+  await openTab(page, 'Puzzles');
 
   await expect(page.getByLabel(/Open puzzle:/).first()).toBeVisible();
   await page.getByLabel('New puzzle').click();

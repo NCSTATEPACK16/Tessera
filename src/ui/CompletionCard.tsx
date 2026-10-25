@@ -88,7 +88,7 @@ export function CompletionCard({
             {`Daily done · ${daily.streak} day streak`}
           </div>
           {daily.freezeEarned && (
-            <div className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
+            <div className="font-data text-1 text-[var(--ink-muted)]">
               Freeze earned — one missed day is covered.
             </div>
           )}

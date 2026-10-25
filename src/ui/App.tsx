@@ -38,7 +38,7 @@ import { E2E_PUZZLE_ID, installE2eHook, parseE2eStart } from '@/dev/e2e';
 import { downscaleTarget } from '@/play/photo';
 import { seedFromPuzzleId } from '@/core/rng';
 import { deleteLibraryEntry, listLibrary, saveLibraryEntry } from '@/persist/library';
-import { loadTraySide } from '@/persist/prefs';
+import { loadTraySide, saveTraySide } from '@/persist/prefs';
 import type { LibraryEntry } from '@/persist/library';
 import { loadPhoto, savePhoto } from '@/persist/photos';
 import { captureThumbnail } from '@/persist/thumbnail';
@@ -52,7 +52,10 @@ import { FirstRunOverlay } from './FirstRun';
 import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
 import { Library } from './Library';
-import { Home } from './Home';
+import { Today } from './Today';
+import { TabBar } from './TabBar';
+import { SettingsSheet } from './SettingsSheet';
+import { TAB_SCREEN, tabOf } from './tabs';
 import { PauseSheet } from './PauseSheet';
 import { CompletionCard } from './CompletionCard';
 import { CollectionWall } from './CollectionWall';
@@ -265,9 +268,11 @@ export function App(): React.ReactElement {
   const firstRunModel = useRef<FirstRunState>(firstRunStart());
   const lastPlacementAt = useRef(Date.now());
   const prevFirstRunPlaced = useRef(0);
-  /** The collection wall's rows, loaded on entry; the screen to return to. */
+  /** The collection wall's rows, loaded on entry. */
   const [completions, setCompletions] = useState<readonly CompletionRecord[]>([]);
-  const beforeWall = useRef<Screen>('setup');
+  /** The tab screen the player last stood on — where the picker's Back returns. */
+  const lastTabScreen = useRef<Screen>('home');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   /**
    * Read once per mount. A session that survives local midnight keeps
    * yesterday's key until the next load, which is correct: the daily the
@@ -277,7 +282,7 @@ export function App(): React.ReactElement {
   const [streak, setStreak] = useState<StreakState>(() => emptyStreak());
   /** Where "Done" and "Leave" go back to. */
   const originScreen = useRef<'daily' | 'library' | 'setup'>('setup');
-  /** Home's Browse/Upload choice, read once by `<PhotoPicker>` on the next setup entry. */
+  /** The picker's source on the next setup entry, read once by `<PhotoPicker>`. */
   const pickerInitialSource = useRef<'curated' | 'upload'>('curated');
   /** Guards the completion recording against re-firing on every render. */
   const recordedDaily = useRef<string | null>(null);
@@ -949,9 +954,8 @@ export function App(): React.ReactElement {
 
   const openCollection = useCallback(async (): Promise<void> => {
     setCompletions(await listCompletions());
-    beforeWall.current = screen;
     setScreen('wall');
-  }, [screen]);
+  }, []);
 
   // -- the runtime, mounted once the crop is confirmed -------------------------
 
@@ -1208,120 +1212,129 @@ export function App(): React.ReactElement {
           ? 'alive'
           : 'at-risk';
 
-  if (screen === 'home') {
+  const startNewPuzzle = (): void => {
+    pickerInitialSource.current = 'curated';
+    originScreen.current = 'setup';
+    setSetupPhase({ kind: 'picker', error: null });
+    setScreen('setup');
+  };
+
+  // v2 spec §3: the three tabs and the daily hub share one shell. Setup, play,
+  // the first run and the card all render outside it, so the bar is hidden
+  // there by construction and switching tabs never touches `PlayRuntime`.
+  const activeTab = tabOf(screen);
+  if (activeTab) {
+    lastTabScreen.current = screen;
+    // Today's daily is offered on the hub, not as a library card — one puzzle,
+    // one place to start it. Yesterday's unfinished daily is no longer
+    // "today's" and shows as an ordinary card, so nothing is deleted for this.
     const shelved = libraryEntries.filter((entry) => entry.puzzleId !== dailyPuzzleId(today));
-    return (
-      <Home
-        dailyPreview={{
-          title: curatedPhotoById(daily.photoId)?.name ?? 'Today’s photo',
-          photoUrl: curatedPhotoUrl(daily.photoId) ?? '',
-          pieceCount: daily.targetCount,
-          resetsInMs: msUntilNextLocalMidnight(new Date()),
-          hintsIncluded: hintsAvailable(0, DAILY_CONFIG.mode),
-        }}
-        continuing={shelved.length === 1 ? shelved[0]! : null}
-        libraryCount={shelved.length}
-        streak={streakCount}
-        streakTone={streakTone}
-        weekPips={weekPips(streak, today)}
-        completions={completions}
-        onDaily={() => setScreen('daily')}
-        onContinue={(puzzleId) => {
-          void handleOpenLibraryEntry(puzzleId);
-        }}
-        onLibrary={() => setScreen('library')}
-        onBrowsePhotos={() => {
-          pickerInitialSource.current = 'curated';
-          originScreen.current = 'setup';
-          setSetupPhase({ kind: 'picker', error: null });
-          setScreen('setup');
-        }}
-        onUploadYours={() => {
-          pickerInitialSource.current = 'upload';
-          originScreen.current = 'setup';
-          setSetupPhase({ kind: 'picker', error: null });
-          setScreen('setup');
-        }}
-        onCollection={() => {
-          void openCollection();
-        }}
-      />
-    );
-  }
+    const doneToday = isDone(streak, today);
 
-  if (screen === 'daily') {
-    const todaysEntry = libraryEntries.find((entry) => entry.puzzleId === daily.puzzleId);
-    return (
-      <DailyHub
-        daily={daily}
-        dateLabel={new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'long',
-        })}
-        monthLabel={new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
-          month: 'long',
-          year: 'numeric',
-        })}
-        streak={streakCount}
-        freezes={streak.freezes}
-        tone={streakTone}
-        pips={weekPips(streak, today)}
-        grid={monthGrid(streak, monthKeyOf(today), today)}
-        progress={
-          todaysEntry
-            ? { placed: todaysEntry.snapshot.placed, total: todaysEntry.snapshot.total }
-            : null
-        }
-        progressThumbnail={todaysEntry?.thumbnailBlob ?? null}
-        doneToday={isDone(streak, today)}
-        canRepair={canRepairStreak(streak, today)}
-        onRepair={handleRepair}
-        onStart={() => {
-          void handleStartDaily();
-        }}
-        onLibrary={() => setScreen('library')}
-        onNewPuzzle={() => {
-          pickerInitialSource.current = 'curated';
-          originScreen.current = 'setup';
-          setSetupPhase({ kind: 'picker', error: null });
-          setScreen('setup');
-        }}
-      />
-    );
-  }
+    let body: React.ReactElement;
+    if (screen === 'daily') {
+      const todaysEntry = libraryEntries.find((entry) => entry.puzzleId === daily.puzzleId);
+      body = (
+        <DailyHub
+          daily={daily}
+          dateLabel={new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+          })}
+          monthLabel={new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
+            month: 'long',
+            year: 'numeric',
+          })}
+          streak={streakCount}
+          freezes={streak.freezes}
+          tone={streakTone}
+          pips={weekPips(streak, today)}
+          grid={monthGrid(streak, monthKeyOf(today), today)}
+          progress={
+            todaysEntry
+              ? { placed: todaysEntry.snapshot.placed, total: todaysEntry.snapshot.total }
+              : null
+          }
+          progressThumbnail={todaysEntry?.thumbnailBlob ?? null}
+          doneToday={doneToday}
+          canRepair={canRepairStreak(streak, today)}
+          onRepair={handleRepair}
+          onStart={() => {
+            void handleStartDaily();
+          }}
+          onBack={() => setScreen('home')}
+        />
+      );
+    } else if (screen === 'wall') {
+      body = <CollectionWall entries={completions} />;
+    } else if (screen === 'library') {
+      body = (
+        <Library
+          entries={shelved}
+          onOpen={(puzzleId) => {
+            void handleOpenLibraryEntry(puzzleId);
+          }}
+          onNewPuzzle={startNewPuzzle}
+        />
+      );
+    } else {
+      // Most recent first — not "exactly one", which hid Continue the moment
+      // a second puzzle was started.
+      const continuing =
+        [...shelved].sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
+      body = (
+        <Today
+          dailyPreview={{
+            title: curatedPhotoById(daily.photoId)?.name ?? 'Today’s photo',
+            photoUrl: curatedPhotoUrl(daily.photoId) ?? '',
+            pieceCount: daily.targetCount,
+            resetsInMs: msUntilNextLocalMidnight(new Date()),
+            hintsIncluded: hintsAvailable(0, DAILY_CONFIG.mode),
+          }}
+          dailyDone={doneToday}
+          continuing={continuing}
+          streak={streakCount}
+          streakTone={streakTone}
+          weekPips={weekPips(streak, today)}
+          onDaily={() => setScreen('daily')}
+          onContinue={(puzzleId) => {
+            void handleOpenLibraryEntry(puzzleId);
+          }}
+          onNewPuzzle={startNewPuzzle}
+          onSettings={() => setSettingsOpen(true)}
+        />
+      );
+    }
 
-  if (screen === 'wall') {
     return (
-      <CollectionWall entries={completions} onBack={() => setScreen(beforeWall.current)} />
-    );
-  }
-
-  if (screen === 'library') {
-    // Today's daily is offered on the hub, not here — one puzzle, one place to
-    // start it. Yesterday's unfinished daily is no longer "today's" and shows
-    // as an ordinary card, which is why nothing is ever deleted to achieve this.
-    const shelved = libraryEntries.filter((entry) => entry.puzzleId !== dailyPuzzleId(today));
-    return (
-      <Library
-        entries={shelved}
-        streak={streakCount}
-        streakTone={streakTone}
-        onHome={() => setScreen('home')}
-        onDaily={() => setScreen('daily')}
-        onCollection={() => {
-          void openCollection();
-        }}
-        onOpen={(puzzleId) => {
-          void handleOpenLibraryEntry(puzzleId);
-        }}
-        onNewPuzzle={() => {
-          pickerInitialSource.current = 'curated';
-          originScreen.current = 'setup';
-          setSetupPhase({ kind: 'picker', error: null });
-          setScreen('setup');
-        }}
-      />
+      <div className="flex h-full w-full flex-col bg-[var(--mat-void)]">
+        <main
+          className="min-h-0 flex-1 overflow-y-auto"
+          style={{ paddingTop: 'env(safe-area-inset-top)' }}
+        >
+          {body}
+        </main>
+        <div className="order-last md:order-first md:flex md:justify-center">
+          <TabBar
+            active={activeTab}
+            todayBadge={!doneToday}
+            onSelect={(tab) => {
+              if (tab === 'collection') void openCollection();
+              else setScreen(TAB_SCREEN[tab]);
+            }}
+          />
+        </div>
+        <SettingsSheet
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          traySide={chrome.traySide}
+          onTraySide={(side) => {
+            chrome.setTraySide(side);
+            void saveTraySide(side);
+          }}
+        />
+      </div>
     );
   }
 
@@ -1333,7 +1346,7 @@ export function App(): React.ReactElement {
           error={setupPhase.error}
           busy={setupPhase.busy ?? false}
           initialSource={pickerInitialSource.current}
-          onBack={() => setScreen('home')}
+          onBack={() => setScreen(lastTabScreen.current)}
         />
       );
     }
@@ -1457,7 +1470,7 @@ export function App(): React.ReactElement {
               autoFocus
               aria-label="Group name"
               defaultValue={runtime.current?.groupLabel(renaming) ?? ''}
-              className="touch-target rounded-[6px] bg-transparent px-[8px] font-[var(--font-data)] text-2"
+              className="touch-target rounded-[6px] bg-transparent px-[8px] font-data text-2"
               onKeyDown={(event) => {
                 if (event.key === 'Escape') setRenaming(null);
               }}

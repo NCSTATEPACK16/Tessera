@@ -75,10 +75,10 @@ export function PhotoPicker({
             </Button>
           )}
           <div>
-            <div className="font-[var(--font-display)] text-5 text-[var(--ink-primary)]">
+            <div className="font-display text-5 text-[var(--ink-primary)]">
               New puzzle
             </div>
-            <div className="mt-1 font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
+            <div className="mt-1 font-data text-1 text-[var(--ink-muted)]">
               Pick a photo
             </div>
           </div>
@@ -90,7 +90,7 @@ export function PhotoPicker({
             aria-label="Curated photos"
             aria-pressed={source === 'curated'}
             onClick={() => setSource('curated')}
-            className={`flex-1 rounded-[var(--radius-md)] border px-0 py-2 font-[var(--font-data)] text-1 ${
+            className={`flex-1 rounded-[var(--radius-md)] border px-0 py-2 font-data text-1 ${
               source === 'curated'
                 ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
                 : 'border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -103,7 +103,7 @@ export function PhotoPicker({
             aria-label="Upload photo"
             aria-pressed={source === 'upload'}
             onClick={() => setSource('upload')}
-            className={`flex-1 rounded-[var(--radius-md)] border px-0 py-2 font-[var(--font-data)] text-1 ${
+            className={`flex-1 rounded-[var(--radius-md)] border px-0 py-2 font-data text-1 ${
               source === 'upload'
                 ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
                 : 'border-[var(--edge-hair)] text-[var(--ink-muted)]'
@@ -131,7 +131,7 @@ export function PhotoPicker({
         {source === 'curated' ? (
           SHELVES.map(({ key, label }) => (
             <div key={key} className="flex flex-col gap-3">
-              <h2 className="font-[var(--font-data)] text-1 uppercase tracking-wide text-[var(--ink-muted)]">
+              <h2 className="font-data text-1 uppercase tracking-wide text-[var(--ink-muted)]">
                 {label}
               </h2>
               <div className="grid grid-cols-2 gap-3">
@@ -199,7 +199,7 @@ export function PhotoPicker({
               dragOver ? 'border-[var(--accent)]' : 'border-[var(--edge-hair)]'
             }`}
           >
-            <div className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
+            <div className="font-data text-1 text-[var(--ink-muted)]">
               Tap to pick from your library
               <br />
               or drag a photo here

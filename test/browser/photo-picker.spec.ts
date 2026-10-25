@@ -217,14 +217,14 @@ test.describe('photo picker and crop', () => {
 
 // v2 spec §4: Photo → Setup → Play, three taps from Home. A tapped photo
 // advances (no separate confirm), and crop lives inside setup.
-test('three taps from Home to the board', async ({ page }) => {
+test('three taps from Today to the board', async ({ page }) => {
   test.setTimeout(90_000);
   const seeded = await BoardPage.open(page, { mode: 'Zen' });
   await seeded.autoPlace();
   await page.waitForTimeout(1200);
   await page.reload({ waitUntil: 'load' });
 
-  await page.getByRole('button', { name: 'Browse Photos' }).click(); // 1
+  await page.getByRole('button', { name: 'New puzzle' }).click(); // 1
   await page.getByRole('button', { name: /Curated photo: Mountain Lake/ }).click(); // 2
   await page.getByRole('button', { name: 'Start cutting' }).click(); // 3
 

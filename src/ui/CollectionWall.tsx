@@ -19,11 +19,9 @@ import { curatedPhotoById } from '@/play/curated';
 import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
 import { CompletionCard } from './CompletionCard';
-import { Button } from './kit';
 
 export interface CollectionWallProps {
   entries: readonly CompletionRecord[];
-  onBack: () => void;
 }
 
 function metaOf(entry: CompletionRecord): CardMeta {
@@ -67,7 +65,7 @@ function WallTile({
       {url && <img src={url} alt="" className="h-full w-full object-cover" />}
       {entry.cleanRun && (
         // A clean run is a glyph *and* a word, never colour alone (§13).
-        <span className="absolute bottom-1 left-1 rounded-[6px] bg-[color-mix(in_srgb,var(--mat-void)_70%,transparent)] px-1.5 py-0.5 font-[var(--font-data)] text-1 text-[var(--ink-primary)]">
+        <span className="absolute bottom-1 left-1 rounded-[6px] bg-[color-mix(in_srgb,var(--mat-void)_70%,transparent)] px-1.5 py-0.5 font-data text-1 text-[var(--ink-primary)]">
           ✓ clean
         </span>
       )}
@@ -75,7 +73,7 @@ function WallTile({
   );
 }
 
-export function CollectionWall({ entries, onBack }: CollectionWallProps): React.ReactElement {
+export function CollectionWall({ entries }: CollectionWallProps): React.ReactElement {
   const [selected, setSelected] = useState<CompletionRecord | null>(null);
   const [cardBlob, setCardBlob] = useState<Blob | null>(null);
 
@@ -106,7 +104,8 @@ export function CollectionWall({ entries, onBack }: CollectionWallProps): React.
     // Reopened from the wall: no again-harder, no new-puzzle — both actions
     // just close back to the mosaic. Share and Save operate on the rebuilt PNG.
     return (
-      <div className="relative h-full w-full bg-[var(--mat-void)]">
+      // Fixed over the whole window: the tab bar is hidden on the card (v2 §3).
+      <div className="fixed inset-0 z-50 bg-[var(--mat-void)]">
         <CompletionCard
           meta={selectedMeta}
           cardBlob={cardBlob}
@@ -121,18 +120,10 @@ export function CollectionWall({ entries, onBack }: CollectionWallProps): React.
   }
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="font-[var(--font-display)] text-5 text-[var(--ink-primary)]">
-          Collection
-        </div>
-        <Button
-          aria-label="Back"
-          onClick={onBack}
-        >
-          Back
-        </Button>
-      </div>
+    <div className="mx-auto flex w-full max-w-[60rem] flex-col gap-5 p-5 [animation:screen-in_var(--duration-slow)_var(--ease-standard)]">
+      <h1 className="m-0 font-display text-5 font-normal text-[var(--ink-primary)]">
+        Collection
+      </h1>
 
       {entries.length === 0 ? (
         <div className="text-2 text-[var(--ink-muted)]">

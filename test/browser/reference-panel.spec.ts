@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage } from './board-page';
+import { BoardPage, openTab } from './board-page';
 
 test('the reference thumbnail shows while playing, and its state survives a reload', async ({
   page,
@@ -91,8 +91,8 @@ test('the reference thumbnail shows while playing, and its state survives a relo
   await page.reload({ waitUntil: 'load' });
 
   // A session exists now, so the app lands on Home, not back in play — one
-  // tap through "Your Puzzles" reaches the library (2026-08-22 spec).
-  await page.getByRole('button', { name: /Your Puzzles/ }).click();
+  // tap on the Puzzles tab reaches the library (2026-08-22 spec).
+  await openTab(page, 'Puzzles');
   await page.getByLabel(/Open puzzle:/).first().click();
   await board.waitForCut();
 

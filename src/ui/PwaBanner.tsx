@@ -1,9 +1,12 @@
 /**
  * Step 9's install prompt and idle warning, plus the update-available toast.
- * Mounted once in `main.tsx`, outside `<App>` — every `App` screen is an
- * early return over its own JSX tree (`src/ui/App.tsx`), so a banner that
- * has to appear regardless of which screen is showing belongs beside it,
- * not threaded through each branch.
+ *
+ * v2 spec §3: the banner is an inline row on Today and nowhere else — a fixed
+ * strip over every screen covered the setup's sticky Start and the tray. The
+ * service worker still registers on every screen, because a first-run player
+ * never sees Today and offline must work for them too: `PwaRegistrar` is
+ * mounted once in `main.tsx` and publishes the worker's state to `usePwa`;
+ * `PwaBanner` only reads it.
  *
  * Reads its own data independently (`listCompletions`/`listLibrary`) rather
  * than lifting state out of `App` — this is the one place in the UI layer
@@ -12,6 +15,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { create } from 'zustand';
 import { listCompletions } from '@/persist/completions';
 import { listLibrary } from '@/persist/library';
 import { lastActivityAt, shouldOfferInstall, shouldWarnIdle } from '@/play/pwa';
@@ -33,6 +37,41 @@ function isIOS(): boolean {
   return /iphone|ipad|ipod/i.test(navigator.userAgent);
 }
 
+interface PwaState {
+  offlineReady: boolean;
+  needRefresh: boolean;
+  update: () => void;
+  dismissOffline: () => void;
+  dismissRefresh: () => void;
+}
+
+const usePwa = create<PwaState>(() => ({
+  offlineReady: false,
+  needRefresh: false,
+  update: () => {},
+  dismissOffline: () => {},
+  dismissRefresh: () => {},
+}));
+
+/** Registers the service worker on every screen; renders nothing. */
+export function PwaRegistrar(): null {
+  const {
+    offlineReady: [offlineReady, setOfflineReady],
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW();
+  useEffect(() => {
+    usePwa.setState({
+      offlineReady,
+      needRefresh,
+      update: () => void updateServiceWorker(true),
+      dismissOffline: () => setOfflineReady(false),
+      dismissRefresh: () => setNeedRefresh(false),
+    });
+  }, [offlineReady, needRefresh, updateServiceWorker, setOfflineReady, setNeedRefresh]);
+  return null;
+}
+
 export function PwaBanner(): React.ReactElement | null {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [completions, setCompletions] = useState(0);
@@ -40,11 +79,7 @@ export function PwaBanner(): React.ReactElement | null {
   const [installDismissed, setInstallDismissed] = useState(false);
   const [idleDismissed, setIdleDismissed] = useState(false);
 
-  const {
-    offlineReady: [offlineReady, setOfflineReady],
-    needRefresh: [needRefresh, setNeedRefresh],
-    updateServiceWorker,
-  } = useRegisterSW();
+  const { offlineReady, needRefresh, update, dismissOffline, dismissRefresh } = usePwa();
 
   useEffect(() => {
     const onBeforeInstall = (event: Event): void => {
@@ -78,11 +113,11 @@ export function PwaBanner(): React.ReactElement | null {
         <button
           type="button"
           className="touch-target rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 text-[var(--mat-void)]"
-          onClick={() => void updateServiceWorker(true)}
+          onClick={update}
         >
           Reload
         </button>
-        <DismissButton onClick={() => setNeedRefresh(false)} />
+        <DismissButton onClick={dismissRefresh} />
       </Banner>
     );
   }
@@ -91,7 +126,7 @@ export function PwaBanner(): React.ReactElement | null {
     return (
       <Banner>
         <span>Tessera is ready to play offline.</span>
-        <DismissButton onClick={() => setOfflineReady(false)} />
+        <DismissButton onClick={dismissOffline} />
       </Banner>
     );
   }
@@ -144,8 +179,7 @@ function Banner({ children }: { children: React.ReactNode }): React.ReactElement
   return (
     <div
       role="status"
-      className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap items-center gap-3 border-t border-[var(--edge-hair)] bg-[var(--mat-raised)] px-4 py-2 text-2 text-[var(--ink-primary)] [&>span]:flex-1 [&>span]:min-w-[12rem]"
-      style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+      className="flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] border border-[var(--edge-hair)] bg-[var(--mat-raised)] px-4 py-2 text-2 text-[var(--ink-primary)] [&>span]:min-w-[12rem] [&>span]:flex-1"
     >
       {children}
     </div>

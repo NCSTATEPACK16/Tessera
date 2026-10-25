@@ -16,7 +16,7 @@ export function Badge({ label, tone = 'muted' }: { label: string; tone?: BadgeTo
   const color = TONES[tone];
   return (
     <span
-      className="whitespace-nowrap rounded-[var(--radius-sm)] border px-[7px] py-[2px] font-[var(--font-data)] text-1 uppercase tracking-[0.08em]"
+      className="whitespace-nowrap rounded-[var(--radius-sm)] border px-[7px] py-[2px] font-data text-1 uppercase tracking-[0.08em]"
       style={{
         color,
         borderColor: `color-mix(in srgb, ${color} 25%, transparent)`,

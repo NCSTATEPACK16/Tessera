@@ -32,7 +32,7 @@ export function SettingsRow({ label, sub, trailing, children }: SettingsRowProps
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-2 text-[var(--ink-primary)]">{label}</div>
-          {sub && <div className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">{sub}</div>}
+          {sub && <div className="font-data text-1 text-[var(--ink-muted)]">{sub}</div>}
         </div>
         {trailing}
       </div>

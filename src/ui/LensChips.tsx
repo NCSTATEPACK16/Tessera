@@ -79,7 +79,7 @@ export function LensChips({
               ].join(' ')}
             >
               {LABEL[entry]}
-              <span className="font-[var(--font-data)] text-1 tabular-nums opacity-70">
+              <span className="font-data text-1 tabular-nums opacity-70">
                 {meta?.count ?? 0}
               </span>
             </button>
@@ -112,10 +112,10 @@ export function LensChips({
                 style={{ background: bin.swatch }}
               />
               {/* The numeral, always. Never the swatch on its own (§06). */}
-              <span className="font-[var(--font-data)] tabular-nums">
+              <span className="font-data tabular-nums">
                 {bin.mixed ? 'Mixed' : bin.numeral}
               </span>
-              <span className="font-[var(--font-data)] tabular-nums opacity-70">
+              <span className="font-data tabular-nums opacity-70">
                 {binCount(bin.index)}
               </span>
             </button>

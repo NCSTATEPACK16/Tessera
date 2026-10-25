@@ -9,7 +9,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage, firstCuratedPhoto, reachPicker } from './board-page';
+import { BoardPage, firstCuratedPhoto, reachPicker, openTab } from './board-page';
 
 /**
  * A clean database and the picker, which is where a first visit lands.
@@ -39,9 +39,9 @@ async function freshVisit(page: import('@playwright/test').Page): Promise<void> 
   await expect(firstCuratedPhoto(page)).toBeVisible();
 }
 
-test('the hub is reachable from Home on a first visit', async ({ page }) => {
+test('the hub is reachable from Today on a first visit', async ({ page }) => {
   await freshVisit(page);
-  // v2: the picker is a pushed step, not a hub — Back reaches Home's daily.
+  // v2: the picker is a pushed step, not a hub — Back reaches Today's daily.
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByLabel(/^Play today's puzzle/).click();
 
@@ -53,7 +53,7 @@ test('the hub is reachable from Home on a first visit', async ({ page }) => {
   await expect(page.getByText('Leaderboard')).toHaveCount(0);
 });
 
-test('the hub is reachable from the library, and today’s daily is not listed there', async ({
+test('the hub is reachable from Today, and today’s daily is not listed in Puzzles', async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -63,15 +63,13 @@ test('the hub is reachable from the library, and today’s daily is not listed t
   await board.autoPlace();
   await page.waitForTimeout(1200);
   await page.reload({ waitUntil: 'load' });
-  // A profile with history now lands on Home first (2026-08-22 spec) — this
-  // test is specifically about the library's own Daily entry point, so route
-  // through "Your Puzzles" to reach it rather than Home's own hero card.
-  await page.getByRole('button', { name: /Your Puzzles/ }).click();
-
+  await openTab(page, 'Puzzles');
   await expect(page.getByLabel(/Open puzzle:/).first()).toBeVisible();
   const ordinaryCards = await page.getByLabel(/Open puzzle:/).count();
 
-  await page.getByLabel('Daily').click();
+  // v2 spec §3: the hub is a push within Today, reached from its hero.
+  await openTab(page, 'Today');
+  await page.getByLabel(/^Play today's puzzle/).click();
   await expect(page.getByLabel('Start today’s')).toBeVisible();
 
   // Start the daily, leave it part-done, and come back to the library: the
@@ -84,14 +82,14 @@ test('the hub is reachable from the library, and today’s daily is not listed t
   // Leave routes back to where play started — the hub.
   await expect(page.getByLabel('Continue today’s')).toBeVisible();
 
-  await page.getByLabel('Your puzzles').click();
+  await openTab(page, 'Puzzles');
   await expect(page.getByLabel(/Open puzzle:/)).toHaveCount(ordinaryCards);
 });
 
 test('starting the daily skips the picker, the crop, and the setup screen', async ({ page }) => {
   test.setTimeout(90_000);
   await freshVisit(page);
-  // v2: the picker is a pushed step, not a hub — Back reaches Home's daily.
+  // v2: the picker is a pushed step, not a hub — Back reaches Today's daily.
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByLabel(/^Play today's puzzle/).click();
   await page.getByLabel('Start today’s').click();
@@ -107,7 +105,7 @@ test('starting the daily skips the picker, the crop, and the setup screen', asyn
 test('the daily is the same board on every visit', async ({ page }) => {
   test.setTimeout(120_000);
   await freshVisit(page);
-  // v2: the picker is a pushed step, not a hub — Back reaches Home's daily.
+  // v2: the picker is a pushed step, not a hub — Back reaches Today's daily.
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByLabel(/^Play today's puzzle/).click();
   await page.getByLabel('Start today’s').click();

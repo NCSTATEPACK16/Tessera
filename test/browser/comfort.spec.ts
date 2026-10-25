@@ -4,7 +4,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage } from './board-page';
+import { BoardPage, openTab } from './board-page';
 
 test('comfort mode widens buttons past 44px', async ({ page }) => {
   const board = await BoardPage.open(page);
@@ -68,8 +68,8 @@ test('a puzzle resumed with comfort already on opens floored at Generous', async
   await page.reload({ waitUntil: 'load' });
 
   // A session exists now, so the app lands on Home, not the picker — one
-  // tap through "Your Puzzles" reaches the library (2026-08-22 spec).
-  await page.getByRole('button', { name: /Your Puzzles/ }).click();
+  // tap on the Puzzles tab reaches the library (2026-08-22 spec).
+  await openTab(page, 'Puzzles');
   await page.getByLabel(/Open puzzle:/).first().click();
   await board.waitForCut();
 
