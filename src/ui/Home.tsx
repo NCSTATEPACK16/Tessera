@@ -11,6 +11,7 @@ import type { StreakTone } from './StreakFlame';
 import type { DayCell } from '@/daily/streak';
 import type { CompletionRecord } from '@/persist/completions';
 import type { LibraryEntry } from '@/persist/library';
+import { Button } from './kit';
 
 export interface HomeProps {
   dailyPreview: {
@@ -112,22 +113,21 @@ export function Home({
       )}
 
       <div className="flex gap-3">
-        <button
-          type="button"
+        <Button
+          variant="primary"
           aria-label="Browse Photos"
           onClick={onBrowsePhotos}
-          className="touch-target flex-1 rounded-[var(--radius-md)] bg-[var(--accent)] px-4 text-2 text-[var(--mat-void)]"
+          className="flex-1"
         >
           Browse Photos
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           aria-label="Upload Yours"
           onClick={onUploadYours}
-          className="touch-target flex-1 rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-4 text-2 text-[var(--ink-primary)]"
+          className="flex-1"
         >
           Upload Yours
-        </button>
+        </Button>
       </div>
 
       {libraryCount > 0 && (

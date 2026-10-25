@@ -15,6 +15,7 @@ import { ProgressRing } from './ProgressRing';
 import { StreakFlame } from './StreakFlame';
 import type { StreakTone } from './StreakFlame';
 import type { LibraryEntry } from '@/persist/library';
+import { Button } from './kit';
 
 export interface LibraryProps {
   entries: readonly LibraryEntry[];
@@ -103,43 +104,36 @@ export function Library({
         </div>
         <div className="flex gap-2">
           {onHome && (
-            <button
-              type="button"
+            <Button
               aria-label="Home"
               onClick={onHome}
-              className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
             >
               Home
-            </button>
+            </Button>
           )}
           {onCollection && (
-            <button
-              type="button"
+            <Button
               aria-label="Collection"
               onClick={onCollection}
-              className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
             >
               Collection
-            </button>
+            </Button>
           )}
           {onDaily && (
-            <button
-              type="button"
+            <Button
               aria-label="Daily"
               onClick={onDaily}
-              className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
             >
               <StreakFlame streak={streak} freezes={0} tone={streakTone} compact />
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
+          <Button
+            variant="primary"
             aria-label="New puzzle"
             onClick={onNewPuzzle}
-            className="touch-target rounded-[var(--radius-md)] bg-[var(--accent)] px-4 text-2 text-[var(--mat-void)]"
           >
             New Puzzle
-          </button>
+          </Button>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

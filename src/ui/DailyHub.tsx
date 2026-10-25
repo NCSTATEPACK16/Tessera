@@ -23,6 +23,7 @@ import { MonthCalendar } from './MonthCalendar';
 import { ProgressRing } from './ProgressRing';
 import { StreakFlame, streakMessage } from './StreakFlame';
 import type { StreakTone } from './StreakFlame';
+import { Button } from './kit';
 
 export interface DailyHubProps {
   daily: DailyPuzzle;
@@ -116,22 +117,18 @@ export function DailyHub({
           Daily
         </div>
         <div className="flex gap-2">
-          <button
-            type="button"
+          <Button
             aria-label="Your puzzles"
             onClick={onLibrary}
-            className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
           >
             Your puzzles
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
             aria-label="New puzzle"
             onClick={onNewPuzzle}
-            className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
           >
             New puzzle
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -184,14 +181,13 @@ export function DailyHub({
               Repair streak
             </button>
           )}
-          <button
-            type="button"
+          <Button
+            variant="primary"
             aria-label={cta}
             onClick={onStart}
-            className="touch-target rounded-[var(--radius-md)] bg-[var(--accent)] px-4 text-2 text-[var(--mat-void)]"
           >
             {cta}
-          </button>
+          </Button>
         </div>
       </div>
 

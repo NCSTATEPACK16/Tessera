@@ -176,6 +176,8 @@ src/
             CompletionCard CollectionWall   the Puzzle Card and the mosaic of finishes (step 8)
             FirstRun.tsx              the guided twelve's overlay — copy and skip only (step 7)
             theme.css                 §13 tokens, once, for both consumers
+            kit/                      Button Toggle Segmented Badge Settings Icon Shimmer — shared chrome
+                                       (2026-10-20 modern-look spec); toggles keep aria-pressed
   dev/      e2e.ts                    the browser suite's DEV-only hook — never in a build
   main.tsx                            the product entry — index.html
 test/                                 mirrors src/ — vitest, *.test.ts

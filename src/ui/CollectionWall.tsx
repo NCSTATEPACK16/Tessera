@@ -19,6 +19,7 @@ import { curatedPhotoById } from '@/play/curated';
 import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
 import { CompletionCard } from './CompletionCard';
+import { Button } from './kit';
 
 export interface CollectionWallProps {
   entries: readonly CompletionRecord[];
@@ -125,14 +126,12 @@ export function CollectionWall({ entries, onBack }: CollectionWallProps): React.
         <div className="font-[var(--font-display)] text-5 text-[var(--ink-primary)]">
           Collection
         </div>
-        <button
-          type="button"
+        <Button
           aria-label="Back"
           onClick={onBack}
-          className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
         >
           Back
-        </button>
+        </Button>
       </div>
 
       {entries.length === 0 ? (

@@ -10,6 +10,7 @@
 
 import { useRef, useState } from 'react';
 import { curatedPhotoUrl, photosByShelf, type CuratedShelf } from '@/play/curated';
+import { Button } from './kit';
 
 /** §15's three shelves, in display order and with their human labels. */
 const SHELVES: readonly { key: CuratedShelf; label: string }[] = [
@@ -65,14 +66,13 @@ export function PhotoPicker({
       >
         <div className="flex items-center gap-3">
           {onBack && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               aria-label="Back"
               onClick={onBack}
-              className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-muted)]"
             >
               ←
-            </button>
+            </Button>
           )}
           <div>
             <div className="font-[var(--font-display)] text-5 text-[var(--ink-primary)]">
