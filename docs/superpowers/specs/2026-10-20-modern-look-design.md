@@ -85,6 +85,23 @@ Mapping rules for anything taken from the mock:
 - **Pause** — serif "Paused" header with placed/time, Resume/Leave; live settings below as a
   `SettingsGroup`.
 
+### Phase 2 audit (2026-10-25, Impeccable 4.7 `detect` over CDP + screenshot critique)
+
+The detector ran against the live dev server at 1280×900 and iPhone 13, on Home, Library, Collection,
+Daily hub, setup, play and the card. Play and the wall came back clean. Play's chrome is thin and
+its board is canvas, so the detector can't see it.
+
+| Finding | Where | Disposition |
+|---|---|---|
+| Hero caption 1.0:1 (`--mat-void` text on a black gradient) | Home | **Fix first** (B7): `--ink-primary` text on a bottom scrim |
+| `dark-glow`: coloured `--shadow-accent` halo on every primary button | Home, Library, Daily, setup, card | **Drop it.** Primary buttons use no shadow, which also honours the brief's "no drop-shadow soup". The token stays defined but unused until something needs it |
+| Header buttons overflow off-screen at phone width; "Your Puzzles" wraps to two lines | Library | Gone with the tab shell (Home/Collection/streak buttons removed, `+` only) |
+| Calendar numerals 2.4:1 (`#4b5057`) | Daily month grid | Future days. Raise them to `--ink-muted` with a dimmer cell instead of dimmer text. Not slice 2 |
+| Library card reads "15 × 10 · Classic" | Library | Curated name instead (§3 above). Phase 2, slice 2 if cheap |
+| "Your Puzzles (1)" is a bare text link with no affordance | Home | Gone, because Puzzles is a tab |
+| Puzzle Card and wall tile capture show a blurred photo overlay and a missing last piece | Card, wall | **Bug, not style.** Proposed as its own session; out of this spec |
+| Setup's Classic subline says "timer on" | setup | Copy only. The v2 spec has no visible timer, so it becomes "3 hints" |
+
 ## Open decisions (before phase 2)
 
 The v2 spec (`2026-10-18-v2-redesign-design.md` §3, §5) already settles most of what the mock
@@ -99,7 +116,7 @@ proposes differently. **The v2 spec wins** — it is the newer product decision:
 
 Still open:
 
-1. **Splash** — no longer than the boot check, or none.
+1. ~~**Splash**~~ — **decided 2026-10-25: none.** Boot straight to Today.
 2. **About row** — the "MIT licence" line waits on PLAN.md's licensing decision.
 
 ## Verification (every phase)
