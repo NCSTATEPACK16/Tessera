@@ -1415,3 +1415,115 @@ understanding it properly could make higher `workers` safe rather than working a
 
 Push `home-screen` and open a PR against `main`. `completion-card-race-and-piece-safety` (§11) is
 still the older unmerged branch — unrelated to this one, still waiting on whoever picks it up.
+
+---
+
+## 13. Session — 2026-10-20 → 10-25: browser suite to ~3 min, crop fold-in, modern look phase 1
+
+**Branch:** `v2-slice-2` — **not pushed, no PR.** Local commits on top of `main`:
+`bb6fe7c` (crop folded into setup + test speed) and `381009f` (modern look phase 1).
+Untracked and deliberately not committed: `TesseraV3Figma/` (the Figma Make mock — reference only)
+and `docs/superpowers/{plans,specs}/2026-08-23-tray-review-bugs-*` (unrelated, from earlier).
+
+**Gates at `381009f`:** `npm test` 670/670 · `npm run typecheck` clean · `npm run build` +
+`check-bundle-budget` clean (and `__tessera` absent from `dist/`) · `npm run test:browser:full`
+106 passed / 1 failed (`reference-panel` — pre-existing flake, see 13.4) in ~3.3–4.0 min on a
+loaded machine. Real-hardware pass **not run** — same standing gap as every screen in this file.
+
+### 13.1. The browser suite: 16+ min → ~3 min (`bb6fe7c`)
+
+§12.1 above concluded more workers were unsafe. They are safe now; the causes were found:
+
+- **Dev-only hook `src/dev/e2e.ts` (`window.__tessera`).** Behind `import.meta.env.DEV`;
+  `check-bundle-budget.mjs` fails the build if `__tessera` reaches `dist/`. `?e2e&pieces=N&mode=zen`
+  boots straight onto a board with the same photo, crop and stubbed puzzle id as the setup walk.
+  `place(n)` / `placeAllBut(n)` go through `session.placeHint` (made public) — the real Tier-3 path,
+  so every placement is a real union-find merge. `idle()` and `loosePoints()` support the gestures.
+- **`BoardPage.open()` uses the `?e2e` route.** `autoPlace`, `autoPlaceAllBut`, `completeZenPuzzle`
+  (all-but-one instantly + one real held hint). No spec plays a puzzle to reach a state any more.
+- **Two timing traps, both real causes of §12.1's failures:** a tap as `mouse.down()`+`mouse.up()`
+  outlasts the 120ms long-press under load → `BoardPage.tapAt` dispatches both in one task. A
+  drag-out started while the cut streams or springs settle outlasts the 450ms select-hold →
+  `waitForCut`/`autoPlace` wait for `idle()`; `dragOut`/`pressAndPromote` retry when the press came
+  out as a select-hold (a real always-select bug still fails all three tries).
+- **Config:** projects `timing` (`@timing`, 1 worker, runs first) → `dock` (everything else) +
+  `phone` (`@phone` only); 4 workers locally, 3 in CI; 60s test timeout. `@slow` (HEIC ×2, large
+  piece mode) is excluded from `npm run test:browser`; CI runs `test:browser:full`.
+- **Deleted as duplicates:** library "empty library never rendered" (folded into home's fresh-profile
+  test), puzzle-setup "default bigger than 50", photo-picker "curated → playable board".
+- **Sanity-checked:** disabling `saveCompletion` makes completion + collection-wall fail.
+
+### 13.2. Crop folded into setup (`bb6fe7c`)
+
+`PhotoCrop.tsx` → `CropCanvas.tsx` inside `PuzzleSetup`; a curated tile advances in one tap (v2
+spec §4). Specs updated to the new flow.
+
+### 13.3. Modern look, phase 1 (`381009f`)
+
+Spec: `docs/superpowers/specs/2026-10-20-modern-look-design.md` — the `TesseraV3Figma` gap list,
+phased (tokens+kit → layout → screens the mock lacks), with the "don't adopt" list.
+**Edited after the commit (uncommitted):** its open decisions now defer to the v2 spec, which had
+already settled three tabs (Today · Puzzles · Collection), the gear → Settings sheet, "How to play"
+as a Settings row, no visible timer, and **no Back in play**. Only splash and the About/licence row
+remain open.
+
+Landed: new tokens in `theme.css` (secondary/deep inks, light hairline, success/warn/danger,
+`--accent-dim`/`--accent-glow` derived from the *live* accent, two shadows, `.eyebrow`, entrance
+keyframes) and `src/ui/kit/` — Button, Toggle (switch visual, still `aria-pressed`), Segmented,
+Badge, SettingsGroup/Row, Icon, Shimmer. Swapped in where drop-in only: setup and pause-sheet
+pickers/switches, plain buttons in Home, Library, Daily hub, Completion card, picker, wall.
+Badge, SettingsGroup, Icon, Shimmer are built but unused until phase 2.
+
+### 13.4. Open items, most visible first
+
+1. **v2 slice 2 is not finished.** Remaining from the v2 spec §9 checklist: the **tab shell**
+   (`App.tsx`; `Home.tsx` → Today; gear → Settings sheet; tab bar hidden in setup/play/first
+   run/card), **`PwaBanner` inline on Today only** (it is still mounted globally in `main.tsx`), and
+   the browser specs for tabs (`invariants.spec.ts` with tabs mounted, banner never over a CTA).
+   Phase 2 of the modern look (layout) should be done *as* the tab shell, not before it.
+2. **`reference-panel.spec.ts` flake — a real race, not the harness.** Hiding the reference panel
+   schedules no save; the deploy's debounced save (800ms) captures the hidden state only if the
+   hide click lands first. Under load it doesn't, and the reload shows the panel again. Fix by
+   having an assists change schedule a save, or reorder the test — product call.
+3. **Home hero text is `--mat-void` on a black gradient** — near-invisible. Fix first in phase 2.
+4. **"Finishing the daily increments the streak" is now testable** (`autoPlaceAllBut(1)` + one real
+   placement within the daily's 3 hints). `daily.spec.ts`'s comment says so; not written.
+5. **Real-hardware pass** on the kit (toggles, segmented, comfort's 60pt targets) — not done.
+
+### 13.5. Impeccable (`github.com/pbakaus/impeccable`) — evaluated, not installed
+
+A design skill for AI coding agents: one `/impeccable` skill with 24 commands (`audit`, `critique`,
+`polish`, `harden`, `adapt`, `layout`, `typeset`, `onboard`, `clarify`, `animate`, …), 62
+deterministic detector rules (run with no LLM), and `PRODUCT.md`/`DESIGN.md` context files.
+Apache-2.0, ~87k stars, pushed 2026-10-24.
+
+**Worth using, for the DOM chrome only, before and during phase 2.** It cannot see the board, the
+tray chips or the group chip — all canvas — and must not touch them.
+
+- **Use:** `audit` per screen (Today, Puzzles, Collection, setup, pause sheet, completion card,
+  tray chrome) for a11y, contrast, responsive and overflow — complements, does not replace, the
+  axe scan in `dynamic-type.spec.ts`. `critique` on each screen before laying it out. `harden` on
+  upload/HEIC error states. `adapt` for phone ↔ iPad. `clarify` on the How-to-play copy. `polish`
+  as the last pass before the PR.
+- **Don't use on play:** `animate`, `delight`, `overdrive`, `bolder`. Motion in play is locked by
+  the design doc (spring 520/26, lift 1.06, idle board draws nothing, reduced motion honoured).
+- **Ignore these rules where they collide with the design doc:** "don't use Inter" (Inter Tight is
+  §13's UI face), card warnings on the Today hero/Continue/library grid (those are specced). The
+  design doc wins every disagreement.
+- **Don't let `init`/`document` create a rival source of truth.** Seed `PRODUCT.md` from
+  `docs/DESIGN_BRIEF_Tessera.md` and `DESIGN.md` from §13 tokens + `theme.css`, each opening with
+  "the design doc wins; this is a summary". Both would be committed; the brief and design doc are not.
+- **Install is the user's call, not an agent's.** `npx impeccable install` (scope: project,
+  provider: claude) writes `.claude/skills/impeccable/` and **hooks that run on every Edit/Write
+  (5s), on Stop (30s deep pass) and at SessionStart**, and downloads an engine binary to
+  `~/.impeccable/bin/`. Read the hook manifest first; consider skill-only (no hooks) to start.
+
+### 13.6. What's next, in order
+
+1. Commit the spec edit in 13.3 (and this section).
+2. Decide on Impeccable (13.5); if yes, install project-scoped, seed `PRODUCT.md`/`DESIGN.md` as
+   described, run `/impeccable audit` + `critique` on Today, Puzzles and setup, and fold findings
+   into the modern-look spec's phase 2 section.
+3. Tab shell + modern look phase 2, screen by screen, `npm run test:browser` after each.
+4. `npm run test:browser:full`, push `v2-slice-2`, open the PR (the PAT cannot open PRs — hand over
+   the `pull/new` URL).

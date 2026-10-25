@@ -74,7 +74,8 @@ Mapping rules for anything taken from the mock:
 - **New puzzle** — step indicator, mode cards with icon + subline, preview card with the real
   piece count, toggle rows, sticky Back + Start Cutting footer. **Don't adopt** "Choose this
   photo →": the v2 spec makes a curated tile advance in one tap.
-- **Play** — top bar: back, serif name over placed/total, hint and pause icon buttons; a 3px
+- **Play** — top bar (v1's floating bar, **no Back** — leaving lives in the pause sheet, per the
+  v2 spec §5): serif name over placed/total, hint and pause icon buttons; a 3px
   progress bar under it (summary-driven). Keep **Fit**. Hint becomes a 52pt circular lightbulb
   with a count badge. **Don't adopt** "∞" in Zen — the counter is absent. **Don't adopt** the CSS
   bloom overlay — light lives in the canvas. **Don't adopt** infinite `glow-breathe`/`bloom-pulse`
@@ -86,16 +87,20 @@ Mapping rules for anything taken from the mock:
 
 ## Open decisions (before phase 2)
 
-1. **Bottom tab bar** (Home · Library · New · Learn · Settings) — a navigation change; alters the
-   Home/Library entry rules and `home.spec.ts`.
-2. **Global Settings screen** — tray side, comfort, sound, reset data. The mock's Ambient, High
-   contrast and Reduce motion switches have no feature behind them (reduced motion follows the
-   OS) and must not ship as dead controls.
-3. **Learn tab** — additional to the guided twelve, never a replacement. Copy is wrong today
-   ("50 curated photos" — there are 30; "12 × 12 = 144" for a 150 rung).
-4. **Splash** — no longer than the boot check, or none.
-5. **Live Classic timer** — permitted (timer is summary state) but a 1Hz update; not in the app.
-6. **About row** — the "MIT licence" line waits on PLAN.md's licensing decision.
+The v2 spec (`2026-10-18-v2-redesign-design.md` §3, §5) already settles most of what the mock
+proposes differently. **The v2 spec wins** — it is the newer product decision:
+
+| Mock proposes | Settled by v2 spec |
+|---|---|
+| Five-tab bar (Home · Library · New · Learn · Settings) | **Three tabs: Today · Puzzles · Collection.** iPhone bottom bar 49pt + safe area; iPad ≥ 768pt a centred floating bar at the top; hidden in setup, play, first run and the card. |
+| Settings as a tab | **Gear on Today → Settings sheet** (per the v2 spec: tray side, the telemetry off switch, Send feedback, "How to play"). The mock's Ambient, High contrast and Reduce motion switches have no feature behind them and must not ship as dead controls. |
+| Learn tab | **No tab** — a "How to play" row in Settings; the guided twelve teaches. Fix its copy ("50 curated photos" → 30; "12 × 12 = 144" fits no rung). |
+| Live Classic timer | **No visible timer** in play. |
+
+Still open:
+
+1. **Splash** — no longer than the boot check, or none.
+2. **About row** — the "MIT licence" line waits on PLAN.md's licensing decision.
 
 ## Verification (every phase)
 
