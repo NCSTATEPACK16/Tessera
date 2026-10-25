@@ -106,3 +106,38 @@ test('a session left through the pause sheet is still there on the next visit', 
   await board.waitForCut();
   expect((await board.placed()).placed).toBe(1);
 });
+
+test('a thumbnail capture on an idle board does not wait for a frame', async ({ page }) => {
+  // Every autosave awaits `captureThumbnail` before it writes anything. An
+  // async canvas encode (`convertToBlob`/`toBlob`) is scheduled by Chromium as
+  // an idle task, and on a page producing no frames it sits on a ~1s fallback
+  // timeout instead. Since the tray's rAF heartbeat stopped running forever
+  // (bug K, PR #18), an idle board produces no frames — correctly — so the
+  // 800ms debounce became ~1.8s, and a reload inside that window lost the save
+  // outright (`reference-panel.spec.ts` on dock). A player closing the tab in
+  // that window loses it the same way.
+  test.setTimeout(90_000);
+  const board = await BoardPage.open(page, { pieceCount: 50, mode: 'Zen' });
+  const [first] = await board.mountedIds();
+  await board.dragOut(first!, await board.matPoint());
+  // Past the settle spring and the debounced save it triggered, so the board
+  // is genuinely idle: nothing drawing, nothing scheduled.
+  await page.waitForTimeout(3000);
+
+  const elapsed = await page.evaluate(async () => {
+    // The module as the dev server serves it to the app itself. A string
+    // variable, so `tsc` does not try to resolve a URL path as a module.
+    const url = '/src/persist/thumbnail.ts';
+    const { captureThumbnail } = (await import(url)) as typeof import('@/persist/thumbnail');
+    const source = new OffscreenCanvas(1280, 960);
+    const ctx = source.getContext('2d')!;
+    ctx.fillStyle = '#c84';
+    ctx.fillRect(0, 0, 1280, 960);
+    const start = performance.now();
+    const blob = await captureThumbnail(source);
+    if (blob.type !== 'image/jpeg' || blob.size === 0) throw new Error('not a JPEG');
+    return performance.now() - start;
+  });
+
+  expect(elapsed).toBeLessThan(250);
+});
