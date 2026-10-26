@@ -1527,3 +1527,68 @@ tray chips or the group chip — all canvas — and must not touch them.
 3. Tab shell + modern look phase 2, screen by screen, `npm run test:browser` after each.
 4. `npm run test:browser:full`, push `v2-slice-2`, open the PR (the PAT cannot open PRs — hand over
    the `pull/new` URL).
+
+---
+
+## 14. Session — 2026-10-25: v2 slice 2 finished — tab shell, Impeccable, a font bug, the reference-panel "flake"
+
+**Branch:** `v2-slice-2`, pushed at the end of this section — **no PR yet** (the PAT cannot open
+one; use the `pull/new` URL). Slice 2's checklist in the v2 spec §9 is fully ticked.
+
+**Gates at the tip:** `npm test` 675/675 · `typecheck` clean · `build` clean, bundle budget OK
+(main 384 KB / 700), `__tessera` absent from `dist/` · `npm run test:browser:full` **118 passed /
+6 skipped / 0 failed** in 3.8 min. Real-hardware pass **still not run** — owed, as for every screen.
+
+### 14.1. What landed
+
+- **`main` merged in (`609e27b`).** The branch was missing `22813c1` — the synchronous thumbnail
+  encode and the `heic-to` pre-bundle. **§13.4's "reference-panel flake, a real race" was that
+  already-fixed bug**, not a new one: `setAssists` has scheduled a save since `e7472c5`; the save
+  stalled ~1s on `convertToBlob`'s idle task and the reload beat it. The spec now polls the
+  `sessions` row instead of sleeping 1200ms (`908a909`). 11/11 at four workers, was 1/6 on dock.
+- **Tab shell (`e399db9`).** `src/ui/tabs.ts` (`tabOf`, unit-tested) and `TabBar.tsx`: bottom bar on
+  a phone, floating top bar ≥ 768pt, hidden in setup/play/first run/card by construction — play
+  renders outside the shell. `Home.tsx` → `Today.tsx` (hero with a real scrim, B7 fixed; Continue is
+  the most recent in-progress; one primary New puzzle; streak; inline PWA banner). Gear →
+  `SettingsSheet.tsx` (Tray side, How to play). Daily hub is a push with Back; Puzzles has `+` and an
+  empty state; the wall lost Back and its reopened card covers the tab bar. `PwaRegistrar` keeps
+  the service worker registering on every screen (first-run players never see Today).
+  Specs use `openTab(page, 'Puzzles')` from `board-page.ts`; `tabs.spec.ts` covers the shell.
+- **Font bug, app-wide.** Tailwind v4 compiles `font-[var(--font-display)]` to **font-weight**, so
+  Instrument Serif and IBM Plex Mono had never rendered anywhere (41 sites). Now `font-display` /
+  `font-data`, generated from `@theme`. Every screen looks different because of it — intended.
+- **Primary `Button` lost its accent glow** (audit finding, see 14.2).
+- **Streak test written (`d2bbf69`)** — `daily.spec.ts` "finishing the daily starts the streak";
+  checked that it fails when `recordCompletion` writes the wrong day. Setup's mode sublines no
+  longer promise a timer.
+
+### 14.2. Impeccable — installed (full, with hooks)
+
+`npx impeccable@4.7.0 install --project --providers=claude --yes`. Skill + 19 MB engine in
+`.claude/skills/impeccable/`, four agents in `.claude/agents/impeccable-*` — both kept out of git
+via `.git/info/exclude` (local only). Hooks (SessionStart 5s, PostToolUse Edit|Write 5s, Stop 30s)
+went into `.claude/settings.local.json`, which is globally gitignored. Telemetry turned **off**
+(`~/.impeccable/config.json`). `PRODUCT.md` and `DESIGN.md` are committed (`1cac290`), each opening
+"the design doc wins".
+
+**How to audit DOM chrome with it here:** screens are not URL-routed, so a plain URL scan sees only
+the boot screen. Drive the dev server with Playwright launched with
+`--remote-debugging-port=9333`, navigate (the `?e2e` route + `openTab`), then
+`.claude/skills/impeccable/scripts/impeccable detect --cdp 9333 --target localhost --json` per
+screen. Findings are recorded in the modern-look spec's "Phase 2 audit" table (`c93c219`).
+
+### 14.3. Open items, most visible first
+
+1. **Puzzle Card / wall tile capture is corrupted** — a large blurred photo over the lower board,
+   a cyan bar, and the last piece's slot empty. Seen on a `openZenAndComplete` solve (hint-placed
+   last piece). A separate session (`Diagnose corrupted Puzzle Card / wall thumbnail capture`,
+   worktree off `main`) was started for it and hit a session limit; a retry is queued there.
+2. **Daily calendar future-day numerals 2.4:1** — dim the cell, not the text. Not slice 2.
+3. **Library cards still read "15 × 10 · Classic"** rather than the curated name.
+4. **Real-hardware pass** — tabs, Settings sheet, the new fonts at comfort's 60pt.
+5. Phase 2 of the modern look for setup, play top bar, tray chrome, pause sheet.
+
+### 14.4. What's next
+
+Open the slice-2 PR from the `pull/new` URL. Merge the card-capture fix branch when it lands. Then
+v2 slice 3 (OG meta, telemetry, privacy, Send feedback — the Settings sheet is ready for its rows).

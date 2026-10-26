@@ -247,17 +247,17 @@ Each slice is one PR from `main`. **Every PR:** `npm test`, `npm run typecheck`,
 and `npm run test:browser` (a gate, not an extra).
 
 **Slice 2 — Web v2 UI**
-- [ ] Investigate B6 (Continue 0/12) and fix if real.
-- [ ] Tab shell (`App.tsx`); `Home.tsx` → Today; gear → Settings sheet; tab bar hidden in
+- [x] Investigate B6 (Continue 0/12) and fix if real.
+- [x] Tab shell (`App.tsx`); `Home.tsx` → Today; gear → Settings sheet; tab bar hidden in
       setup / play / first run / card.
-- [ ] Photo step: tap advances, segmented source control.
-- [ ] Merge `PhotoCrop` into `PuzzleSetup`: grid overlay, More options disclosure, sticky Start,
+- [x] Photo step: tap advances, segmented source control.
+- [x] Merge `PhotoCrop` into `PuzzleSetup`: grid overlay, More options disclosure, sticky Start,
       id minted on Start.
-- [ ] `RuntimeSummary.hintsLeft` with accrual-boundary timeout; `HintButton` shows the count.
-- [ ] Sheet detents: peek / default 35% / half / full; board fits above the sheet.
-- [ ] `DOCK_QUERY` landscape and ≥ 1024; Tray side setting.
-- [ ] `PwaBanner` inline on Today only.
-- [ ] Browser specs: three-tap funnel, default detent ~35%, iPad portrait → sheet, iPad landscape →
+- [x] `RuntimeSummary.hintsLeft` with accrual-boundary timeout; `HintButton` shows the count.
+- [x] Sheet detents: peek / default 35% / half / full; board fits above the sheet.
+- [x] `DOCK_QUERY` landscape and ≥ 1024; Tray side setting.
+- [x] `PwaBanner` inline on Today only.
+- [x] Browser specs: three-tap funnel, default detent ~35%, iPad portrait → sheet, iPad landscape →
       dock, Tray side left mirrors, `invariants.spec.ts` with tabs mounted, banner never over a CTA.
       Update `board-page.ts` (`open()`, `reachPicker`) and the Home-hop specs.
 
