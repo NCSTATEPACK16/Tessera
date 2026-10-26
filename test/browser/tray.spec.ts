@@ -132,3 +132,95 @@ test.describe('the tray', () => {
     await expect(board.lens('All')).toHaveAttribute('aria-pressed', 'true');
   });
 });
+
+// v2 spec §5.2: the phone sheet opens at 35% so the board gets most of the
+// screen — but never so low that the pinned chrome leaves no pieces showing,
+// which is what a flat 35% did on this 664px-tall viewport.
+test('on a phone the tray opens low, with two whole rows of pieces showing', { tag: '@phone' }, async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'phone', 'the dock is a side panel, not a sheet');
+  const board = await BoardPage.open(page);
+  const viewport = page.viewportSize()!;
+  const tray = (await board.tray.boundingBox())!;
+
+  expect(tray.height).toBeGreaterThanOrEqual(Math.round(viewport.height * 0.35) - 4);
+  expect(tray.height).toBeLessThanOrEqual(Math.round(viewport.height * 0.5) + 4);
+
+  const rows = new Set<number>();
+  for (const chip of await board.chips.all()) {
+    const box = await chip.boundingBox();
+    if (box && box.y >= tray.y && box.y + box.height <= tray.y + tray.height) {
+      rows.add(Math.round(box.y));
+    }
+  }
+  expect(rows.size).toBeGreaterThanOrEqual(2);
+});
+
+// v2 spec §5.3: the dock only earns its width in landscape. In iPad portrait
+// a 340pt dock took ~41% of an 820pt screen, so the sheet is used instead.
+test.describe('iPad layout', () => {
+  // eslint-disable-next-line no-empty-pattern
+  test.beforeEach(({}, testInfo) => {
+    test.skip(testInfo.project.name !== 'dock', 'viewport-driven; run once');
+  });
+
+  test('portrait iPad gets the bottom sheet, not the dock', async ({ page }) => {
+    await page.setViewportSize({ width: 820, height: 1180 });
+    const board = await BoardPage.open(page);
+    const tray = (await board.tray.boundingBox())!;
+    expect(Math.round(tray.y + tray.height)).toBe(1180);
+    expect(tray.width).toBeGreaterThan(820 * 0.9);
+  });
+
+  test('landscape iPad docks the tray on the right', async ({ page }) => {
+    await page.setViewportSize({ width: 1180, height: 820 });
+    const board = await BoardPage.open(page);
+    const tray = (await board.tray.boundingBox())!;
+    expect(tray.width).toBeGreaterThanOrEqual(300);
+    expect(tray.width).toBeLessThanOrEqual(380);
+    expect(Math.round(tray.x + tray.width)).toBe(1180);
+  });
+
+  test('rotating mid-puzzle swaps dock for sheet and keeps the lens', async ({ page }) => {
+    await page.setViewportSize({ width: 1180, height: 820 });
+    const board = await BoardPage.open(page);
+    const before = await board.remaining();
+    await board.lens('Edges').click();
+
+    await page.setViewportSize({ width: 820, height: 1180 });
+    await expect
+      .poll(async () => (await board.tray.boundingBox())?.width ?? 0)
+      .toBeGreaterThan(820 * 0.9);
+    expect(await board.remaining()).toBe(before);
+    await expect(board.lens('Edges')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('a left-handed player can dock the tray on the left', async ({ page }) => {
+    await page.setViewportSize({ width: 1180, height: 820 });
+    const board = await BoardPage.open(page);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const r = indexedDB.open('tessera');
+          r.onsuccess = () => {
+            const tx = r.result.transaction('daily', 'readwrite');
+            tx.objectStore('daily').put({ key: 'traySide', side: 'left' });
+            tx.oncomplete = () => resolve();
+          };
+        }),
+    );
+    // A real move, then past the autosave debounce, so the reload has a
+    // puzzle to continue.
+    await board.dragOut((await board.mountedIds())[0]!, await board.matPoint());
+    await page.waitForTimeout(1200);
+    await page.reload({ waitUntil: 'load' });
+    await page.getByText('Continue your puzzle').click();
+    await board.waitForCut();
+
+    const tray = (await board.tray.boundingBox())!;
+    expect(Math.round(tray.x)).toBe(0);
+    const hint = (await page.locator('button[aria-label^="Hint"]').boundingBox())!;
+    expect(hint.x).toBeLessThan(tray.width + 100);
+  });
+});

@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage } from './board-page';
+import { BoardPage, openTab } from './board-page';
 
 test('the reference thumbnail shows while playing, and its state survives a reload', async ({
   page,
@@ -18,11 +18,9 @@ test('the reference thumbnail shows while playing, and its state survives a relo
 
   await expect(page.getByLabel('Reference photo thumbnail')).toBeVisible();
 
-  // Drag a piece out onto the mat. `App.tsx`'s autosave (`scheduleSave`)
-  // only runs from a play event (snap/return/deploy), never from an assists
-  // change alone, so toggling the reference panel by itself would leave no
-  // library entry to reload back into — a plain `dragOut` fires `deploy`,
-  // which is enough. (Not `placeViaHint`: its hint-targeting tap has no
+  // Drag a piece out onto the mat, so the board has a play event behind it as
+  // well as the assists change — a plain `dragOut` fires `deploy`, which is
+  // enough. (Not `placeViaHint`: its hint-targeting tap has no
   // proven-reliable coverage on the phone viewport anywhere in this suite —
   // `completion.spec.ts` skips phone for exactly that kind of flow — and
   // this test does not need a placed piece, only a play event.)
@@ -62,14 +60,39 @@ test('the reference thumbnail shows while playing, and its state survives a relo
     expect(sheetAfter?.height ?? 0).toBeLessThan(sheetBefore?.height ?? Infinity);
   }
 
-  // Past the 800ms autosave debounce, same as `persistence.spec.ts` — a
-  // fixed sleep is right here precisely because the debounce is under test.
-  await page.waitForTimeout(1200);
+  // Wait for the hidden state to land in IndexedDB rather than a fixed sleep.
+  // On the dock the hide click lands inside the deploy's 800ms debounce and
+  // resets it (`setAssists` schedules a save), so one save carries both: the
+  // debounce, the thumbnail encode, then the write. A fixed 1200ms bet that
+  // all three fit, and lost whenever the encode stalled (see `thumbnail.ts`).
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            new Promise<boolean>((res, rej) => {
+              const r = indexedDB.open('tessera');
+              r.onsuccess = () => {
+                const all = r.result.transaction('sessions', 'readonly').objectStore('sessions').getAll();
+                all.onsuccess = () =>
+                  res(
+                    (all.result as { assists: { referencePanelOpen: boolean } }[]).some(
+                      (s) => s.assists.referencePanelOpen === false,
+                    ),
+                  );
+                all.onerror = () => rej(all.error);
+              };
+              r.onerror = () => rej(r.error);
+            }),
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
   await page.reload({ waitUntil: 'load' });
 
   // A session exists now, so the app lands on Home, not back in play — one
-  // tap through "Your Puzzles" reaches the library (2026-08-22 spec).
-  await page.getByRole('button', { name: /Your Puzzles/ }).click();
+  // tap on the Puzzles tab reaches the library (2026-08-22 spec).
+  await openTab(page, 'Puzzles');
   await page.getByLabel(/Open puzzle:/).first().click();
   await board.waitForCut();
 

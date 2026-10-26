@@ -7,9 +7,12 @@ import { describe, expect, it } from 'vitest';
 import {
   HINT_HOLD_TIER2_MS,
   HINT_HOLD_TIER3_MS,
+  HINT_REFILL_INTERVAL_MS,
   canAffordTier,
   hintsAvailable,
+  hintsLeft,
   isCleanRun,
+  msUntilNextHint,
   spendTier,
   tierCost,
   tierForHoldMs,
@@ -91,5 +94,41 @@ describe('isCleanRun', () => {
   it('is clean only at zero hints used', () => {
     expect(isCleanRun(0)).toBe(true);
     expect(isCleanRun(1)).toBe(false);
+  });
+});
+
+describe('hintsLeft', () => {
+  it('starts at the base allowance in classic', () => {
+    expect(hintsLeft(0, 0, 'classic')).toBe(3);
+  });
+  it('subtracts what has been spent', () => {
+    expect(hintsLeft(2, 0, 'classic')).toBe(1);
+  });
+  it('adds one per refill interval', () => {
+    expect(hintsLeft(3, HINT_REFILL_INTERVAL_MS, 'classic')).toBe(1);
+  });
+  it('never goes negative', () => {
+    expect(hintsLeft(5, 0, 'classic')).toBe(0);
+  });
+  it('is null — unlimited — in zen', () => {
+    expect(hintsLeft(0, 0, 'zen')).toBeNull();
+  });
+  it('counts a daily on the classic allowance', () => {
+    expect(hintsLeft(0, 0, 'daily')).toBe(3);
+  });
+});
+
+describe('msUntilNextHint', () => {
+  it('is a whole interval at the start', () => {
+    expect(msUntilNextHint(0, 'classic')).toBe(HINT_REFILL_INTERVAL_MS);
+  });
+  it('is the remainder of the current interval', () => {
+    expect(msUntilNextHint(HINT_REFILL_INTERVAL_MS - 1, 'classic')).toBe(1);
+  });
+  it('is a whole interval again exactly on a boundary', () => {
+    expect(msUntilNextHint(HINT_REFILL_INTERVAL_MS, 'classic')).toBe(HINT_REFILL_INTERVAL_MS);
+  });
+  it('is null in zen — nothing ever accrues', () => {
+    expect(msUntilNextHint(12_345, 'zen')).toBeNull();
   });
 });

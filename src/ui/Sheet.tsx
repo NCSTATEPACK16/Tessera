@@ -15,10 +15,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import type { SheetDetent } from './store';
-
-/** §06: peek is one row of pieces. */
-const PEEK_PX = 96;
+import { heightOf, nearestDetent, type SheetDetent } from './sheet-detents';
 
 export interface SheetProps {
   rootRef?: React.Ref<HTMLElement> | undefined;
@@ -62,41 +59,6 @@ export interface SheetProps {
   children: React.ReactNode;
 }
 
-/**
- * Peek's height, from the pinned region as it actually rendered.
- *
- * **Measured, never computed.** The previous version added a constant for the
- * shelf's row to a constant for peek and got 164px, while the region it had to
- * contain measured 169px before the shelf was counted at all — the handle, the
- * title, and *two* wrapped rows of lens chips, where the arithmetic had assumed
- * one. The shelf rendered 5px below the bottom of the screen and drop-to-pin
- * was unreachable on a phone, with nothing anywhere reporting an error.
- *
- * So the number comes off the DOM. It cannot go stale when the title grows, or
- * when the chip cell changes size, or when the lens row wraps differently on a
- * narrower phone — and there is no third copy of the chip cell's height living
- * in this file to drift from the two that already exist.
- *
- * `pinnedPx` is null only before the first measurement, which is before any
- * shelf can exist; peek is the design doc's 96pt whenever the shelf is not
- * rendering, exactly as it was.
- */
-function heightOf(
-  detent: SheetDetent,
-  viewport: number,
-  growPeek: boolean,
-  pinnedPx: number | null,
-): number {
-  switch (detent) {
-    case 'peek':
-      return growPeek ? Math.max(PEEK_PX, pinnedPx ?? PEEK_PX) : PEEK_PX;
-    case 'half':
-      return Math.round(viewport * 0.5);
-    case 'full':
-      return Math.round(viewport * 0.88);
-  }
-}
-
 export function Sheet({
   rootRef,
   detent,
@@ -116,10 +78,15 @@ export function Sheet({
   // The handle, the title and the shelf: everything peek is obliged to fit.
   const pinned = useRef<HTMLDivElement>(null);
   const [pinnedPx, setPinnedPx] = useState<number | null>(null);
+  // The pinned box plus the lens row: what default must clear before any
+  // piece shows. Measured the same way, for the same reasons.
+  const chrome = useRef<HTMLDivElement>(null);
+  const [chromePx, setChromePx] = useState<number | null>(null);
 
   useEffect(() => {
     const element = pinned.current;
-    if (!element) return;
+    const lensRow = chrome.current;
+    if (!element || !lensRow) return;
 
     const read = (): void => {
       const section = element.parentElement;
@@ -130,7 +97,8 @@ export function Sheet({
       // a 1px `border-t` — which is exactly how much of the shelf hung off the
       // bottom of the screen the first time this was measured. Anything else
       // ever added above the content, a top padding included, is covered too.
-      const bottom = element.getBoundingClientRect().bottom - section.getBoundingClientRect().top;
+      const top = section.getBoundingClientRect().top;
+      const bottom = element.getBoundingClientRect().bottom - top;
       // And the section's bottom padding is the home-indicator inset, which the
       // border box also owes room for. Zero in a desktop browser and ~34px on
       // the device this detent exists for — read, never assumed.
@@ -139,13 +107,16 @@ export function Sheet({
       // Rounded up: a region 100.5px tall does not fit in 100, and the whole
       // point of measuring is that the shelf's last row of pixels stays on
       // screen.
-      setPinnedPx(Math.ceil(bottom) + (Number.isFinite(inset) ? inset : 0));
+      const insetPx = Number.isFinite(inset) ? inset : 0;
+      setPinnedPx(Math.ceil(bottom) + insetPx);
+      setChromePx(Math.ceil(lensRow.getBoundingClientRect().bottom - top) + insetPx);
     };
     read();
     // Fires when the shelf appears, when it swaps its dashed placeholder for a
     // real chip, and when a rotation rewraps anything above it.
     const observer = new ResizeObserver(read);
     observer.observe(element);
+    observer.observe(lensRow);
     return () => observer.disconnect();
   }, []);
 
@@ -153,23 +124,12 @@ export function Sheet({
   // pull peek off its floor — whichever is asking, the measured box is the
   // same `pinnedPx`.
   const growPeek = shelfVisible || referenceVisible;
-  const resting = heightOf(detent, viewport, growPeek, pinnedPx);
+  const resting = heightOf(detent, viewport, growPeek, pinnedPx, chromePx);
   const height = dragHeight ?? resting;
-  const peekFloor = heightOf('peek', viewport, growPeek, pinnedPx);
+  const peekFloor = heightOf('peek', viewport, growPeek, pinnedPx, chromePx);
 
-  const nearest = (target: number): SheetDetent => {
-    const options: SheetDetent[] = ['peek', 'half', 'full'];
-    let best: SheetDetent = 'peek';
-    let bestDistance = Infinity;
-    for (const option of options) {
-      const distance = Math.abs(heightOf(option, viewport, growPeek, pinnedPx) - target);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = option;
-      }
-    }
-    return best;
-  };
+  const nearest = (target: number): SheetDetent =>
+    nearestDetent(target, viewport, growPeek, pinnedPx, chromePx);
 
   return (
     <section
@@ -229,7 +189,9 @@ export function Sheet({
 
       {/* Pinned too, so the lenses stay in the thumb's arc at half and full.
           They are what peek clips, which is what peek did before 3b. */}
-      <div className="shrink-0 px-[12px] pb-[8px] pt-[12px]">{lenses}</div>
+      <div ref={chrome} className="shrink-0 px-[12px] pb-[8px] pt-[12px]">
+        {lenses}
+      </div>
 
       {children}
     </section>

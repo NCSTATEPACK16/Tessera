@@ -36,7 +36,7 @@ export function tierCost(tier: HintTier): number {
 export type PuzzleMode = 'classic' | 'daily' | 'zen';
 
 const HINT_BASE = 3;
-const HINT_REFILL_INTERVAL_MS = 10 * 60 * 1000;
+export const HINT_REFILL_INTERVAL_MS = 10 * 60 * 1000;
 
 /**
  * Total hints earned so far this puzzle. `Infinity` in Zen, where "every tier
@@ -47,6 +47,26 @@ const HINT_REFILL_INTERVAL_MS = 10 * 60 * 1000;
 export function hintsAvailable(elapsedMs: number, mode: PuzzleMode): number {
   if (mode === 'zen') return Infinity;
   return HINT_BASE + Math.floor(Math.max(0, elapsedMs) / HINT_REFILL_INTERVAL_MS);
+}
+
+/**
+ * What the hint pill shows (v2 spec §5.1): earned minus spent, floored at 0.
+ * `null` is Zen's "unlimited" — the pill shows no number at all.
+ */
+export function hintsLeft(hintsUsed: number, elapsedMs: number, mode: PuzzleMode): number | null {
+  const available = hintsAvailable(elapsedMs, mode);
+  if (!Number.isFinite(available)) return null;
+  return Math.max(0, available - hintsUsed);
+}
+
+/**
+ * How long until the next hint accrues — the one timer the runtime schedules
+ * to refresh the count, so the summary never updates per frame. `null` in Zen,
+ * where nothing ever accrues.
+ */
+export function msUntilNextHint(elapsedMs: number, mode: PuzzleMode): number | null {
+  if (mode === 'zen') return null;
+  return HINT_REFILL_INTERVAL_MS - (Math.max(0, elapsedMs) % HINT_REFILL_INTERVAL_MS);
 }
 
 /** Whether `tier` can be fired without going over what's been earned. */

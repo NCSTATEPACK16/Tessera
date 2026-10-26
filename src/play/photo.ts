@@ -2,7 +2,7 @@
  * Crop geometry for the photo-picker flow (step 5a).
  *
  * Pure and DOM-free, same standard as `src/cut/grid.ts` — no ImageBitmap, no
- * canvas. `PhotoCrop.tsx` owns turning these numbers into pixels; this module
+ * canvas. `CropCanvas.tsx` owns turning these numbers into pixels; this module
  * only answers "where is the crop rectangle."
  */
 

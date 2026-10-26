@@ -12,7 +12,7 @@ import { expect, test } from '@playwright/test';
 import { boardInk, BoardPage } from './board-page';
 
 test.describe('pulling a piece out of the tray', () => {
-  test('the piece leaves the tray and lands on the mat', async ({ page }) => {
+  test('the piece leaves the tray and lands on the mat', { tag: '@phone' }, async ({ page }) => {
     const board = await BoardPage.open(page);
     const before = await board.remaining();
 
@@ -119,7 +119,7 @@ test.describe('pulling a piece out of the tray', () => {
   });
 });
 
-test.describe('the phone form factor', () => {
+test.describe('the phone form factor', { tag: '@phone' }, () => {
   test.skip(({ viewport }) => (viewport?.width ?? 0) >= 768, 'dock viewport');
 
   test('the tray is a sheet, and the handle moves between detents', async ({ page }) => {

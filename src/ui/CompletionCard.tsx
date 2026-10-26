@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import type { CardMeta } from '@/play/card';
+import { Button } from './kit';
 
 export interface CompletionCardProps {
   meta: CardMeta;
@@ -79,9 +80,6 @@ export function CompletionCard({
     download();
   };
 
-  const secondary =
-    'touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]';
-
   return (
     <div className="pointer-events-auto absolute inset-0 z-10 flex flex-col items-center justify-center gap-[16px] overflow-y-auto bg-[color-mix(in_srgb,var(--mat-void)_86%,transparent)] p-[24px] backdrop-blur-[12px]">
       {daily && (
@@ -90,7 +88,7 @@ export function CompletionCard({
             {`Daily done · ${daily.streak} day streak`}
           </div>
           {daily.freezeEarned && (
-            <div className="font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
+            <div className="font-data text-1 text-[var(--ink-muted)]">
               Freeze earned — one missed day is covered.
             </div>
           )}
@@ -119,34 +117,31 @@ export function CompletionCard({
             {`Again, at ${nextCount} pieces`}
           </button>
         )}
-        <button type="button" aria-label="Share" onClick={() => void share()} className={secondary}>
+        <Button aria-label="Share" onClick={() => void share()}>
           Share
-        </button>
-        <button type="button" aria-label="Save" onClick={download} className={secondary}>
+        </Button>
+        <Button aria-label="Save" onClick={download}>
           Save
-        </button>
+        </Button>
         {firstRun ? (
-          <button
-            type="button"
+          <Button
             aria-label="Today's puzzle"
             onClick={firstRun.onDaily}
-            className={secondary}
           >
             Today&rsquo;s puzzle
-          </button>
+          </Button>
         ) : (
-          <button type="button" aria-label="New puzzle" onClick={onNewPuzzle} className={secondary}>
+          <Button aria-label="New puzzle" onClick={onNewPuzzle}>
             New puzzle
-          </button>
+          </Button>
         )}
-        <button
-          type="button"
+        <Button
+          variant="primary"
           aria-label={firstRun ? 'Now use your own photo' : 'Done'}
           onClick={firstRun ? firstRun.onOwnPhoto : onDone}
-          className="touch-target rounded-[var(--radius-md)] bg-[var(--accent)] px-3 text-2 text-[var(--mat-void)]"
         >
           {firstRun ? 'Now use your own photo' : 'Done'}
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -60,7 +60,7 @@ export function MonthCalendar({ grid, label }: MonthCalendarProps): React.ReactE
 
   return (
     <table className="w-full border-separate border-spacing-1" aria-label={`Completions, ${label}`}>
-      <caption className="pb-2 text-left font-[var(--font-data)] text-1 text-[var(--ink-muted)]">
+      <caption className="pb-2 text-left font-data text-1 text-[var(--ink-muted)]">
         {label}
       </caption>
       <thead>
@@ -69,7 +69,7 @@ export function MonthCalendar({ grid, label }: MonthCalendarProps): React.ReactE
             <th
               key={day}
               scope="col"
-              className="font-[var(--font-data)] text-1 font-normal text-[var(--ink-muted)]"
+              className="font-data text-1 font-normal text-[var(--ink-muted)]"
             >
               <span aria-hidden="true">{day[0]}</span>
               <span className="sr-only">{day}</span>
@@ -87,7 +87,7 @@ export function MonthCalendar({ grid, label }: MonthCalendarProps): React.ReactE
                 <td
                   key={cell.dateKey}
                   aria-label={`${cell.dateKey}: ${STATUS_LABEL[cell.status]}`}
-                  className={`h-[44px] min-w-[44px] rounded-[var(--radius-sm)] text-center align-middle font-[var(--font-data)] text-1 tabular-nums ${cellClass(
+                  className={`h-[44px] min-w-[44px] rounded-[var(--radius-sm)] text-center align-middle font-data text-1 tabular-nums ${cellClass(
                     cell.status,
                   )}`}
                 >

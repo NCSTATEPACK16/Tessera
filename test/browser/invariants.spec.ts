@@ -23,7 +23,7 @@ import { BoardPage, rafCalls, trayMutations, watchRafCalls, watchTrayMutations }
  */
 const RERENDER_BUDGET = 300;
 
-test.describe('the board never re-renders through React', () => {
+test.describe('the board never re-renders through React', { tag: '@timing' }, () => {
   test.beforeEach(async ({ page }) => {
     await watchTrayMutations(page);
   });
@@ -68,7 +68,7 @@ test.describe('the board never re-renders through React', () => {
   });
 });
 
-test.describe('an idle tray schedules no wasted work', () => {
+test.describe('an idle tray schedules no wasted work', { tag: '@timing' }, () => {
   test('the drag probe stops rescheduling itself once a press ends', async ({ page }) => {
     await watchRafCalls(page);
     const board = await BoardPage.open(page);

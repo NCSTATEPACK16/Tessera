@@ -9,15 +9,16 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './ui/App';
-import { PwaBanner } from './ui/PwaBanner';
+import { PwaRegistrar } from './ui/PwaBanner';
 import './ui/theme.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('main: missing #root');
 
+// The worker registers on every screen; its banner renders inline on Today.
 createRoot(root).render(
   <StrictMode>
     <App />
-    <PwaBanner />
+    <PwaRegistrar />
   </StrictMode>,
 );

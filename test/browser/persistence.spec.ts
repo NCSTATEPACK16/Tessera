@@ -12,18 +12,14 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage } from './board-page';
+import { BoardPage, openTab } from './board-page';
 
 test('a reload mid-session restores the board rather than resetting it', async ({ page }) => {
   test.setTimeout(90_000);
 
-  // Zen: every hint tier is free, which is what lets `placeViaHint` actually
-  // place a piece without inventing a test-only hook.
   const board = await BoardPage.open(page, { mode: 'Zen' });
 
-  const [first, second] = await board.mountedIds();
-  await board.placeViaHint(first!);
-  await board.placeViaHint(second!);
+  await board.autoPlace(2);
   const before = await board.placed();
   expect(before.placed).toBe(2);
 
@@ -33,8 +29,8 @@ test('a reload mid-session restores the board rather than resetting it', async (
   await page.reload({ waitUntil: 'load' });
 
   // A session exists now, so the app lands on Home, not the picker — one
-  // tap through "Your Puzzles" reaches the library (2026-08-22 spec).
-  await page.getByRole('button', { name: /Your Puzzles/ }).click();
+  // tap on the Puzzles tab reaches the library (2026-08-22 spec).
+  await openTab(page, 'Puzzles');
   const card = page.getByLabel(/Open puzzle:/).first();
   await expect(card).toBeVisible();
   await card.click();
@@ -56,8 +52,7 @@ test('the v2 to v3 bump is additive — it adds `completions` and loses nothing'
   // the same additive guarantee `daily.spec.ts` asserts for v1→v2.
   const board = await BoardPage.open(page, { mode: 'Zen' });
 
-  const [first] = await board.mountedIds();
-  await board.placeViaHint(first!);
+  await board.autoPlace();
   // Past the 800ms autosave debounce, so a real session exists to survive.
   await page.waitForTimeout(1200);
 
@@ -81,10 +76,10 @@ test('the v2 to v3 bump is additive — it adds `completions` and loses nothing'
   );
 
   // The session written before this read still restores — the bump did not
-  // drop it. The app lands on Home because a save exists; "Your Puzzles"
+  // drop it. The app lands on Home because a save exists; the Puzzles tab
   // reaches the library from there (2026-08-22 spec).
   await page.reload({ waitUntil: 'load' });
-  await page.getByRole('button', { name: /Your Puzzles/ }).click();
+  await openTab(page, 'Puzzles');
   const card = page.getByLabel(/Open puzzle:/).first();
   await expect(card).toBeVisible();
   await card.click();
@@ -98,8 +93,7 @@ test('a session left through the pause sheet is still there on the next visit', 
   test.setTimeout(90_000);
   const board = await BoardPage.open(page, { mode: 'Zen' });
 
-  const [first] = await board.mountedIds();
-  await board.placeViaHint(first!);
+  await board.autoPlace();
 
   // Leave runs the synchronous save through `interrupt()` — the same path
   // `visibilitychange` uses — so the card is current the moment it appears.

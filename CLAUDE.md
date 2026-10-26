@@ -176,6 +176,9 @@ src/
             CompletionCard CollectionWall   the Puzzle Card and the mosaic of finishes (step 8)
             FirstRun.tsx              the guided twelve's overlay — copy and skip only (step 7)
             theme.css                 §13 tokens, once, for both consumers
+            kit/                      Button Toggle Segmented Badge Settings Icon Shimmer — shared chrome
+                                       (2026-10-20 modern-look spec); toggles keep aria-pressed
+  dev/      e2e.ts                    the browser suite's DEV-only hook — never in a build
   main.tsx                            the product entry — index.html
 test/                                 mirrors src/ — vitest, *.test.ts
   browser/  *.spec.ts board-page.ts   playwright, the app in a real browser
@@ -224,7 +227,8 @@ Do not drift from these without changing the design doc first.
 ```
 npm run dev          # host-exposed for real-device testing — the product at /
 npm test             # vitest — pure functions, node environment
-npm run test:browser # playwright — the app, in a browser, dock and phone
+npm run test:browser      # playwright, minus @slow — under 3 minutes; run on every change
+npm run test:browser:full # everything, @slow included — what CI runs
 npm run typecheck
 npm run build
 ```
@@ -249,9 +253,9 @@ screen to explain it and no error anywhere.
 
 ### `npm run test:browser` is a gate, not an optional extra
 
-**Run it on every change, and without exception at the end of every step, before the PR.** A green
-`npm test` is not evidence the app works — it is 300-odd assertions about pure functions, and it
-stays green while the app fails to boot.
+**Run it on every change, and `test:browser:full` without exception at the end of every step,
+before the PR.** A green `npm test` is not evidence the app works — it is several hundred assertions
+about pure functions, and it stays green while the app fails to boot.
 
 Two things in this codebase are *only* observable in a browser, and both are top-line invariants:
 
@@ -265,9 +269,25 @@ reading the code had missed — a select-mode hold that deselected the piece it 
 (the terminating click toggled it back off), and drop-to-pin unreachable on a phone because the
 shelf rendered below the fold at peek. Neither had any unit-test surface; both are fixed.
 
-`@playwright/test` boots vite itself and runs `test/browser/*.spec.ts` over a dock viewport and a
-phone viewport. Vitest owns `*.test.ts`, Playwright owns `*.spec.ts`, and neither ever collects the
-other's files. **The Playwright version is pinned** because each release ties to one Chromium build;
+`@playwright/test` boots vite itself and runs `test/browser/*.spec.ts` in three projects, on four
+workers: **`timing`** (tests tagged `@timing` — mutation counts, idle-draws-nothing — alone on one
+worker, before anything else starts), **`dock`** (everything else), and **`phone`** (only tests
+tagged `@phone`, the ones about the sheet form factor). `@slow` marks the few that are long by
+nature (HEIC decode, two 150-piece cuts) and is left out of `npm run test:browser`. Vitest owns
+`*.test.ts`, Playwright owns `*.spec.ts`, and neither ever collects the other's files.
+
+**The suite never plays a puzzle to get to a state.** `src/dev/e2e.ts` is a dev-only hook, folded
+away by `import.meta.env.DEV` (and `check-bundle-budget.mjs` fails the build if `__tessera` reaches
+`dist/`). `BoardPage.open()` boots through its `?e2e` route, straight onto a board with the same
+photo, crop, and puzzle id the setup walk produces. `autoPlace(n)` and `autoPlaceAllBut(n)` place
+pieces through `session.placeHint`, the real Tier-3 path, so every one is a real union-find merge.
+A solve is `autoPlaceAllBut(1)` plus one real gesture for the last piece. A test that needs a save,
+progress, or a finished board gets it that way. Only a test that is *about* a gesture performs it.
+
+Two timing traps, both found by running on four workers: a tap is `mouse.down()` + `mouse.up()` as
+two round trips, and under load the gap outlasts the 120ms long-press, so use `BoardPage.tapAt`.
+A drag-out started while the cut is still streaming or springs are settling can outlast the 450ms
+select-hold, so `waitForCut` and `autoPlace` both wait for `__tessera.idle()`. **The Playwright version is pinned** because each release ties to one Chromium build;
 bump it deliberately and run `npx playwright install chromium` when you do.
 
 Writing browser tests here has one recurring trap, and it has caught every bad assertion so far:

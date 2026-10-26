@@ -1,7 +1,7 @@
 /**
  * Browser tests — the gate the unit suite cannot be.
  *
- * `npm test` is 319 assertions about pure functions, and it will stay green
+ * `npm test` is several hundred assertions about pure functions, and it will stay green
  * while the app fails to boot. This config exists because the two invariants
  * that matter most at step 3 are only observable in a browser: **the board never
  * re-renders through React**, and **an idle board draws nothing at all.** Both
@@ -26,12 +26,15 @@ export default defineConfig({
   // other's files, so `npm test` stays fast and dependency-free.
   testMatch: '**/*.spec.ts',
 
-  fullyParallel: false,
+  // Every test gets its own browser context, so its own IndexedDB — nothing is
+  // shared between workers. The exception is timing, handled by project below.
+  fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 1 : 0,
-  // One worker: several specs drive the camera and the frame loop, and a
-  // contended machine makes "did this settle in 500ms" a coin toss.
-  workers: 1,
+  workers: process.env['CI'] ? 3 : 4,
+  // Headroom for a loaded machine (the suite is meant to run in the background);
+  // a healthy test here finishes in under fifteen seconds.
+  timeout: 60_000,
   reporter: process.env['CI'] ? 'github' : [['list']],
 
   use: {
@@ -40,15 +43,35 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
 
+  // Tags, in the test titles' `tag` option:
+  //   @timing — measures the frame loop or counts mutations; runs alone, first.
+  //   @phone  — about the sheet form factor; the only tests the phone runs.
+  //   @slow   — unavoidably long (HEIC decode, double 150-piece cuts); left out
+  //             of `npm run test:browser`, run by `test:browser:full` and CI.
   projects: [
     {
-      // §06's iPad landscape: tray docked right.
-      name: 'dock',
+      // A contended machine makes "did this settle in 500ms" a coin toss, so
+      // these run on one worker before anything else starts.
+      name: 'timing',
+      grep: /@timing/,
+      workers: 1,
+      fullyParallel: false,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
     },
     {
-      // §06's iPhone portrait: three-detent bottom sheet.
+      // §06's iPad landscape: tray docked right. Runs everything but @timing.
+      name: 'dock',
+      grepInvert: /@timing/,
+      dependencies: ['timing'],
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
+    },
+    {
+      // §06's iPhone portrait: three-detent bottom sheet. Only what is about
+      // the sheet — a flow that works on the dock works here too, and running
+      // the whole suite twice was half of what made it take sixteen minutes.
       name: 'phone',
+      grep: /@phone/,
+      dependencies: ['timing'],
       use: { ...devices['iPhone 13'], browserName: 'chromium' },
     },
   ],

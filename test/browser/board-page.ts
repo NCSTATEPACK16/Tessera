@@ -53,13 +53,35 @@ const HOLD_SLACK_MS = 250;
  * settling on the wrong branch before the app has decided.
  */
 export async function reachPicker(page: Page): Promise<void> {
-  const picker = page.getByRole('button', { name: 'Choose this photo' });
+  const picker = firstCuratedPhoto(page);
   const skip = page.getByRole('button', { name: 'Skip' });
   await Promise.race([picker.waitFor({ state: 'visible' }), skip.waitFor({ state: 'visible' })]);
   if (await skip.isVisible()) {
     await skip.click();
     await picker.waitFor({ state: 'visible' });
   }
+}
+
+/**
+ * v2 spec §4: a curated tile is the picker's whole first step — tapping one
+ * advances straight to setup. The first tile is the deterministic choice.
+ */
+export function firstCuratedPhoto(page: Page): Locator {
+  return page.getByRole('button', { name: /^Curated photo:/ }).first();
+}
+
+/** v2 spec §3: one of the three tabs — Today, Puzzles, Collection. */
+export async function openTab(page: Page, name: 'Today' | 'Puzzles' | 'Collection'): Promise<void> {
+  await page
+    .getByRole('navigation', { name: 'Tabs' })
+    .getByRole('button', { name, exact: true })
+    .click();
+}
+
+/** Tap the first curated photo and wait for setup (crop folded in) to arrive. */
+export async function chooseFirstCuratedPhoto(page: Page): Promise<void> {
+  await firstCuratedPhoto(page).click();
+  await page.getByRole('button', { name: 'Start cutting' }).waitFor({ state: 'visible' });
 }
 
 export class BoardPage {
@@ -85,8 +107,14 @@ export class BoardPage {
   }
 
   /**
-   * Options for the setup screen `open()` walks through. Everything defaults
-   * to `DEFAULT_PUZZLE_CONFIG`, which is what the rest of the suite assumes.
+   * A fresh board, straight from the dev-only `?e2e` route (`src/dev/e2e.ts`):
+   * the same first curated photo, default crop, and stubbed puzzle id the setup
+   * walk produces, so the geometry is identical — minus the picker, the setup
+   * screen, and a reload. Everything else defaults to `DEFAULT_PUZZLE_CONFIG`,
+   * which is what the rest of the suite assumes.
+   *
+   * Specs that are *about* the picker or setup walk it themselves
+   * (`puzzle-setup.spec.ts`, `photo-picker.spec.ts`).
    */
   static async open(
     page: Page,
@@ -94,54 +122,29 @@ export class BoardPage {
   ): Promise<BoardPage> {
     const board = new BoardPage(page);
     await page.addInitScript(() => {
-      // Deterministic seed for the browser suite: PhotoCrop.tsx mints a random
-      // puzzle id via crypto.randomUUID() on every confirm, which would make
-      // every test's cut geometry different and cause geometry-dependent
-      // assertions (e.g. tray-3b.spec.ts's group-chip position) to flake.
+      // Deterministic puzzle id for anything minted later through the real
+      // setup (again-harder, New Puzzle) — a random one makes geometry-
+      // dependent assertions (tray-3b.spec.ts's group chip) flake.
       window.crypto.randomUUID = () =>
         'ffffffff-ffff-4fff-8fff-ffffffffffff' as `${string}-${string}-${string}-${string}-${string}`;
+      // Only on the `?e2e` load itself — the app strips the flag at once, so a
+      // spec's own `page.reload()` keeps its save. IndexedDB queues the app's
+      // open behind this delete, so there is no race to await.
+      if (location.search.includes('e2e')) indexedDB.deleteDatabase('tessera');
     });
-    await page.goto('/', { waitUntil: 'load' });
-    // Step 5c: the app checks the library on mount and lands on it rather
-    // than the picker whenever a saved session exists. Every spec that is not
-    // *about* the library needs the deterministic empty-library entry flow —
-    // cleared once per `open()` call, not once per page, so a test that opens
-    // twice for two independent runs (e.g. puzzle-setup.spec.ts's large-piece
-    // comparison) gets a fresh picker both times. A caller that wants a save
-    // to survive — `persistence.spec.ts` — calls `page.reload()` directly
-    // rather than `open()` again, so this never runs a second time for it.
-    await page.evaluate(
-      () =>
-        new Promise<void>((resolve) => {
-          const request = indexedDB.deleteDatabase('tessera');
-          request.onsuccess = () => resolve();
-          request.onerror = () => resolve();
-          request.onblocked = () => resolve();
-        }),
-    );
-    await page.reload({ waitUntil: 'load' });
-    await reachPicker(page);
-    await page.getByRole('button', { name: 'Choose this photo' }).click();
-    await page.getByRole('button', { name: 'Use this photo' }).click();
-    // Step 5b's setup screen sits between the crop and the cut. Every default
-    // is accepted here — `DEFAULT_PUZZLE_CONFIG`, 150 pieces, Classic, every
-    // assist off — which is the configuration the rest of the suite assumes.
-    if (options.pieceCount !== undefined) {
-      await page.getByLabel(`Piece count: ${options.pieceCount}`).click();
-    }
-    if (options.mode !== undefined) {
-      await page.getByLabel(`Mode: ${options.mode}`).click();
-    }
-    await page.getByRole('button', { name: 'Start cutting' }).click();
+    const params = new URLSearchParams({
+      e2e: '1',
+      pieces: String(options.pieceCount ?? 150),
+      mode: options.mode === 'Zen' ? 'zen' : 'classic',
+    });
+    await page.goto(`/?${params}`, { waitUntil: 'load' });
     await board.waitForCut();
     return board;
   }
 
   /**
    * Open a fresh Zen puzzle and solve it completely, leaving the completion
-   * card on screen. Zen makes every hint tier free, which is the only way a
-   * spec can place specific pieces without a test-only hook. Small ladder rung
-   * by default — a full solve is expensive and one is enough.
+   * card on screen. Small ladder rung by default.
    *
    * Plan 8's card and wall specs, and Plan 9's second-completion prompt, all
    * enter through here rather than reaching past `BoardPage`.
@@ -158,14 +161,35 @@ export class BoardPage {
     return board;
   }
 
-  /** Place every remaining piece via Tier-3 hints. Plan 9 calls this twice. */
+  /**
+   * Solve the board: every piece but one through the dev hook's auto-place
+   * (the real Tier-3 path, in one call), then the last by a real held hint —
+   * so `complete`, the card, and save-then-delete fire from a real gesture.
+   * Seconds, where a hint-per-piece solve was minutes. Plan 9 calls this twice.
+   */
   async completeZenPuzzle(): Promise<void> {
-    const { total } = await this.placed();
-    for (let i = 0; i < total; i++) {
-      const [next] = await this.mountedIds();
-      if (next === undefined) break;
-      await this.placeViaHint(next);
-    }
+    await this.autoPlaceAllBut(1);
+    const [last] = await this.mountedIds();
+    expect(last, 'no piece left in the tray to finish with').toBeDefined();
+    await this.placeViaHint(last!);
+  }
+
+  /**
+   * Place `n` pieces instantly through the dev hook. For setup — "a board with
+   * progress on it" — where how the piece got there is not what is under test.
+   */
+  async autoPlace(n = 1): Promise<void> {
+    const before = (await this.placed()).placed;
+    await this.page.evaluate((count) => window.__tessera!.place(count), n);
+    await expect.poll(async () => (await this.placed()).placed).toBeGreaterThanOrEqual(before + n);
+    await this.waitForIdle();
+  }
+
+  /** Place everything except the last `leave` pieces, instantly. */
+  async autoPlaceAllBut(leave: number): Promise<void> {
+    await this.page.evaluate((count) => window.__tessera!.placeAllBut(count), leave);
+    await expect.poll(() => this.remaining()).toBe(leave);
+    await this.waitForIdle();
   }
 
   async waitForCut(): Promise<void> {
@@ -175,6 +199,18 @@ export class BoardPage {
       null,
       { timeout: CUT_TIMEOUT_MS },
     );
+    await this.waitForIdle();
+  }
+
+  /**
+   * Fully cut and nothing mid-spring (`__tessera.idle`). Gestures are timed —
+   * a tap under 120ms, a drag-out before the 450ms select-hold — and a main
+   * thread still rasterising or settling makes those windows a coin toss.
+   */
+  async waitForIdle(): Promise<void> {
+    await this.page.waitForFunction(() => window.__tessera?.idle() === true, null, {
+      timeout: CUT_TIMEOUT_MS,
+    });
   }
 
   chip(pieceId: number): Locator {
@@ -267,17 +303,31 @@ export class BoardPage {
    *
    * Deliberately in steps and past the 6px threshold first: the promotion is the
    * part being exercised, and a single jump to the destination would skip it.
+   *
+   * Retried when the press came out as a select-hold instead. `mouse.down()`
+   * and the first `mouse.move()` are separate round trips, and on a loaded
+   * machine (four workers) the gap between them can outlast the 450ms
+   * `SELECT_HOLD_MS` — a fact about the harness, not the app. A build where
+   * drag-out genuinely always enters select mode still fails all three tries.
    */
   async dragOut(pieceId: number, to: { x: number; y: number }): Promise<void> {
-    const box = await this.chip(pieceId).boundingBox();
-    expect(box, `piece ${pieceId} is not a mounted chip`).not.toBeNull();
+    const wasSelecting = await this.cancelButton.isVisible();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const box = await this.chip(pieceId).boundingBox();
+      expect(box, `piece ${pieceId} is not a mounted chip`).not.toBeNull();
 
-    await this.page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-    await this.page.mouse.down();
-    await this.page.mouse.move(box!.x - 40, box!.y, { steps: 6 });
-    await this.page.mouse.move(to.x, to.y, { steps: 12 });
-    await this.page.mouse.up();
-    await this.page.waitForTimeout(400);
+      await this.page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+      await this.page.mouse.down();
+      await this.page.mouse.move(box!.x - 40, box!.y, { steps: 6 });
+      await this.page.mouse.move(to.x, to.y, { steps: 12 });
+      await this.page.mouse.up();
+      await this.page.waitForTimeout(400);
+
+      if (wasSelecting || !(await this.cancelButton.isVisible())) return;
+      await this.page.keyboard.press('Escape');
+      await expect(this.cancelButton).toBeHidden();
+    }
+    throw new Error(`dragOut: piece ${pieceId}'s press became a select-hold on every try`);
   }
 
   /** Pick a piece up off the mat and drop it somewhere else. */
@@ -314,6 +364,29 @@ export class BoardPage {
   }
 
   /**
+   * Press a chip and move past the 6px threshold, leaving the drag in flight
+   * (button still down). Retried exactly as `dragOut` is when the press came
+   * out as a select-hold: the harness's round-trip gap, not the app.
+   */
+  async pressAndPromote(pieceId: number): Promise<void> {
+    const wasSelecting = await this.cancelButton.isVisible();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const box = await this.chip(pieceId).boundingBox();
+      expect(box, `piece ${pieceId} is not a mounted chip`).not.toBeNull();
+
+      await this.page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+      await this.page.mouse.down();
+      await this.page.mouse.move(box!.x - 40, box!.y, { steps: 6 });
+
+      if (wasSelecting || !(await this.cancelButton.isVisible())) return;
+      await this.page.mouse.up();
+      await this.page.keyboard.press('Escape');
+      await expect(this.cancelButton).toBeHidden();
+    }
+    throw new Error(`pressAndPromote: piece ${pieceId}'s press became a select-hold on every try`);
+  }
+
+  /**
    * Drag a chip out of the tray and drop it on the shelf row (§06).
    *
    * The shelf does not exist until the drag does — it is hidden when empty and
@@ -325,12 +398,7 @@ export class BoardPage {
    * is part of what is being exercised.
    */
   async pin(pieceId: number): Promise<void> {
-    const box = await this.chip(pieceId).boundingBox();
-    expect(box, `piece ${pieceId} is not a mounted chip`).not.toBeNull();
-
-    await this.page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-    await this.page.mouse.down();
-    await this.page.mouse.move(box!.x - 40, box!.y, { steps: 6 });
+    await this.pressAndPromote(pieceId);
 
     // The promotion auto-collapses the sheet to peek — a 200ms transition —
     // and the shelf sits inside it. Reading the box before that settles is
@@ -421,13 +489,30 @@ export class BoardPage {
    *
    * Zen mode makes every tier free, which is what makes a full solve possible.
    */
+  /**
+   * A tap on the board, as one pointerdown/pointerup pair in a single browser
+   * task. `mouse.down()` then `mouse.up()` are two round trips, and on a busy
+   * machine the gap between them can outlast the 120ms long-press timer — the
+   * app then reads a hold, not a tap, and the test fails for a reason that has
+   * nothing to do with the app. Dispatched at whatever is under the point, so
+   * it reaches the board's own listeners exactly as a real tap does.
+   */
+  async tapAt(at: { x: number; y: number }): Promise<void> {
+    await this.page.mouse.move(at.x, at.y);
+    await this.page.evaluate(({ x, y }) => {
+      const target = document.elementFromPoint(x, y);
+      if (!target) throw new Error(`tapAt: nothing at ${x},${y}`);
+      const init = { bubbles: true, cancelable: true, composed: true, pointerId: 1, pointerType: 'mouse', isPrimary: true, clientX: x, clientY: y, button: 0 };
+      target.dispatchEvent(new PointerEvent('pointerdown', { ...init, buttons: 1 }));
+      target.dispatchEvent(new PointerEvent('pointerup', { ...init, buttons: 0 }));
+    }, at);
+  }
+
   async placeViaHint(pieceId: number): Promise<void> {
     const dropPoint = await this.matPoint();
     await this.dragOut(pieceId, dropPoint);
 
-    await this.page.mouse.move(dropPoint.x, dropPoint.y);
-    await this.page.mouse.down();
-    await this.page.mouse.up();
+    await this.tapAt(dropPoint);
 
     const hintButton = this.page.locator('button[aria-label^="Hint"]');
     await expect(hintButton).toBeEnabled();

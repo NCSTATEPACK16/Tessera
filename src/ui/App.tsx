@@ -26,17 +26,19 @@ import { TopBar } from './TopBar';
 import { HintButton } from './HintButton';
 import { PhotoPicker } from './PhotoPicker';
 import type { PhotoChoice } from './PhotoPicker';
-import { PhotoCrop } from './PhotoCrop';
-import type { PhotoCropResult } from './PhotoCrop';
 import { PuzzleSetup } from './PuzzleSetup';
+import type { PuzzleSetupResult } from './PuzzleSetup';
 import type { PuzzleConfig } from '@/play/setup';
 import { nextHarderCount } from '@/play/setup';
 import type { PuzzleAssists } from '@/play/setup';
 import type { SnapDifficulty } from '@/board/snap';
-import { curatedPhotoById, curatedPhotoUrl, renderCuratedPhoto } from '@/play/curated';
+import { curatedPhotoById, curatedPhotoUrl, photosByShelf, renderCuratedPhoto } from '@/play/curated';
+import { finishCrop, INITIAL_CROP } from './CropCanvas';
+import { E2E_PUZZLE_ID, installE2eHook, parseE2eStart } from '@/dev/e2e';
 import { downscaleTarget } from '@/play/photo';
 import { seedFromPuzzleId } from '@/core/rng';
 import { deleteLibraryEntry, listLibrary, saveLibraryEntry } from '@/persist/library';
+import { loadTraySide, saveTraySide } from '@/persist/prefs';
 import type { LibraryEntry } from '@/persist/library';
 import { loadPhoto, savePhoto } from '@/persist/photos';
 import { captureThumbnail } from '@/persist/thumbnail';
@@ -50,7 +52,10 @@ import { FirstRunOverlay } from './FirstRun';
 import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
 import { Library } from './Library';
-import { Home } from './Home';
+import { Today } from './Today';
+import { TabBar } from './TabBar';
+import { SettingsSheet } from './SettingsSheet';
+import { TAB_SCREEN, tabOf } from './tabs';
 import { PauseSheet } from './PauseSheet';
 import { CompletionCard } from './CompletionCard';
 import { CollectionWall } from './CollectionWall';
@@ -98,7 +103,7 @@ async function probeImageSize(file: File): Promise<{ width: number; height: numb
 
 /**
  * CLAUDE.md "Hard numbers": source downscale, max 2560px long edge. Applied
- * at decode time for uploads so `PhotoCrop`'s live-preview canvas and its
+ * at decode time for uploads so `CropCanvas`'s live-preview canvas and its
  * `rasterizeCrop` pass never allocate multiple full-resolution (12MP+)
  * surfaces at once — the final cut output was already capped later in the
  * pipeline, but the intermediate canvases were not.
@@ -231,14 +236,9 @@ export function App(): React.ReactElement {
       }
     // `photoId` is the curated photo's id, or null for an upload — carried
     // through so the completion card can credit it (§15) and title it.
-    | { kind: 'cropping'; source: ImageBitmap; photoId: string | null }
-    | {
-        kind: 'configuring';
-        source: ImageBitmap;
-        seed: number;
-        puzzleId: string;
-        photoId: string | null;
-      };
+    // `source` is the *uncropped* photo: v2 folds the crop into setup, which
+    // hands back a fresh cropped bitmap on Start (spec §4).
+    | { kind: 'configuring'; source: ImageBitmap; photoId: string | null };
 
   /**
    * Where the app is, above `setupPhase`. `'checking'` is the single
@@ -268,9 +268,11 @@ export function App(): React.ReactElement {
   const firstRunModel = useRef<FirstRunState>(firstRunStart());
   const lastPlacementAt = useRef(Date.now());
   const prevFirstRunPlaced = useRef(0);
-  /** The collection wall's rows, loaded on entry; the screen to return to. */
+  /** The collection wall's rows, loaded on entry. */
   const [completions, setCompletions] = useState<readonly CompletionRecord[]>([]);
-  const beforeWall = useRef<Screen>('setup');
+  /** The tab screen the player last stood on — where the picker's Back returns. */
+  const lastTabScreen = useRef<Screen>('home');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   /**
    * Read once per mount. A session that survives local midnight keeps
    * yesterday's key until the next load, which is correct: the daily the
@@ -280,7 +282,7 @@ export function App(): React.ReactElement {
   const [streak, setStreak] = useState<StreakState>(() => emptyStreak());
   /** Where "Done" and "Leave" go back to. */
   const originScreen = useRef<'daily' | 'library' | 'setup'>('setup');
-  /** Home's Browse/Upload choice, read once by `<PhotoPicker>` on the next setup entry. */
+  /** The picker's source on the next setup entry, read once by `<PhotoPicker>`. */
   const pickerInitialSource = useRef<'curated' | 'upload'>('curated');
   /** Guards the completion recording against re-firing on every render. */
   const recordedDaily = useRef<string | null>(null);
@@ -345,13 +347,32 @@ export function App(): React.ReactElement {
     trayRevision: 0,
     hintTarget: null,
     hintsUsed: 0,
+    hintsLeft: null,
     accent: fallbackAccentTokens(),
     elapsedMs: 0,
     cleanRun: true,
   });
 
+  // The browser suite's hook (src/dev/e2e.ts). Folded away in a build.
+  const summaryRef = useRef(summary);
+  summaryRef.current = summary;
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      installE2eHook(
+        () => runtime.current,
+        () => (runtime.current ? summaryRef.current : null),
+      );
+    }
+  }, []);
+
   const docked = useMediaQuery(DOCK_QUERY);
   const chrome = useChrome();
+
+  // The dock side is a preference, not session state: read once, and an
+  // unreadable row reads as the default.
+  useEffect(() => {
+    void loadTraySide().then((side) => useChrome.getState().setTraySide(side));
+  }, []);
 
   // Read through a ref so the runtime's callbacks never close over a stale
   // layout — the tray's rectangle moves every time the dock is resized.
@@ -416,6 +437,39 @@ export function App(): React.ReactElement {
     // that matters — a stale/missing cache only ever costs one extra read,
     // never traps a returning player.
     const cachedDone = hasSeenFirstRunSync();
+    // Dev-only: `?e2e` boots straight onto a board, for the browser suite.
+    // The flag is stripped at once so a reload restores rather than re-cuts.
+    const e2e = import.meta.env.DEV ? parseE2eStart(window.location.search) : null;
+    if (e2e) {
+      history.replaceState(null, '', window.location.pathname);
+      void (async () => {
+        // The persisted state the old picker walk left behind: the guided
+        // twelve skipped, so leaving this board never lands on it.
+        await markFirstRunDone();
+        // The picker's first tile, which is what `BoardPage.open` taps.
+        const photoId = photosByShelf('wide-and-calm')[0]!.id;
+        const uncropped = await renderCuratedPhoto(photoId);
+        const source = finishCrop(uncropped, INITIAL_CROP);
+        uncropped.close();
+        const config: PuzzleConfig = {
+          ...DEFAULT_PUZZLE_CONFIG,
+          targetCount: e2e.targetCount,
+          mode: e2e.mode,
+        };
+        setLiveAssists(config.assists);
+        setLiveDifficulty(config.difficulty);
+        setPlayConfig({
+          source,
+          seed: seedFromPuzzleId(E2E_PUZZLE_ID),
+          puzzleId: E2E_PUZZLE_ID,
+          photoId,
+          ...config,
+        });
+        originScreen.current = 'setup';
+        setScreen('playing');
+      })();
+      return;
+    }
     void (async () => {
       const [entries, completions, firstRunDone] = await Promise.all([
         listLibrary(),
@@ -496,8 +550,12 @@ export function App(): React.ReactElement {
     setSetupPhase({ kind: 'picker', error: null });
     setScreen('setup');
     setPlayConfig(null);
+    // `interrupt()` just autosaved the tutorial board, and left there it shows
+    // up on Home as an in-progress puzzle (v2 spec, B6). Deleted only once that
+    // write has landed, so the save can never recreate the row behind it.
     void saveInFlight.current
       .catch(() => {})
+      .then(() => deleteLibraryEntry(FIRST_RUN_PUZZLE_ID))
       .then(() => listLibrary())
       .then(setLibraryEntries);
   }, []);
@@ -517,27 +575,26 @@ export function App(): React.ReactElement {
     })();
   }, [today]);
 
-  // -- the setup flow: picker -> crop -> playConfig ---------------------------
+  // -- the setup flow: picker -> setup (crop folded in) -> playConfig ---------
 
   const handlePhotoChosen = useCallback(async (choice: PhotoChoice): Promise<void> => {
     // Set before any await, so the reassurance is on screen from the moment
     // the file lands rather than from when the decoder gets going.
     setSetupPhase((prev) => {
-      if (prev.kind === 'cropping') prev.source.close();
+      if (prev.kind === 'configuring') prev.source.close();
       return { kind: 'picker', error: null, busy: true };
     });
     try {
       const photoId = choice.kind === 'curated' ? choice.id : null;
       const bitmap =
         choice.kind === 'curated' ? await renderCuratedPhoto(choice.id) : await decodeUpload(choice.file);
-      // A previous round trip through crop (picker -> crop -> picker -> pick
-      // again) would otherwise leak that bitmap's off-heap backing store —
+      // A previous round trip through setup (picker -> setup -> picker ->
+      // pick again) would otherwise leak that bitmap's off-heap backing store —
       // GC does not reliably reclaim ImageBitmaps promptly. `onBack` already
-      // closes it on the normal path; this is the defensive twin for any
-      // other route back into this handler while a cropping phase exists.
+      // closes it on the normal path; this is the defensive twin.
       setSetupPhase((prev) => {
-        if (prev.kind === 'cropping') prev.source.close();
-        return { kind: 'cropping', source: bitmap, photoId };
+        if (prev.kind === 'configuring') prev.source.close();
+        return { kind: 'configuring', source: bitmap, photoId };
       });
     } catch (error) {
       const message =
@@ -545,47 +602,28 @@ export function App(): React.ReactElement {
           ? HEIC_MESSAGE
           : "Couldn't open that photo. Try a different file.";
       setSetupPhase((prev) => {
-        if (prev.kind === 'cropping') prev.source.close();
+        if (prev.kind === 'configuring') prev.source.close();
         return { kind: 'picker', error: message };
       });
     }
   }, []);
 
-  const handleCropConfirm = useCallback(
-    (result: PhotoCropResult): void => {
-      // `result.source` is a fresh bitmap `rasterizeCrop` produced via
-      // `transferToImageBitmap` — always a distinct instance from the
-      // uncropped original below, so this can never double-close the same
-      // object. Only the cropped result is needed from here on; the
-      // full-resolution original is not used again once the crop is confirmed.
-      const photoId = setupPhase.kind === 'cropping' ? setupPhase.photoId : null;
-      if (setupPhase.kind === 'cropping') setupPhase.source.close();
-      setSetupPhase({
-        kind: 'configuring',
-        source: result.source,
-        seed: result.seed,
-        puzzleId: result.puzzleId,
-        photoId,
-      });
-    },
-    [setupPhase],
-  );
-
   const handleSetupConfirm = useCallback(
-    (config: PuzzleConfig): void => {
+    ({ source, seed, puzzleId, config }: PuzzleSetupResult): void => {
       if (setupPhase.kind !== 'configuring') return;
+      // `source` is a fresh bitmap `finishCrop` produced, never the uncropped
+      // original — which nothing needs past this point, so it is released here
+      // and the phase reset in the same batch: a frame holding a closed bitmap
+      // in `configuring` would render `PuzzleSetup` on it and throw.
+      const { photoId } = setupPhase;
+      setupPhase.source.close();
+      setSetupPhase({ kind: 'picker', error: null });
       setRestoreSnapshot(null);
       photoSavedRef.current = false;
       setDailyResult(null);
       setLiveAssists(config.assists);
       setLiveDifficulty(config.difficulty);
-      setPlayConfig({
-        source: setupPhase.source,
-        seed: setupPhase.seed,
-        puzzleId: setupPhase.puzzleId,
-        photoId: setupPhase.photoId,
-        ...config,
-      });
+      setPlayConfig({ source, seed, puzzleId, photoId, ...config });
       originScreen.current = 'setup';
       setScreen('playing');
     },
@@ -916,9 +954,8 @@ export function App(): React.ReactElement {
 
   const openCollection = useCallback(async (): Promise<void> => {
     setCompletions(await listCompletions());
-    beforeWall.current = screen;
     setScreen('wall');
-  }, [screen]);
+  }, []);
 
   // -- the runtime, mounted once the crop is confirmed -------------------------
 
@@ -1175,120 +1212,129 @@ export function App(): React.ReactElement {
           ? 'alive'
           : 'at-risk';
 
-  if (screen === 'home') {
+  const startNewPuzzle = (): void => {
+    pickerInitialSource.current = 'curated';
+    originScreen.current = 'setup';
+    setSetupPhase({ kind: 'picker', error: null });
+    setScreen('setup');
+  };
+
+  // v2 spec §3: the three tabs and the daily hub share one shell. Setup, play,
+  // the first run and the card all render outside it, so the bar is hidden
+  // there by construction and switching tabs never touches `PlayRuntime`.
+  const activeTab = tabOf(screen);
+  if (activeTab) {
+    lastTabScreen.current = screen;
+    // Today's daily is offered on the hub, not as a library card — one puzzle,
+    // one place to start it. Yesterday's unfinished daily is no longer
+    // "today's" and shows as an ordinary card, so nothing is deleted for this.
     const shelved = libraryEntries.filter((entry) => entry.puzzleId !== dailyPuzzleId(today));
-    return (
-      <Home
-        dailyPreview={{
-          title: curatedPhotoById(daily.photoId)?.name ?? 'Today’s photo',
-          photoUrl: curatedPhotoUrl(daily.photoId) ?? '',
-          pieceCount: daily.targetCount,
-          resetsInMs: msUntilNextLocalMidnight(new Date()),
-          hintsIncluded: hintsAvailable(0, DAILY_CONFIG.mode),
-        }}
-        continuing={shelved.length === 1 ? shelved[0]! : null}
-        libraryCount={shelved.length}
-        streak={streakCount}
-        streakTone={streakTone}
-        weekPips={weekPips(streak, today)}
-        completions={completions}
-        onDaily={() => setScreen('daily')}
-        onContinue={(puzzleId) => {
-          void handleOpenLibraryEntry(puzzleId);
-        }}
-        onLibrary={() => setScreen('library')}
-        onBrowsePhotos={() => {
-          pickerInitialSource.current = 'curated';
-          originScreen.current = 'setup';
-          setSetupPhase({ kind: 'picker', error: null });
-          setScreen('setup');
-        }}
-        onUploadYours={() => {
-          pickerInitialSource.current = 'upload';
-          originScreen.current = 'setup';
-          setSetupPhase({ kind: 'picker', error: null });
-          setScreen('setup');
-        }}
-        onCollection={() => {
-          void openCollection();
-        }}
-      />
-    );
-  }
+    const doneToday = isDone(streak, today);
 
-  if (screen === 'daily') {
-    const todaysEntry = libraryEntries.find((entry) => entry.puzzleId === daily.puzzleId);
-    return (
-      <DailyHub
-        daily={daily}
-        dateLabel={new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'long',
-        })}
-        monthLabel={new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
-          month: 'long',
-          year: 'numeric',
-        })}
-        streak={streakCount}
-        freezes={streak.freezes}
-        tone={streakTone}
-        pips={weekPips(streak, today)}
-        grid={monthGrid(streak, monthKeyOf(today), today)}
-        progress={
-          todaysEntry
-            ? { placed: todaysEntry.snapshot.placed, total: todaysEntry.snapshot.total }
-            : null
-        }
-        progressThumbnail={todaysEntry?.thumbnailBlob ?? null}
-        doneToday={isDone(streak, today)}
-        canRepair={canRepairStreak(streak, today)}
-        onRepair={handleRepair}
-        onStart={() => {
-          void handleStartDaily();
-        }}
-        onLibrary={() => setScreen('library')}
-        onNewPuzzle={() => {
-          pickerInitialSource.current = 'curated';
-          originScreen.current = 'setup';
-          setSetupPhase({ kind: 'picker', error: null });
-          setScreen('setup');
-        }}
-      />
-    );
-  }
+    let body: React.ReactElement;
+    if (screen === 'daily') {
+      const todaysEntry = libraryEntries.find((entry) => entry.puzzleId === daily.puzzleId);
+      body = (
+        <DailyHub
+          daily={daily}
+          dateLabel={new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+          })}
+          monthLabel={new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
+            month: 'long',
+            year: 'numeric',
+          })}
+          streak={streakCount}
+          freezes={streak.freezes}
+          tone={streakTone}
+          pips={weekPips(streak, today)}
+          grid={monthGrid(streak, monthKeyOf(today), today)}
+          progress={
+            todaysEntry
+              ? { placed: todaysEntry.snapshot.placed, total: todaysEntry.snapshot.total }
+              : null
+          }
+          progressThumbnail={todaysEntry?.thumbnailBlob ?? null}
+          doneToday={doneToday}
+          canRepair={canRepairStreak(streak, today)}
+          onRepair={handleRepair}
+          onStart={() => {
+            void handleStartDaily();
+          }}
+          onBack={() => setScreen('home')}
+        />
+      );
+    } else if (screen === 'wall') {
+      body = <CollectionWall entries={completions} />;
+    } else if (screen === 'library') {
+      body = (
+        <Library
+          entries={shelved}
+          onOpen={(puzzleId) => {
+            void handleOpenLibraryEntry(puzzleId);
+          }}
+          onNewPuzzle={startNewPuzzle}
+        />
+      );
+    } else {
+      // Most recent first — not "exactly one", which hid Continue the moment
+      // a second puzzle was started.
+      const continuing =
+        [...shelved].sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
+      body = (
+        <Today
+          dailyPreview={{
+            title: curatedPhotoById(daily.photoId)?.name ?? 'Today’s photo',
+            photoUrl: curatedPhotoUrl(daily.photoId) ?? '',
+            pieceCount: daily.targetCount,
+            resetsInMs: msUntilNextLocalMidnight(new Date()),
+            hintsIncluded: hintsAvailable(0, DAILY_CONFIG.mode),
+          }}
+          dailyDone={doneToday}
+          continuing={continuing}
+          streak={streakCount}
+          streakTone={streakTone}
+          weekPips={weekPips(streak, today)}
+          onDaily={() => setScreen('daily')}
+          onContinue={(puzzleId) => {
+            void handleOpenLibraryEntry(puzzleId);
+          }}
+          onNewPuzzle={startNewPuzzle}
+          onSettings={() => setSettingsOpen(true)}
+        />
+      );
+    }
 
-  if (screen === 'wall') {
     return (
-      <CollectionWall entries={completions} onBack={() => setScreen(beforeWall.current)} />
-    );
-  }
-
-  if (screen === 'library') {
-    // Today's daily is offered on the hub, not here — one puzzle, one place to
-    // start it. Yesterday's unfinished daily is no longer "today's" and shows
-    // as an ordinary card, which is why nothing is ever deleted to achieve this.
-    const shelved = libraryEntries.filter((entry) => entry.puzzleId !== dailyPuzzleId(today));
-    return (
-      <Library
-        entries={shelved}
-        streak={streakCount}
-        streakTone={streakTone}
-        onHome={() => setScreen('home')}
-        onDaily={() => setScreen('daily')}
-        onCollection={() => {
-          void openCollection();
-        }}
-        onOpen={(puzzleId) => {
-          void handleOpenLibraryEntry(puzzleId);
-        }}
-        onNewPuzzle={() => {
-          pickerInitialSource.current = 'curated';
-          originScreen.current = 'setup';
-          setSetupPhase({ kind: 'picker', error: null });
-          setScreen('setup');
-        }}
-      />
+      <div className="flex h-full w-full flex-col bg-[var(--mat-void)]">
+        <main
+          className="min-h-0 flex-1 overflow-y-auto"
+          style={{ paddingTop: 'env(safe-area-inset-top)' }}
+        >
+          {body}
+        </main>
+        <div className="order-last md:order-first md:flex md:justify-center">
+          <TabBar
+            active={activeTab}
+            todayBadge={!doneToday}
+            onSelect={(tab) => {
+              if (tab === 'collection') void openCollection();
+              else setScreen(TAB_SCREEN[tab]);
+            }}
+          />
+        </div>
+        <SettingsSheet
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          traySide={chrome.traySide}
+          onTraySide={(side) => {
+            chrome.setTraySide(side);
+            void saveTraySide(side);
+          }}
+        />
+      </div>
     );
   }
 
@@ -1300,26 +1346,7 @@ export function App(): React.ReactElement {
           error={setupPhase.error}
           busy={setupPhase.busy ?? false}
           initialSource={pickerInitialSource.current}
-          onDaily={() => setScreen('daily')}
-          onCollection={() => {
-            void openCollection();
-          }}
-        />
-      );
-    }
-    if (setupPhase.kind === 'cropping') {
-      return (
-        <PhotoCrop
-          source={setupPhase.source}
-          onConfirm={handleCropConfirm}
-          onBack={() =>
-            setSetupPhase((prev) => {
-              // Leaving the crop screen for a different photo — the original
-              // bitmap it was cropping is no longer needed.
-              if (prev.kind === 'cropping') prev.source.close();
-              return { kind: 'picker', error: null };
-            })
-          }
+          onBack={() => setScreen(lastTabScreen.current)}
         />
       );
     }
@@ -1327,13 +1354,12 @@ export function App(): React.ReactElement {
       <PuzzleSetup
         source={setupPhase.source}
         onConfirm={handleSetupConfirm}
-        // Back re-enters crop on the already-cropped bitmap, not the original —
-        // the pre-crop source was released when the crop was confirmed.
         onBack={() =>
-          setSetupPhase({
-            kind: 'cropping',
-            source: setupPhase.source,
-            photoId: setupPhase.photoId,
+          setSetupPhase((prev) => {
+            // Leaving setup for a different photo — the one it was framing is
+            // no longer needed.
+            if (prev.kind === 'configuring') prev.source.close();
+            return { kind: 'picker', error: null };
           })
         }
       />
@@ -1341,7 +1367,11 @@ export function App(): React.ReactElement {
   }
 
   return (
-    <div className="flex h-full w-full bg-[var(--mat-void)]">
+    // v2 spec §5.3: a left dock is the same row, reversed — the tray stays after
+    // the board in the DOM, so focus order and the sheet path are unchanged.
+    <div
+      className={`flex h-full w-full bg-[var(--mat-void)] ${docked && chrome.traySide === 'left' ? 'flex-row-reverse' : ''}`}
+    >
       <div className="relative min-w-0 flex-1">
         {/* The canvas layers live in here and React never touches them again. */}
         <div
@@ -1416,8 +1446,10 @@ export function App(): React.ReactElement {
         {summary.status === 'playing' && (
           <HintButton
             hasTarget={summary.hintTarget !== null}
+            count={summary.hintsLeft}
             onFire={(tier) => runtime.current?.fireHint(tier) ?? false}
             clearanceBottomPx={trayHeight}
+            corner={docked && chrome.traySide === 'left' ? 'left' : 'right'}
           />
         )}
 
@@ -1438,7 +1470,7 @@ export function App(): React.ReactElement {
               autoFocus
               aria-label="Group name"
               defaultValue={runtime.current?.groupLabel(renaming) ?? ''}
-              className="touch-target rounded-[6px] bg-transparent px-[8px] font-[var(--font-data)] text-2"
+              className="touch-target rounded-[6px] bg-transparent px-[8px] font-data text-2"
               onKeyDown={(event) => {
                 if (event.key === 'Escape') setRenaming(null);
               }}
@@ -1481,6 +1513,7 @@ export function App(): React.ReactElement {
           rootRef={trayRef}
           shelfRef={shelfRef}
           docked={docked}
+          side={chrome.traySide}
           width={chrome.trayWidth}
           detent={chrome.detent}
           onWidth={chrome.setTrayWidth}

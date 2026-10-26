@@ -2,15 +2,12 @@
  * Completion (steps 5c/8) — the Puzzle Card, "again, harder", share, and the
  * completions store.
  *
- * Solving a whole board is expensive, so this runs on the dock project only
- * and at the smallest ladder rung. It is the only file in the suite that
- * reaches `event.type === 'complete'` at all, which is what makes it worth the
- * minute it costs: the card, `RuntimeSummary.status === 'complete'`, and the
- * save-then-delete path have no other coverage anywhere.
+ * A solve is every piece but one through the dev hook (`src/dev/e2e.ts`),
+ * then the last by a real held hint (`BoardPage.completeZenPuzzle`) — seconds,
+ * not minutes. The card, `RuntimeSummary.status === 'complete'`, and the
+ * save-then-delete path are covered here and in the first-run finish.
  *
- * Zen mode, because every hint tier is free there — Tier 3's auto-place is the
- * only way a spec can place a specific piece without the app growing a
- * test-only hook (see `BoardPage.placeViaHint`).
+ * Zen mode, so the last piece's Tier-3 hint is free.
  *
  * **Three of the four tests below share one solve** rather than each paying
  * for their own — they're all pure observations of the same "just finished"
@@ -29,7 +26,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage } from './board-page';
+import { BoardPage, firstCuratedPhoto } from './board-page';
 
 test.describe('completion', () => {
   test.skip(({ viewport }) => (viewport?.width ?? 0) < 768, 'one solve is enough');
@@ -43,7 +40,6 @@ test.describe('completion', () => {
     let inkAfterSettle: number;
 
     test.beforeAll(async ({ browser }) => {
-      test.setTimeout(600_000);
       const context = await browser.newContext();
       const page = await context.newPage();
       errors = [];
@@ -105,7 +101,7 @@ test.describe('completion', () => {
       // Done writes the completion, then lands on the picker. Waiting for that
       // landing is what proves the async save committed — a fixed timeout races
       // it and flakes under full-suite load.
-      await expect(page.getByRole('button', { name: 'Choose this photo' })).toBeVisible();
+      await expect(firstCuratedPhoto(page)).toBeVisible();
 
       const counts = await page.evaluate(async () => {
         const read = (store: string): Promise<number> =>
@@ -126,12 +122,11 @@ test.describe('completion', () => {
       expect(counts.sessions).toBe(0);
 
       // The only puzzle there was, so the flow returns to the picker.
-      await expect(page.getByRole('button', { name: 'Choose this photo' })).toBeVisible();
+      await expect(firstCuratedPhoto(page)).toBeVisible();
     });
   });
 
   test('again-harder cuts the next rung up from the same photo', async ({ page }) => {
-    test.setTimeout(600_000);
     // Capture the piece total while the board is still playing — once the card
     // is up, the progress header `placed()` reads is gone. This needs its own
     // solve: the shared setup above no longer has the pre-completion total by

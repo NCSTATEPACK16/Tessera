@@ -1,9 +1,9 @@
 /**
  * The library (step 5c) — in-progress puzzle cards.
  *
- * A library with zero entries is never rendered; `App.tsx`'s entry flow goes
- * straight to the picker instead, so this component has no empty state to
- * build. A first-time player never sees an empty shelf apologising to them.
+ * The Puzzles tab (v2 spec §3). A truly fresh profile still never lands here
+ * — `App.tsx`'s entry flow goes to the guided twelve or the picker — but the
+ * tab can be opened with nothing in progress, so it has an empty state.
  *
  * The thumbnail is the *board*, not the source photo (`PLAN.md`'s explicit
  * requirement) — captured at save time, so a library read is a blob read: no
@@ -12,22 +12,13 @@
 
 import { useEffect, useState } from 'react';
 import { ProgressRing } from './ProgressRing';
-import { StreakFlame } from './StreakFlame';
-import type { StreakTone } from './StreakFlame';
 import type { LibraryEntry } from '@/persist/library';
+import { Button, Icon } from './kit';
 
 export interface LibraryProps {
   entries: readonly LibraryEntry[];
   onOpen: (puzzleId: string) => void;
   onNewPuzzle: () => void;
-  /** Step 6: the hub is a peer screen, reached from here. */
-  onDaily?: () => void;
-  /** Step 8: the collection wall of finished puzzles (§15). */
-  onCollection?: () => void;
-  /** The Home screen this library sits in front of (2026-08-22 spec). */
-  onHome?: () => void;
-  streak?: number;
-  streakTone?: StreakTone;
 }
 
 function relativeTime(updatedAt: number): string {
@@ -77,7 +68,7 @@ function LibraryCard({
         <div className="text-2 text-[var(--ink-primary)]">
           {cols} × {rows} · {mode === 'zen' ? 'Zen' : 'Classic'}
         </div>
-        <div className="font-[var(--font-data)] text-1 tabular-nums text-[var(--ink-muted)]">
+        <div className="font-data text-1 tabular-nums text-[var(--ink-muted)]">
           {placed} / {total} · {relativeTime(entry.updatedAt)}
         </div>
       </div>
@@ -85,68 +76,29 @@ function LibraryCard({
   );
 }
 
-export function Library({
-  entries,
-  onOpen,
-  onNewPuzzle,
-  onDaily,
-  onCollection,
-  onHome,
-  streak = 0,
-  streakTone = 'none',
-}: LibraryProps): React.ReactElement {
+export function Library({ entries, onOpen, onNewPuzzle }: LibraryProps): React.ReactElement {
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-5">
+    <div className="mx-auto flex w-full max-w-[60rem] flex-col gap-5 p-5 [animation:screen-in_var(--duration-slow)_var(--ease-standard)]">
       <div className="flex items-center justify-between gap-3">
-        <div className="font-[var(--font-display)] text-5 text-[var(--ink-primary)]">
-          Your Puzzles
-        </div>
-        <div className="flex gap-2">
-          {onHome && (
-            <button
-              type="button"
-              aria-label="Home"
-              onClick={onHome}
-              className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
-            >
-              Home
-            </button>
-          )}
-          {onCollection && (
-            <button
-              type="button"
-              aria-label="Collection"
-              onClick={onCollection}
-              className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
-            >
-              Collection
-            </button>
-          )}
-          {onDaily && (
-            <button
-              type="button"
-              aria-label="Daily"
-              onClick={onDaily}
-              className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
-            >
-              <StreakFlame streak={streak} freezes={0} tone={streakTone} compact />
-            </button>
-          )}
-          <button
-            type="button"
-            aria-label="New puzzle"
-            onClick={onNewPuzzle}
-            className="touch-target rounded-[var(--radius-md)] bg-[var(--accent)] px-4 text-2 text-[var(--mat-void)]"
-          >
-            New Puzzle
-          </button>
-        </div>
+        <h1 className="m-0 font-display text-5 font-normal text-[var(--ink-primary)]">
+          Puzzles
+        </h1>
+        <Button variant="primary" aria-label="New puzzle" onClick={onNewPuzzle}>
+          <Icon.Plus size={20} />
+        </Button>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {entries.map((entry) => (
-          <LibraryCard key={entry.puzzleId} entry={entry} onOpen={onOpen} />
-        ))}
-      </div>
+      {entries.length === 0 ? (
+        // Reachable now that Puzzles is a tab. An invitation, not an apology.
+        <div className="text-2 text-[var(--ink-secondary)]">
+          Any photo works. Start with one you like looking at.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {entries.map((entry) => (
+            <LibraryCard key={entry.puzzleId} entry={entry} onOpen={onOpen} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

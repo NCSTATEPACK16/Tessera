@@ -14,7 +14,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage, reachPicker } from './board-page';
+import { BoardPage, firstCuratedPhoto, reachPicker, openTab } from './board-page';
 
 test.describe('collection wall', () => {
   test.skip(({ viewport }) => (viewport?.width ?? 0) < 768, 'one solve is enough');
@@ -38,8 +38,10 @@ test.describe('collection wall', () => {
     // §16: a truly fresh profile lands on the guided twelve, which has no
     // "Collection" entry point — see `reachPicker`'s own doc.
     await reachPicker(page);
+    // v2: the picker is a pushed step; Back lands on Today, under the tabs.
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
 
-    await page.getByRole('button', { name: 'Collection' }).click();
+    await openTab(page, 'Collection');
     await expect(page.getByText(/finished puzzles/i)).toBeVisible();
     // No "you have nothing", no "0 puzzles".
     await expect(page.getByText(/^0 /)).toHaveCount(0);
@@ -51,7 +53,6 @@ test.describe('collection wall', () => {
     let collectionPage: import('@playwright/test').Page;
 
     test.beforeAll(async ({ browser }) => {
-      test.setTimeout(600_000);
       const context = await browser.newContext();
       const page = await context.newPage();
       await BoardPage.openZenAndComplete(page);
@@ -60,7 +61,7 @@ test.describe('collection wall', () => {
       // that landing is what proves the async save committed, for both tests
       // below (the second one reloads immediately, which is exactly the
       // scenario this landing has to be true before).
-      await expect(page.getByRole('button', { name: 'Choose this photo' })).toBeVisible();
+      await expect(firstCuratedPhoto(page)).toBeVisible();
       collectionPage = page;
     });
 
@@ -70,7 +71,8 @@ test.describe('collection wall', () => {
 
     test('becomes a tile, and the tile reopens its card', async () => {
       const page = collectionPage;
-      await page.getByRole('button', { name: 'Collection' }).click();
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+      await openTab(page, 'Collection');
 
       const tiles = page.getByRole('button', { name: /Puzzle finished/ });
       await expect(tiles).toHaveCount(1);
@@ -81,7 +83,7 @@ test.describe('collection wall', () => {
     test('survives a reload — it is a possession, not session state', async () => {
       const page = collectionPage;
       await page.reload();
-      await page.getByRole('button', { name: 'Collection' }).click();
+      await openTab(page, 'Collection');
       await expect(page.getByRole('button', { name: /Puzzle finished/ })).toHaveCount(1);
     });
   });

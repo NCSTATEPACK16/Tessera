@@ -9,8 +9,11 @@
 
 import { useEffect, useState } from 'react';
 
-/** Below this the tray would eat the mat, so it becomes a sheet over it. */
-export const DOCK_QUERY = '(min-width: 768px)';
+/**
+ * v2 spec §5.3: the dock only in landscape and only from 1024pt. In iPad
+ * portrait a 340pt dock took ~41% of the board's width; the sheet does not.
+ */
+export const DOCK_QUERY = '(orientation: landscape) and (min-width: 1024px)';
 
 export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(

@@ -6,9 +6,7 @@ on:
   pull_request:
 
 # A second push to the same PR cancels the run already in flight for it —
-# npm run test:browser alone runs 16+ minutes at one worker (deliberately,
-# see playwright.config.ts), so queuing every push in full would make CI
-# slower than the review cycle it's meant to gate.
+# no reason to finish checking a commit that has already been superseded.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -81,7 +79,8 @@ jobs:
       # than caching keeps this workflow honest about that pin.
       - run: npx playwright install --with-deps chromium
 
-      - run: npm run test:browser
+      # The full suite, @slow included (HEIC decode, double 150-piece cuts).
+      - run: npm run test:browser:full
 
       # playwright.config.ts uses the 'github' reporter in CI (annotates the
       # run inline), not 'html' — there is no playwright-report/ to upload.

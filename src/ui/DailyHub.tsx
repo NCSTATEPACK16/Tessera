@@ -23,6 +23,7 @@ import { MonthCalendar } from './MonthCalendar';
 import { ProgressRing } from './ProgressRing';
 import { StreakFlame, streakMessage } from './StreakFlame';
 import type { StreakTone } from './StreakFlame';
+import { Button, Icon } from './kit';
 
 export interface DailyHubProps {
   daily: DailyPuzzle;
@@ -42,8 +43,8 @@ export interface DailyHubProps {
   canRepair: boolean;
   onRepair: () => void;
   onStart: () => void;
-  onLibrary: () => void;
-  onNewPuzzle: () => void;
+  /** The hub is a push within Today (v2 spec §3); Back returns there. */
+  onBack: () => void;
 }
 
 /** The curated photo for today, drawn once at card size. */
@@ -103,36 +104,18 @@ export function DailyHub({
   canRepair,
   onRepair,
   onStart,
-  onLibrary,
-  onNewPuzzle,
+  onBack,
 }: DailyHubProps): React.ReactElement {
   const photoName = curatedPhotoById(daily.photoId)?.name ?? 'Today’s photo';
   const cta = doneToday ? 'Play it again' : progress ? 'Continue today’s' : 'Start today’s';
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="font-[var(--font-display)] text-5 text-[var(--ink-primary)]">
-          Daily
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            aria-label="Your puzzles"
-            onClick={onLibrary}
-            className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
-          >
-            Your puzzles
-          </button>
-          <button
-            type="button"
-            aria-label="New puzzle"
-            onClick={onNewPuzzle}
-            className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] px-3 text-2 text-[var(--ink-primary)]"
-          >
-            New puzzle
-          </button>
-        </div>
+    <div className="flex flex-col gap-5 p-5">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" aria-label="Back" onClick={onBack}>
+          <Icon.Back />
+        </Button>
+        <div className="font-display text-5 text-[var(--ink-primary)]">Daily</div>
       </div>
 
       <div className="flex flex-wrap gap-4">
@@ -161,7 +144,7 @@ export function DailyHub({
           <div className="text-2 text-[var(--ink-primary)]">
             {dateLabel} · {photoName}
           </div>
-          <div className="font-[var(--font-data)] text-1 tabular-nums text-[var(--ink-muted)]">
+          <div className="font-data text-1 tabular-nums text-[var(--ink-muted)]">
             {progress
               ? `${progress.placed} / ${progress.total} placed`
               : `${daily.targetCount} pieces`}
@@ -184,14 +167,13 @@ export function DailyHub({
               Repair streak
             </button>
           )}
-          <button
-            type="button"
+          <Button
+            variant="primary"
             aria-label={cta}
             onClick={onStart}
-            className="touch-target rounded-[var(--radius-md)] bg-[var(--accent)] px-4 text-2 text-[var(--mat-void)]"
           >
             {cta}
-          </button>
+          </Button>
         </div>
       </div>
 

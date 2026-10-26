@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { BoardPage, reachPicker } from './board-page';
+import { BoardPage, chooseFirstCuratedPhoto, reachPicker } from './board-page';
 import { withExifOrientation } from './fixtures/exif';
 
 // A minimal valid 160x120 solid-red PNG, inlined so the spec has no on-disk
@@ -16,14 +16,7 @@ const TINY_PNG_BASE64 =
   'QYswAIswAIswAIMWIAFWIAFWIAFGLCmex6SuVf52qjUAAAAAElFTkSuQmCC';
 
 test.describe('photo picker and crop', () => {
-  test('choosing a curated photo and confirming the default crop reaches a playable board', async ({
-    page,
-  }) => {
-    const board = await BoardPage.open(page);
-    await expect(board.chips.first()).toBeVisible();
-  });
-
-  test('uploading a photo skips the curated grid and reaches the crop screen', async ({ page }) => {
+  test('uploading a photo skips the curated grid and reaches setup', async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
     // §16: a fresh Playwright context is a fresh profile, which lands on the
     // guided twelve rather than the picker — see `reachPicker`'s own doc.
@@ -37,9 +30,7 @@ test.describe('photo picker and crop', () => {
       buffer: Buffer.from(TINY_PNG_BASE64, 'base64'),
     });
 
-    await expect(page.getByRole('button', { name: 'Use this photo' })).toBeVisible();
-    await page.getByRole('button', { name: 'Use this photo' }).click();
-    // Step 5b's setup screen, accepting every default.
+    // v2 spec §4: an upload lands on setup, crop folded in; every default.
     await page.getByRole('button', { name: 'Start cutting' }).click();
 
     const board = new BoardPage(page);
@@ -66,7 +57,7 @@ test.describe('photo picker and crop', () => {
     await expect(page.getByRole('button', { name: 'Curated photos' })).toBeVisible();
   });
 
-  test('a HEIC upload gets the HEIC-specific error, not the generic one', async ({ page }) => {
+  test('a HEIC upload gets the HEIC-specific error, not the generic one', { tag: '@slow' }, async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
     // §16: a fresh Playwright context is a fresh profile, which lands on the
     // guided twelve rather than the picker — see `reachPicker`'s own doc.
@@ -86,7 +77,7 @@ test.describe('photo picker and crop', () => {
     await expect(page.getByRole('button', { name: 'Curated photos' })).toBeVisible();
   });
 
-  test('a HEIC mislabelled as a JPEG is still routed to the HEIC decoder', async ({ page }) => {
+  test('a HEIC mislabelled as a JPEG is still routed to the HEIC decoder', { tag: '@slow' }, async ({ page }) => {
     await page.goto('/', { waitUntil: 'load' });
     // §16: a fresh Playwright context is a fresh profile, which lands on the
     // guided twelve rather than the picker — see `reachPicker`'s own doc.
@@ -149,7 +140,7 @@ test.describe('photo picker and crop', () => {
       buffer: Buffer.from(TINY_PNG_BASE64, 'base64'),
     });
 
-    await expect(page.getByRole('button', { name: 'Use this photo' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Start cutting' })).toBeVisible();
     expect(heicWorkers).toHaveLength(0);
   });
 
@@ -183,8 +174,8 @@ test.describe('photo picker and crop', () => {
       buffer: withExifOrientation(Buffer.from(jpeg), 6),
     });
 
-    await expect(page.getByRole('button', { name: 'Use this photo' })).toBeVisible();
-    // The crop screen's canvas carries the decoded source's dimensions.
+    await expect(page.getByRole('button', { name: 'Start cutting' })).toBeVisible();
+    // The crop frame's canvas carries the decoded source's dimensions.
     // Portrait means height > width.
     const aspect = await page
       .getByTestId('crop-source-aspect')
@@ -208,7 +199,8 @@ test.describe('photo picker and crop', () => {
     // §16: a fresh Playwright context is a fresh profile, which lands on the
     // guided twelve rather than the picker — see `reachPicker`'s own doc.
     await reachPicker(page);
-    await page.getByRole('button', { name: 'Choose this photo' }).click();
+    await chooseFirstCuratedPhoto(page);
+    await page.getByRole('button', { name: 'More options' }).click();
 
     const rotate = page.getByRole('button', { name: 'Rotate 90 degrees' });
     await rotate.click();
@@ -216,10 +208,25 @@ test.describe('photo picker and crop', () => {
     await rotate.click();
     await rotate.click(); // back to 0 degrees
 
-    await page.getByRole('button', { name: 'Use this photo' }).click();
     await page.getByRole('button', { name: 'Start cutting' }).click();
     const board = new BoardPage(page);
     await board.waitForCut();
     await expect(board.chips.first()).toBeVisible();
   });
+});
+
+// v2 spec §4: Photo → Setup → Play, three taps from Home. A tapped photo
+// advances (no separate confirm), and crop lives inside setup.
+test('three taps from Today to the board', async ({ page }) => {
+  test.setTimeout(90_000);
+  const seeded = await BoardPage.open(page, { mode: 'Zen' });
+  await seeded.autoPlace();
+  await page.waitForTimeout(1200);
+  await page.reload({ waitUntil: 'load' });
+
+  await page.getByRole('button', { name: 'New puzzle' }).click(); // 1
+  await page.getByRole('button', { name: /Curated photo: Mountain Lake/ }).click(); // 2
+  await page.getByRole('button', { name: 'Start cutting' }).click(); // 3
+
+  await new BoardPage(page).waitForCut();
 });

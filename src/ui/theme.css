@@ -20,6 +20,15 @@
   --color-edge-hair: #2c333c;
   --color-ink-primary: #edf0f4;
   --color-ink-muted: #8a929e;
+  --color-ink-secondary: #b9c1cc;
+  --color-mat-deep: #101318;
+  --color-edge-hair-light: #363e49;
+
+  /* Mode and state hues (2026-10-20 modern-look spec). Never the only signal:
+     a Badge always carries its word, a danger button its label. */
+  --color-success: #5ecfa0;
+  --color-warn: #f0a855;
+  --color-danger: #ff6b6b;
 
   /* Extraction lands at step 4 (§13). Until then everything runs on the
      fallback, which is also what an empty library and a first run get. */
@@ -68,8 +77,23 @@
   --edge-hair: #2c333c;
   --ink-primary: #edf0f4;
   --ink-muted: #8a929e;
+  --ink-secondary: #b9c1cc;
+  --mat-deep: #101318;
+  --edge-hair-light: #363e49;
+  --success: #5ecfa0;
+  --warn: #f0a855;
+  --danger: #ff6b6b;
   --accent: #6fa8ff;
   --accent-fallback: #6fa8ff;
+
+  /* Derived from the live accent, which App.tsx sets on this same element
+     per photo — so a selected fill or glow always matches the extracted hue
+     rather than the fallback blue. */
+  --accent-dim: color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 50%, transparent);
+
+  --shadow-raise: 0 8px 24px rgb(0 0 0 / 0.35);
+  --shadow-accent: 0 4px 20px var(--accent-glow);
 
   /* §13: 44pt floor, everywhere. */
   --touch-min: 44px;
@@ -116,6 +140,46 @@ button,
 .touch-target {
   min-height: var(--touch-min);
   min-width: var(--touch-min);
+}
+
+/* Section labels: mono, small, uppercase, tracked. */
+.eyebrow {
+  font-family: var(--font-data);
+  font-size: var(--text-1);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/* One-shot entrances, and a skeleton that loops only while something loads.
+   Nothing here runs on an idle board. */
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
 }
 
 /* §16 Track 4: the guided twelve's tray-reveal beat, once, on mount. The

@@ -16,6 +16,7 @@ import type { SnapDifficulty } from '@/board/snap';
 import type { PuzzleAssists } from '@/play/setup';
 import { GHOST_OPACITY_MAX } from '@/play/setup';
 import { loadPhoto } from '@/persist/photos';
+import { Button, Segmented, Toggle } from './kit';
 
 export interface PauseSheetProps {
   puzzleId: string;
@@ -98,23 +99,13 @@ export function PauseSheet({
           layout always fit — max-height plus scroll, never an overflow that
           pushes Resume or Leave off-screen with no way to reach them. */}
       <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[90vh] flex-col gap-4 overflow-y-auto rounded-t-[var(--radius-lg)] border-t border-[var(--edge-hair)] bg-[var(--mat-raised)] p-5">
-        <button
-          type="button"
-          aria-label="Resume"
-          onClick={onResume}
-          className="touch-target rounded-[var(--radius-md)] bg-[var(--accent)] py-3 text-3 text-[var(--mat-void)]"
-        >
+        <Button variant="primary" size="lg" aria-label="Resume" onClick={onResume}>
           Resume
-        </button>
+        </Button>
 
-        <button
-          type="button"
-          aria-label="Reference image"
-          onClick={openReference}
-          className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] py-3 text-3 text-[var(--ink-primary)]"
-        >
+        <Button size="lg" aria-label="Reference image" onClick={openReference}>
           Reference image
-        </button>
+        </Button>
 
         {confirmingRestart ? (
           <div className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--edge-hair)] p-3">
@@ -122,82 +113,57 @@ export function PauseSheet({
               Are you sure? All progress on this puzzle resets.
             </div>
             <div className="flex gap-2">
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 aria-label="Cancel restart"
                 onClick={() => setConfirmingRestart(false)}
-                className="touch-target flex-1 rounded-[var(--radius-sm)] border border-[var(--edge-hair)] text-2 text-[var(--ink-muted)]"
+                className="flex-1"
               >
                 Cancel
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="danger"
                 aria-label="Confirm restart"
                 onClick={() => {
                   setConfirmingRestart(false);
                   onRestart();
                 }}
-                className="touch-target flex-1 rounded-[var(--radius-sm)] border-2 border-[var(--accent)] text-2 text-[var(--accent)]"
+                className="flex-1"
               >
                 Restart
-              </button>
+              </Button>
             </div>
           </div>
         ) : (
-          <button
-            type="button"
-            aria-label="Restart"
-            onClick={() => setConfirmingRestart(true)}
-            className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] py-3 text-3 text-[var(--ink-primary)]"
-          >
+          <Button size="lg" aria-label="Restart" onClick={() => setConfirmingRestart(true)}>
             Restart
-          </button>
+          </Button>
         )}
 
         <div className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--edge-hair)] p-3">
-          <div className="font-[var(--font-data)] text-1 tracking-[0.08em] text-[var(--ink-muted)]">
-            SETTINGS
-          </div>
+          <div className="eyebrow">SETTINGS</div>
 
           <div>
             <div className="mb-1 text-2 text-[var(--ink-primary)]">Snap tolerance</div>
-            {/* flex-auto, not flex-1: a 0%-basis item reports 0 to the
-                line-breaking step, so flex-wrap never triggers before the
-                resolve step stretches "Generous" past the container anyway.
-                basis:auto lets a label that doesn't fit wrap for real. */}
-            <div className="flex flex-wrap gap-2">
-              {TOLERANCES.map(({ value, label }) => {
-                const selected = difficulty === value;
+            <Segmented
+              wrap
+              value={difficulty}
+              onChange={onDifficultyChange}
+              options={TOLERANCES.map(({ value, label }) => ({
+                value,
+                ariaLabel: `Snap tolerance: ${label}`,
+                content: label,
                 // Comfort mode floors tolerance at Generous — the tighter two
                 // are disabled, not just re-coloured, while it is on.
-                const disabled = assists.comfort && value !== 'generous';
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-label={`Snap tolerance: ${label}`}
-                    aria-pressed={selected}
-                    disabled={disabled}
-                    onClick={() => onDifficultyChange(value)}
-                    // Border weight as well as colour: colour is never the
-                    // only signal (§13).
-                    className={`touch-target flex-auto px-2 rounded-[var(--radius-sm)] text-1 disabled:opacity-40 ${
-                      selected
-                        ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
-                        : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
+                disabled: assists.comfort && value !== 'generous',
+              }))}
+            />
           </div>
 
           <div>
             <div className="mb-1 flex justify-between text-2 text-[var(--ink-primary)]">
               <span>Ghost underlay</span>
-              <span className="font-[var(--font-data)] text-1 tabular-nums text-[var(--ink-muted)]">
+              <span className="font-data text-1 tabular-nums text-[var(--ink-muted)]">
                 {Math.round((assists.ghostOpacity / GHOST_OPACITY_MAX) * 100)}%
               </span>
             </div>
@@ -217,70 +183,39 @@ export function PauseSheet({
 
           <div className="flex items-center justify-between">
             <div className="text-2 text-[var(--ink-primary)]">Edge highlight</div>
-            <button
-              type="button"
-              aria-label="Edge highlight"
-              aria-pressed={assists.edgeHighlight}
-              onClick={() => onAssistsChange({ ...assists, edgeHighlight: !assists.edgeHighlight })}
-              className={`touch-target rounded-[var(--radius-sm)] text-1 ${
-                assists.edgeHighlight
-                  ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
-                  : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
-              }`}
-            >
-              {assists.edgeHighlight ? 'On' : 'Off'}
-            </button>
+            <Toggle
+              label="Edge highlight"
+              on={assists.edgeHighlight}
+              onChange={() => onAssistsChange({ ...assists, edgeHighlight: !assists.edgeHighlight })}
+            />
           </div>
 
           <div className="flex items-center justify-between">
             <div className="text-2 text-[var(--ink-primary)]">Large piece mode</div>
-            <button
-              type="button"
-              aria-label="Large piece mode"
-              aria-pressed={assists.largePieceMode}
-              onClick={() =>
-                onAssistsChange({ ...assists, largePieceMode: !assists.largePieceMode })
-              }
-              className={`touch-target rounded-[var(--radius-sm)] text-1 ${
-                assists.largePieceMode
-                  ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
-                  : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
-              }`}
-            >
-              {assists.largePieceMode ? 'On' : 'Off'}
-            </button>
+            <Toggle
+              label="Large piece mode"
+              on={assists.largePieceMode}
+              onChange={() => onAssistsChange({ ...assists, largePieceMode: !assists.largePieceMode })}
+            />
           </div>
 
           <div className="flex items-center justify-between">
             <div className="text-2 text-[var(--ink-primary)]">Comfort mode</div>
-            <button
-              type="button"
-              aria-label="Comfort mode"
-              aria-pressed={assists.comfort}
-              onClick={() => {
+            <Toggle
+              label="Comfort mode"
+              on={assists.comfort}
+              onChange={() => {
                 const comfort = !assists.comfort;
                 onAssistsChange({ ...assists, comfort });
                 if (comfort) onDifficultyChange('generous');
               }}
-              className={`touch-target rounded-[var(--radius-sm)] text-1 ${
-                assists.comfort
-                  ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
-                  : 'border border-[var(--edge-hair)] text-[var(--ink-muted)]'
-              }`}
-            >
-              {assists.comfort ? 'On' : 'Off'}
-            </button>
+            />
           </div>
         </div>
 
-        <button
-          type="button"
-          aria-label="Leave"
-          onClick={onLeave}
-          className="touch-target rounded-[var(--radius-md)] border border-[var(--edge-hair)] py-3 text-3 text-[var(--ink-muted)]"
-        >
+        <Button variant="ghost" size="lg" aria-label="Leave" onClick={onLeave}>
           Leave
-        </button>
+        </Button>
       </div>
     </>
   );
