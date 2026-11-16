@@ -49,7 +49,7 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
@@ -70,5 +70,9 @@
 	<string>Tessera needs access to your photos so you can turn one into a puzzle.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Tessera needs camera access so you can take a photo to turn into a puzzle.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Tessera saves your finished Puzzle Card to your photos when you choose Save Image.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

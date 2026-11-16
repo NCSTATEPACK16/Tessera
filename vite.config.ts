@@ -43,7 +43,9 @@ export default defineConfig({
         // Audio has no asset files to precache: `src/audio` synthesises
         // every sound from Web Audio buffers at runtime (CLAUDE.md), so
         // it's already offline the moment the JS shell is.
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
+        // woff2 only: the bundled fonts also emit .woff fallbacks no
+        // supported browser ever requests.
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         // The libheif/HEIC decoder is a ~3MB WASM-backed chunk that Track 1
         // deliberately keeps out of the main bundle so only a HEIC upload
         // ever pays for it (see scripts/check-bundle-budget.mjs). Precaching
@@ -63,30 +65,6 @@ export default defineConfig({
               // The whole library plus slack, so a full 30/50-photo set
               // never evicts itself under LRU pressure from its own size.
               expiration: { maxEntries: 60, maxAgeSeconds: 60 * 24 * 60 * 60 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            // No `crossorigin` on index.html's stylesheet link (only the
-            // preconnects have it), so this fetch is opaque — status 0 — and
-            // Workbox drops opaque responses by default unless told to keep
-            // them. Missing this line is why the fonts CSS never cached and
-            // failed offline outright: no font fallback shown, a hard fetch
-            // error instead.
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-stylesheets',
-              expiration: { maxEntries: 4, maxAgeSeconds: 365 * 24 * 60 * 60 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-webfonts',
-              expiration: { maxEntries: 8, maxAgeSeconds: 365 * 24 * 60 * 60 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },

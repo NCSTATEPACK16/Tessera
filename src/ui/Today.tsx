@@ -16,6 +16,7 @@ import type { DayCell } from '@/daily/streak';
 import type { LibraryEntry } from '@/persist/library';
 import { ProgressRing } from './ProgressRing';
 import { PwaBanner } from './PwaBanner';
+import { isNative } from '@/platform';
 import { Badge, Button, Icon } from './kit';
 
 export interface TodayProps {
@@ -156,7 +157,8 @@ export function Today({
         )}
       </div>
 
-      <PwaBanner />
+      {/* "Add to Home Screen" means nothing to an app that is already installed. */}
+      {!isNative && <PwaBanner />}
     </div>
   );
 }

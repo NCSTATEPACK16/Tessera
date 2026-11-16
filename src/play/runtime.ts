@@ -24,6 +24,7 @@ import type { HintTier, PuzzleMode } from '@/play/hints';
 import { gridLayout } from '@/play/layout';
 import { PlaySession } from '@/play/session';
 import type { PlayEvent } from '@/play/session';
+import { haptic } from '@/platform';
 import type { AccentTokens } from '@/render/accent';
 import { adaptiveGhostOpacity, extractAccent, fallbackAccentTokens } from '@/render/accent';
 import { TrayModel } from '@/tray/tray';
@@ -942,6 +943,12 @@ export class PlayRuntime {
           break;
       }
     }
+
+    // Native only, and not gated on `sound` either: §08's parity table layers
+    // haptics on top of feedback that is already complete without them.
+    if (event.type === 'grab') haptic('pickup');
+    else if (event.type === 'snap') haptic('snap');
+    else if (event.type === 'complete') haptic('complete');
 
     // Not gated on `sound`: the light payoff is a separate channel from audio,
     // and muting one has no reason to mute the other (§07/§08 are independent).

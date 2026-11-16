@@ -12,6 +12,8 @@
 # for one step, reviewed in the PR beside the code they describe, and never
 # updated in place. They are committed.
 !/docs/superpowers/
+# The iOS build-and-upload procedure is a how-to, not a source of truth.
+!/docs/TESTING-IOS.md
 
 node_modules/
 dist/
