@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@capacitor/assets": "^3.0.5",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.1.1",
@@ -35,6 +36,13 @@
     "esbuild@0.21.5": true
   },
   "dependencies": {
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.5.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/instrument-serif": "^5.3.0",
+    "@fontsource/inter-tight": "^5.3.0",
     "heic-to": "^1.5.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
