@@ -23,7 +23,7 @@ import { BoardPage, rafCalls, trayMutations, watchRafCalls, watchTrayMutations }
  */
 const RERENDER_BUDGET = 300;
 
-test.describe('the board never re-renders through React', { tag: '@timing' }, () => {
+test.describe('the board never re-renders through React', { tag: ['@timing', '@smoke'] }, () => {
   test.beforeEach(async ({ page }) => {
     await watchTrayMutations(page);
   });
@@ -68,7 +68,7 @@ test.describe('the board never re-renders through React', { tag: '@timing' }, ()
   });
 });
 
-test.describe('an idle tray schedules no wasted work', { tag: '@timing' }, () => {
+test.describe('an idle tray schedules no wasted work', { tag: ['@timing', '@smoke'] }, () => {
   test('the drag probe stops rescheduling itself once a press ends', async ({ page }) => {
     await watchRafCalls(page);
     const board = await BoardPage.open(page);
@@ -88,7 +88,7 @@ test.describe('an idle tray schedules no wasted work', { tag: '@timing' }, () =>
   });
 });
 
-test.describe('nothing is broken on the console', () => {
+test.describe('nothing is broken on the console', { tag: '@smoke' }, () => {
   test('a full session start raises no errors', async ({ page }) => {
     const errors: string[] = [];
     page.on('console', (message) => {

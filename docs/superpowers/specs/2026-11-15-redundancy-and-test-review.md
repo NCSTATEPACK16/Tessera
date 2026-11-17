@@ -627,3 +627,17 @@ instead of thirty.
   it leans on is `tabs` › "the gear opens Settings", which is kept on its own boot.
 - Not run: `npm run build`, `check-bundle-budget`, `check-pwa-build`, `typecheck`. Nothing was
   changed that they would see.
+
+## 10. Results after implementation (G1, G2, G7, D1–D3)
+
+| Gate | Before | After | Load (start → end) |
+|---|---|---|---|
+| `npm test` | 675 passed, 5.7s | 675 passed (unchanged) | — |
+| Per-change: `test:browser` → **`test:browser:smoke`** | 179s, 115 tests | **58.5s / 45.5s**, 14 passed, 0 failed (two runs) | 7.18 → 12.60 → 14.13 |
+| Pre-PR: `test:browser` (3 workers, D1–D3 removed) | 179s, 115 tests | 249s, 112 passed, 6 skipped, 0 failed | 14.13 → **41.08** — contended; the quiet-machine figure is G7's 157s |
+
+Per-change speed-up: **179s → ~45–58s, 3.1–4.0×.** Every gate is now under five minutes, even the
+contended pre-PR run.
+
+`tabs.spec.ts` › "the tab bar is absent in setup and on the board" gained one assertion (Continue
+visible after Back) so D2's mutation fails in 5s rather than at the 90s test timeout.
