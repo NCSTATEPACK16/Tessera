@@ -161,36 +161,6 @@ test('finishing the daily starts the streak', async ({ page }) => {
   await expect(page.getByText('Start a streak.')).toHaveCount(0);
 });
 
-test('upgrading the database to v2 keeps an existing session', async ({ page }) => {
-  test.setTimeout(90_000);
-
-  // Save a real session under the current schema.
-  const board = await BoardPage.open(page, { mode: 'Zen' });
-  await board.autoPlace();
-  await page.waitForTimeout(1200);
-
-  // Prove the `daily` store exists alongside the three from v1, and that the
-  // session survived the bump. This is the assertion that stands between a
-  // schema change and deleting every in-progress puzzle a real player has.
-  const stores = await page.evaluate(async () => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('tessera');
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    const names = Array.from(db.objectStoreNames);
-    const count = await new Promise<number>((resolve, reject) => {
-      const tx = db.transaction('sessions', 'readonly');
-      const request = tx.objectStore('sessions').count();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    db.close();
-    return { names, count };
-  });
-
-  expect(stores.names).toEqual(
-    expect.arrayContaining(['sessions', 'photos', 'thumbnails', 'daily']),
-  );
-  expect(stores.count).toBeGreaterThan(0);
-});
+// The schema check that lived here (stores include `daily`) is a subset of
+// persistence.spec.ts's "the v2 to v3 bump is additive" — deleted after a mutation
+// check (2026-11-15 redundancy review, D3).
