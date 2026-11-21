@@ -478,7 +478,7 @@ test.describe('select mode', () => {
 // ---------------------------------------------------------------------------
 // The two invariants, extended over a Workset
 
-test('the board does not re-render through React while a group is dragged', { tag: '@timing' }, async ({ page }) => {
+test('the board does not re-render through React while a group is dragged', { tag: ['@timing', '@smoke'] }, async ({ page }) => {
   await watchTrayMutations(page);
   const board = await BoardPage.open(page);
   await pullOut(board, page, 5);
@@ -512,7 +512,7 @@ test('the board does not re-render through React while a group is dragged', { ta
   expect(mutationsAfter - mutationsBefore).toBeLessThan(RERENDER_BUDGET);
 });
 
-test('an idle board carrying a group draws nothing at all', { tag: '@timing' }, async ({ page }) => {
+test('an idle board carrying a group draws nothing at all', { tag: ['@timing', '@smoke'] }, async ({ page }) => {
   // §03: "on an idle board with no finger down the app draws nothing at all."
   // The dev harness publishes that as `#sched`; the product page has no such
   // readout, so `watchBoardPaints` counts the clears that begin every layer

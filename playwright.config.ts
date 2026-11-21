@@ -31,7 +31,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 1 : 0,
-  workers: process.env['CI'] ? 3 : 4,
+  // Three, not four: on a six-core machine a fourth Chromium oversubscribes the
+  // CPU, and the per-change run measured 157s at 3 against 179s at 4 (see
+  // docs/superpowers/specs/2026-11-15-redundancy-and-test-review.md §5, G7).
+  workers: 3,
   // Headroom for a loaded machine (the suite is meant to run in the background);
   // a healthy test here finishes in under fifteen seconds.
   timeout: 60_000,
@@ -46,6 +49,9 @@ export default defineConfig({
   // Tags, in the test titles' `tag` option:
   //   @timing — measures the frame loop or counts mutations; runs alone, first.
   //   @phone  — about the sheet form factor; the only tests the phone runs.
+  //   @smoke  — the per-change tier (`npm run test:browser:smoke`, under 60s):
+  //             boot, the three-tap funnel, a drag-out, a tier-3 snap, a solve to
+  //             the card, save/restore, and both top-line invariants.
   //   @slow   — unavoidably long (HEIC decode, double 150-piece cuts); left out
   //             of `npm run test:browser`, run by `test:browser:full` and CI.
   projects: [

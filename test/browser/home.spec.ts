@@ -4,7 +4,9 @@
  * Today, and a truly fresh profile still skips straight to first-run/the
  * picker exactly as before. The seeding pattern (open a Zen puzzle, place one
  * piece, reload) is the shortest real path to "one in-progress puzzle".
- * The tabs themselves are `tabs.spec.ts`'s.
+ * The tabs themselves are `tabs.spec.ts`'s, and so are Continue, New puzzle and the
+ * daily hero on a seeded Today — two tests that re-asserted them here were
+ * deleted after mutation checks (2026-11-15 redundancy review, D1/D2).
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -28,30 +30,6 @@ test('a fresh profile with zero history skips Today', async ({ page }) => {
   await expect(page.getByRole('navigation', { name: 'Tabs' })).toHaveCount(0);
   // Nor an empty library apologising to a first-time player (step 5c).
   await expect(page.getByLabel(/Open puzzle:/)).toHaveCount(0);
-});
-
-test('a profile with one in-progress puzzle lands on Today and shows Continue', async ({
-  page,
-}) => {
-  test.setTimeout(90_000);
-  await seedOneInProgress(page);
-
-  await expect(page.getByRole('button', { name: 'Continue your puzzle' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'New puzzle' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Play today's puzzle/ })).toBeVisible();
-});
-
-test('New puzzle reaches the curated picker, and Back returns to Today', async ({ page }) => {
-  test.setTimeout(90_000);
-  await seedOneInProgress(page);
-
-  await page.getByRole('button', { name: 'New puzzle' }).click();
-  await expect(page.getByRole('button', { name: 'Curated photos' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Continue your puzzle' })).toBeVisible();
 });
 
 test('the hero caption is readable over the photo', async ({ page }) => {

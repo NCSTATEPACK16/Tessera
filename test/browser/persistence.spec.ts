@@ -14,7 +14,7 @@
 import { expect, test } from '@playwright/test';
 import { BoardPage, openTab } from './board-page';
 
-test('a reload mid-session restores the board rather than resetting it', async ({ page }) => {
+test('a reload mid-session restores the board rather than resetting it', { tag: '@smoke' }, async ({ page }) => {
   test.setTimeout(90_000);
 
   const board = await BoardPage.open(page, { mode: 'Zen' });

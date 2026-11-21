@@ -31,7 +31,7 @@ import { BoardPage, firstCuratedPhoto } from './board-page';
 test.describe('completion', () => {
   test.skip(({ viewport }) => (viewport?.width ?? 0) < 768, 'one solve is enough');
 
-  test.describe('after a solve', () => {
+  test.describe('after a solve', { tag: '@smoke' }, () => {
     test.describe.configure({ mode: 'serial' });
 
     let board: BoardPage;

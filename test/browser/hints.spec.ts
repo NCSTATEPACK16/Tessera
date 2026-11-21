@@ -42,7 +42,7 @@ test.describe('hints (§07)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('holding the hint button escalates to tier 3, and auto-places the target', async ({ page }) => {
+  test('holding the hint button escalates to tier 3, and auto-places the target', { tag: '@smoke' }, async ({ page }) => {
     const board = await BoardPage.open(page);
 
     const [pieceId] = await board.mountedIds();

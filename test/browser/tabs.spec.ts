@@ -48,6 +48,8 @@ test('the tab bar is absent in setup and on the board', async ({ page }) => {
   await expect(tabs(page)).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Back', exact: true }).click();
+  // Back from the picker lands on Today, not Puzzles (was home.spec.ts's own test).
+  await expect(page.getByRole('button', { name: 'Continue your puzzle' })).toBeVisible();
   await page.getByRole('button', { name: 'Continue your puzzle' }).click();
   await new BoardPage(page).waitForCut();
   await expect(tabs(page)).toHaveCount(0);

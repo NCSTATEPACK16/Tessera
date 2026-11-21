@@ -227,7 +227,9 @@ Do not drift from these without changing the design doc first.
 ```
 npm run dev          # host-exposed for real-device testing — the product at /
 npm test             # vitest — pure functions, node environment
-npm run test:browser      # playwright, minus @slow — under 3 minutes; run on every change
+npm run test:browser:smoke # 14 @smoke tests — under 60s; run on every change
+npm run test:browser:one -- <spec>  # one spec on dock, without the @timing project
+npm run test:browser      # playwright, minus @slow — under 3 minutes; before every PR
 npm run test:browser:full # everything, @slow included — what CI runs
 npm run typecheck
 npm run build
@@ -251,10 +253,13 @@ most one Workset and membership ends on merge**, because the failure is silent: 
 counted in a group draws a containing outline stretching into the assembled board, with nothing on
 screen to explain it and no error anywhere.
 
-### `npm run test:browser` is a gate, not an optional extra
+### The browser suite is a gate, not an optional extra
 
-**Run it on every change, and `test:browser:full` without exception at the end of every step,
-before the PR.** A green `npm test` is not evidence the app works — it is several hundred assertions
+**Run `test:browser:smoke` on every change, `test:browser` before every PR (and after any change
+to `src/ui/`, `src/persist/` or `src/input/`), and `test:browser:full` without exception at the end
+of every step.** The smoke tier is boot, the three-tap funnel, a drag-out (dock and phone), a
+tier-3 snap, a solve to the card, save/restore, and every `@timing` invariant test — chosen in
+`docs/superpowers/specs/2026-11-15-redundancy-and-test-review.md` §5. A green `npm test` is not evidence the app works — it is several hundred assertions
 about pure functions, and it stays green while the app fails to boot.
 
 Two things in this codebase are *only* observable in a browser, and both are top-line invariants:
@@ -269,8 +274,8 @@ reading the code had missed — a select-mode hold that deselected the piece it 
 (the terminating click toggled it back off), and drop-to-pin unreachable on a phone because the
 shelf rendered below the fold at peek. Neither had any unit-test surface; both are fixed.
 
-`@playwright/test` boots vite itself and runs `test/browser/*.spec.ts` in three projects, on four
-workers: **`timing`** (tests tagged `@timing` — mutation counts, idle-draws-nothing — alone on one
+`@playwright/test` boots vite itself and runs `test/browser/*.spec.ts` in three projects, on three
+workers (four oversubscribes six cores — measured slower): **`timing`** (tests tagged `@timing` — mutation counts, idle-draws-nothing — alone on one
 worker, before anything else starts), **`dock`** (everything else), and **`phone`** (only tests
 tagged `@phone`, the ones about the sheet form factor). `@slow` marks the few that are long by
 nature (HEIC decode, two 150-piece cuts) and is left out of `npm run test:browser`. Vitest owns

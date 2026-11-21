@@ -12,7 +12,7 @@ import { expect, test } from '@playwright/test';
 import { boardInk, BoardPage } from './board-page';
 
 test.describe('pulling a piece out of the tray', () => {
-  test('the piece leaves the tray and lands on the mat', { tag: '@phone' }, async ({ page }) => {
+  test('the piece leaves the tray and lands on the mat', { tag: ['@phone', '@smoke'] }, async ({ page }) => {
     const board = await BoardPage.open(page);
     const before = await board.remaining();
 

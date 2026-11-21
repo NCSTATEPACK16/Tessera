@@ -217,7 +217,7 @@ test.describe('photo picker and crop', () => {
 
 // v2 spec §4: Photo → Setup → Play, three taps from Home. A tapped photo
 // advances (no separate confirm), and crop lives inside setup.
-test('three taps from Today to the board', async ({ page }) => {
+test('three taps from Today to the board', { tag: '@smoke' }, async ({ page }) => {
   test.setTimeout(90_000);
   const seeded = await BoardPage.open(page, { mode: 'Zen' });
   await seeded.autoPlace();
