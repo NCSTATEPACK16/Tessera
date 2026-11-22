@@ -31,9 +31,8 @@ import { TrayModel } from '@/tray/tray';
 import {
   MIN_ZOOM,
   REGION_LENS_ZOOM,
-  clampZoom,
   createCamera,
-  fitCameraToBounds,
+  fitCameraToContent,
   fitScale,
   insetWorldRect,
   relativeZoom,
@@ -1077,15 +1076,12 @@ export class PlayRuntime {
     const bounds = this.session
       ? this.session.contentBounds()
       : { x: 0, y: 0, w: this.boardW, h: this.boardH };
-    const framed = fitCameraToBounds(this.viewport, bounds);
-    this.camera = {
-      ...framed,
-      zoom: clampZoom(
-        framed.zoom,
-        fitScale(this.viewport, this.boardW, this.boardH),
-        this.liveAssists.largePieceMode ? REGION_LENS_ZOOM : undefined,
-      ),
-    };
+    this.camera = fitCameraToContent(
+      this.viewport,
+      bounds,
+      { w: this.boardW, h: this.boardH },
+      this.liveAssists.largePieceMode ? REGION_LENS_ZOOM : undefined,
+    );
   }
 
   private render(): void {
