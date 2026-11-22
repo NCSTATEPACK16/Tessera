@@ -13,7 +13,8 @@
  * is §07 hint behaviour and belongs to step 4.
  */
 
-import type { Point, Rect } from '@/core/geom';
+import type { Point, Rect, Size } from '@/core/geom';
+import type { Rng } from '@/core/rng';
 
 /**
  * Piece-size multiples between grid origins.
@@ -124,4 +125,74 @@ function fittedSpacing(
 
   const fits = Math.min(safe.w / neededX, safe.h / neededY);
   return Math.max(PULL_OUT_SPACING.tight, Math.min(PULL_OUT_SPACING.loose, fits));
+}
+
+/** Pitch between the guided twelve's scattered origins, in piece widths. */
+const FIRST_RUN_PITCH = 1.35;
+/** Gap between the board's bottom edge and the first scattered row. */
+const FIRST_RUN_GAP = 0.8;
+const FIRST_RUN_JITTER = 0.15;
+/**
+ * A piece bitmap's extent in world units: one cell plus a knob's 0.22
+ * protrusion either side (§04). Used only to estimate the band's bounds when
+ * choosing a row length.
+ */
+export const FIRST_RUN_PIECE_EXTENT = 1.44;
+
+/**
+ * Bitmap origins for the guided twelve's loose band (§16), one per piece, in
+ * input order — below the board, every row (the last included) centred under
+ * it.
+ *
+ * The row length is chosen for the viewport: whichever length, from three
+ * across up to all in one row, lets board-plus-band fit at the largest zoom.
+ * A portrait phone gets a narrow stack, a desktop window a wide band. It used
+ * to be left-anchored and `sqrt(n × 1.6)` across regardless, which on a 402pt
+ * phone made the content wider than the zoom floor allows and pushed the board
+ * frame off the left edge (modernize spec §7); a fixed board-width wrap fixed
+ * the phone and made a 3 × 4 board's band too tall for a 900px desktop window.
+ * Ties go to the shorter row. Jitter draws x then y per piece, as before.
+ */
+export function firstRunScatter(
+  count: number,
+  boardW: number,
+  boardH: number,
+  viewport: Size,
+  rng: Rng,
+): Point[] {
+  const perRow = bestRowLength(count, boardW, boardH, viewport);
+  const origins: Point[] = [];
+  for (let i = 0; i < count; i++) {
+    const row = Math.floor(i / perRow);
+    const inRow = Math.min(perRow, count - row * perRow);
+    const span = (inRow - 1) * FIRST_RUN_PITCH + 1;
+    const left = boardW / 2 - span / 2;
+    origins.push({
+      x: left + (i % perRow) * FIRST_RUN_PITCH + rng.range(-FIRST_RUN_JITTER, FIRST_RUN_JITTER),
+      y:
+        boardH +
+        FIRST_RUN_GAP +
+        row * FIRST_RUN_PITCH +
+        rng.range(-FIRST_RUN_JITTER, FIRST_RUN_JITTER),
+    });
+  }
+  return origins;
+}
+
+function bestRowLength(count: number, boardW: number, boardH: number, viewport: Size): number {
+  const shortest = Math.min(count, 3);
+  let best = shortest;
+  let bestScale = -Infinity;
+  for (let perRow = shortest; perRow <= Math.max(shortest, count); perRow++) {
+    const rows = Math.ceil(count / perRow);
+    const bandW = (perRow - 1) * FIRST_RUN_PITCH + FIRST_RUN_PIECE_EXTENT;
+    const w = Math.max(boardW, bandW);
+    const h = boardH + FIRST_RUN_GAP + (rows - 1) * FIRST_RUN_PITCH + FIRST_RUN_PIECE_EXTENT;
+    const scale = Math.min(viewport.w / w, viewport.h / h);
+    if (scale > bestScale) {
+      bestScale = scale;
+      best = perRow;
+    }
+  }
+  return best;
 }

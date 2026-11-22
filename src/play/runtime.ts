@@ -21,7 +21,7 @@ import { AudioEngine } from '@/audio/engine';
 import { BoardControls } from '@/input/board-controls';
 import { hintsLeft, msUntilNextHint } from '@/play/hints';
 import type { HintTier, PuzzleMode } from '@/play/hints';
-import { gridLayout } from '@/play/layout';
+import { firstRunScatter, gridLayout } from '@/play/layout';
 import { PlaySession } from '@/play/session';
 import type { PlayEvent } from '@/play/session';
 import { haptic } from '@/platform';
@@ -859,19 +859,19 @@ export class PlayRuntime {
     // does. `startInTray: false` alone is not enough; the pieces must
     // actually be scattered, exactly as the step 1-2 dev harness always did
     // before the tray existed. Skipped on restore — a saved snapshot already
-    // has real positions.
+    // has real positions. The layout itself — centred under the board, row
+    // length chosen for the viewport — is `firstRunScatter` in `layout.ts`.
     if (!restore && this.options.startInTray === false) {
-      const rng = rngFor(this.options.seed, 'firstRunScatter', 0);
-      const perRow = Math.max(1, Math.ceil(Math.sqrt(cut.length * 1.6)));
+      const origins = firstRunScatter(
+        cut.length,
+        this.boardW,
+        this.boardH,
+        this.viewport,
+        rngFor(this.options.seed, 'firstRunScatter', 0),
+      );
       for (const [i, piece] of cut.entries()) {
-        const clusterId = session.board.clusterIdOf(piece.id);
-        const col = i % perRow;
-        const row = Math.floor(i / perRow);
-        session.board.moveCluster(
-          clusterId,
-          col * 1.35 + rng.range(-0.15, 0.15),
-          this.boardH + 0.8 + row * 1.35 + rng.range(-0.15, 0.15),
-        );
+        const origin = origins[i]!;
+        session.board.moveCluster(session.board.clusterIdOf(piece.id), origin.x, origin.y);
       }
       session.rebuild();
     }
