@@ -71,6 +71,14 @@ const DEFAULT_ASSISTS: PuzzleAssists = {
  */
 const REGION_SETTLE_MS = 160;
 
+/** Client-space rectangle in CSS px — the dev hook's shape for "is this on screen". */
+export interface E2eClientRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
 export interface RuntimeSummary {
   status: 'cutting' | 'playing' | 'complete' | 'failed';
   cut: { done: number; total: number; cols: number; rows: number };
@@ -669,6 +677,44 @@ export class PlayRuntime {
       });
       return { id: piece.id, x: rect.left + at.x, y: rect.top + at.y };
     });
+  }
+
+  /** Dev-only: the board frame's client-space rectangle. */
+  e2eFrameRect(): E2eClientRect | null {
+    if (this.boardW <= 0 || this.boardH <= 0) return null;
+    return this.e2eClientRect({ x: 0, y: 0, w: this.boardW, h: this.boardH });
+  }
+
+  /** Dev-only: the client-space union of every loose piece's bitmap; null when none. */
+  e2eLooseBounds(): E2eClientRect | null {
+    const loose = this.session?.scene().loose ?? [];
+    if (loose.length === 0) return null;
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    for (const piece of loose) {
+      left = Math.min(left, piece.x);
+      top = Math.min(top, piece.y);
+      right = Math.max(right, piece.x + piece.w);
+      bottom = Math.max(bottom, piece.y + piece.h);
+    }
+    return this.e2eClientRect({ x: left, y: top, w: right - left, h: bottom - top });
+  }
+
+  private e2eClientRect(world: Rect): E2eClientRect {
+    const rect = this.options.container.getBoundingClientRect();
+    const tl = worldToScreen(this.camera, this.viewport, { x: world.x, y: world.y });
+    const br = worldToScreen(this.camera, this.viewport, {
+      x: world.x + world.w,
+      y: world.y + world.h,
+    });
+    return {
+      left: rect.left + tl.x,
+      top: rect.top + tl.y,
+      right: rect.left + br.x,
+      bottom: rect.top + br.y,
+    };
   }
 
   /** The part of the mat the player can actually see and reach, in world units. */
