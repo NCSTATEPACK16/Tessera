@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en" data-type="B">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tessera modernize comps</title>
+    <!-- Comp-only: Newsreader is the alternative display face (pairing C). The
+         app never loads a font from a CDN; this page is a design artefact served
+         by `npm run dev`, never part of a build. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/newsreader@5.2.6/latin-400.css" />
+    <link rel="stylesheet" href="./comps.css" />
+  </head>
+  <body>
+    <header class="page-head">
+      <div>
+        <h1>Tessera: modernize comps</h1>
+        <p>
+          Every piece, chip and cut line below is the real cutter running on the real curated photos.
+          Sample profile data (streak, counts) is illustrative.
+        </p>
+      </div>
+      <div class="controls">
+        <label>Type pairing
+          <select id="pairing">
+            <option value="A">A: as shipped</option>
+            <option value="B" selected>B: same families, retuned roles (recommended)</option>
+            <option value="C">C: Newsreader display</option>
+          </select>
+        </label>
+        <label>Daily photo
+          <select id="daily-photo"></select>
+        </label>
+      </div>
+    </header>
+
+    <nav class="toc">
+      <a href="#today">1 · Today</a>
+      <a href="#type">2 · Typography</a>
+      <a href="#tray">3 · Tray</a>
+      <a href="#cut">4 · Cut animation</a>
+    </nav>
+
+    <section id="today">
+      <h2>1 · Today</h2>
+      <p class="note">Phone at 402 × 874pt (iPhone 17 Pro), iPad landscape at 1180 × 820pt shown at 62%.</p>
+      <div class="row" id="today-phones"></div>
+      <div class="row" id="today-ipad"></div>
+    </section>
+
+    <section id="type">
+      <h2>2 · Typography</h2>
+      <p class="note">The same three surfaces in each pairing. Switching the pairing at the top re-sets every comp on this page.</p>
+      <div class="row" id="type-compare"></div>
+      <div id="type-ramp"></div>
+    </section>
+
+    <section id="tray">
+      <h2>3 · Tray</h2>
+      <p class="note">Default detent (35%), select mode at half with the shelf, and the iPad landscape dock.</p>
+      <div class="row" id="tray-phones"></div>
+      <div class="row" id="tray-ipad"></div>
+    </section>
+
+    <section id="cut">
+      <h2>4 · Cut animation</h2>
+      <p class="note">
+        A live player first: the real cut of the real photo, at real arrival timing. Scrub it, slow it, or simulate a slow worker
+        to see the sweep wait for pieces instead of outrunning them. Then the storyboard as stills.
+      </p>
+      <div class="player-controls">
+        <button id="cut-play" type="button">Play</button>
+        <input id="cut-scrub" type="range" min="0" max="1600" value="0" step="1" aria-label="Time" />
+        <output id="cut-time">0 ms</output>
+        <label><input id="cut-slow" type="checkbox" /> Slow worker (2.4s cut)</label>
+        <label><input id="cut-rm" type="checkbox" /> Reduced motion</label>
+        <label><input id="cut-half" type="checkbox" /> ¼ speed</label>
+        <label>Destination
+          <select id="cut-dest">
+            <option value="tray">Tray (every puzzle)</option>
+            <option value="scatter">Mat scatter (guided twelve)</option>
+          </select>
+        </label>
+      </div>
+      <div class="row" id="cut-players"></div>
+      <h3>Storyboard, phone, 150 pieces, fast worker</h3>
+      <div class="row frames" id="cut-frames"></div>
+      <h3>Storyboard, iPad landscape dock</h3>
+      <div class="row frames" id="cut-frames-ipad"></div>
+    </section>
+
+    <script type="module" src="./comps.ts"></script>
+  </body>
+</html>
