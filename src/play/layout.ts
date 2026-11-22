@@ -127,6 +127,16 @@ function fittedSpacing(
   return Math.max(PULL_OUT_SPACING.tight, Math.min(PULL_OUT_SPACING.loose, fits));
 }
 
+/**
+ * The drag boundary's margin, in piece widths each side of the board frame —
+ * CLAUDE.md's hard number, `clamp(sqrt(pieces) x 0.8, 4, 18)`. The session's
+ * `dragBounds` and the first-run scatter both read it here, so a piece is never
+ * dealt where the player could not have dragged it.
+ */
+export function dragMargin(pieceCount: number): number {
+  return Math.min(18, Math.max(4, Math.sqrt(pieceCount) * 0.8));
+}
+
 /** Pitch between the guided twelve's scattered origins, in piece widths. */
 const FIRST_RUN_PITCH = 1.35;
 /** Gap between the board's bottom edge and the first scattered row. */
@@ -151,7 +161,15 @@ export const FIRST_RUN_PIECE_EXTENT = 1.44;
  * phone made the content wider than the zoom floor allows and pushed the board
  * frame off the left edge (modernize spec §7); a fixed board-width wrap fixed
  * the phone and made a 3 × 4 board's band too tall for a 900px desktop window.
- * Ties go to the shorter row. Jitter draws x then y per piece, as before.
+ * Ties go to the shorter row, and no row is wider than the drag boundary
+ * (`dragMargin`). Jitter draws x then y per piece, as before.
+ *
+ * Known limit: on a portrait phone the 3-across stack's last row reaches below
+ * the drag boundary (y ≈ 10.3 against 8 for a 3 × 4 board). A row long enough
+ * to stay inside it would be wider than the phone's zoom floor allows — the
+ * original clip. The player can still drag those pieces up, toward the board;
+ * only further down is refused. Fixing both needs a pitch or margin change,
+ * which is the owner's call.
  */
 export function firstRunScatter(
   count: number,
@@ -183,9 +201,13 @@ function bestRowLength(count: number, boardW: number, boardH: number, viewport: 
   const shortest = Math.min(count, 3);
   let best = shortest;
   let bestScale = -Infinity;
+  const widest = boardW + dragMargin(count) * 2;
   for (let perRow = shortest; perRow <= Math.max(shortest, count); perRow++) {
     const rows = Math.ceil(count / perRow);
     const bandW = (perRow - 1) * FIRST_RUN_PITCH + FIRST_RUN_PIECE_EXTENT;
+    // Never wider than the drag boundary: a piece dealt outside it is one the
+    // player could not drag outward. The shortest row is always allowed.
+    if (perRow > shortest && bandW > widest) break;
     const w = Math.max(boardW, bandW);
     const h = boardH + FIRST_RUN_GAP + (rows - 1) * FIRST_RUN_PITCH + FIRST_RUN_PIECE_EXTENT;
     const scale = Math.min(viewport.w / w, viewport.h / h);

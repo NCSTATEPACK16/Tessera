@@ -10,7 +10,13 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Point, Rect, Size } from '@/core/geom';
-import { FIRST_RUN_PIECE_EXTENT, PULL_OUT_SPACING, firstRunScatter, gridLayout } from '@/play/layout';
+import {
+  FIRST_RUN_PIECE_EXTENT,
+  PULL_OUT_SPACING,
+  dragMargin,
+  firstRunScatter,
+  gridLayout,
+} from '@/play/layout';
 import { MIN_ZOOM, fitCameraToBounds, fitScale } from '@/render/camera';
 import { rngFor } from '@/core/rng';
 
@@ -158,6 +164,22 @@ describe('firstRunScatter', () => {
       for (const xs of rows.values()) {
         const mid = (Math.min(...xs) + Math.max(...xs) + 1) / 2;
         expect(Math.abs(mid - BOARD.w / 2), `${vp.w}x${vp.h}`).toBeLessThan(0.3);
+      }
+    }
+  });
+
+  it('never deals a piece outside the drag boundary horizontally (a landscape phone picked 12 across)', () => {
+    // CLAUDE.md hard number: clamp(sqrt(pieces) x 0.8, 4, 18) piece-widths each side.
+    // `clampAxis` refuses to move an out-of-bounds piece further out, so a piece
+    // dealt there is one the player cannot drag outward.
+    const margin = dragMargin(12);
+    expect(margin).toBe(4);
+    for (const vp of [PHONE, DESK, LAND]) {
+      for (const p of scatter(vp)) {
+        expect(p.x, `${vp.w}x${vp.h}`).toBeGreaterThanOrEqual(-margin - 0.15);
+        expect(p.x + FIRST_RUN_PIECE_EXTENT, `${vp.w}x${vp.h}`).toBeLessThanOrEqual(
+          BOARD.w + margin + 0.15,
+        );
       }
     }
   });
