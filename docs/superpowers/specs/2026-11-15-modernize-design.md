@@ -1,7 +1,9 @@
 # Modernize: web and iOS — design
 
-**Status:** proposal, awaiting owner approval. Nothing under `src/` changes until the owner rules on
-§9 (conflicts) and §3 (type pairing).
+**Status:** approved by the owner 2026-11-21 — direction as written, **type pairing B**, and
+conflicts C1–C8 ruled as proposed in §9. The design doc still carries the old wording on those
+eight points; the owner updates it, Claude doesn't. Phase e's surfaces still need their own comps
+approved before that phase's code.
 **Brief:** `docs/superpowers/prompts/2026-11-15-fable-modernize-web-and-ios.md`.
 **Comps:** `docs/superpowers/specs/assets/2026-11-15-modernize/` — `comps.html` is live (run
 `npm run dev`, open `/docs/superpowers/specs/assets/2026-11-15-modernize/comps.html`); the `.webp`
