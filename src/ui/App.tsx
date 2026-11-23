@@ -1470,7 +1470,7 @@ export function App(): React.ReactElement {
               autoFocus
               aria-label="Group name"
               defaultValue={runtime.current?.groupLabel(renaming) ?? ''}
-              className="touch-target rounded-[6px] bg-transparent px-[8px] font-data text-2"
+              className="touch-target rounded-[6px] bg-transparent px-[8px] text-2"
               onKeyDown={(event) => {
                 if (event.key === 'Escape') setRenaming(null);
               }}

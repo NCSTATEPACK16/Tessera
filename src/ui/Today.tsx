@@ -75,7 +75,7 @@ function ContinueCard({
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="eyebrow">Keep going</div>
         <div className="text-3 text-[var(--ink-primary)]">Continue your puzzle</div>
-        <div className="font-data text-1 tabular-nums text-[var(--ink-muted)]">
+        <div className="meta text-[var(--ink-muted)]">
           {placed} / {total} placed
         </div>
       </div>
@@ -136,7 +136,7 @@ export function Today({
           <div className="font-display text-5 leading-tight text-[var(--ink-primary)]">
             {dailyPreview.title}
           </div>
-          <div className="font-data text-1 tabular-nums text-[var(--ink-secondary)]">
+          <div className="meta text-[var(--ink-secondary)]">
             {dailyPreview.hintsIncluded} hints included · resets in{' '}
             {formatResetsIn(dailyPreview.resetsInMs)}
           </div>

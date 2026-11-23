@@ -75,7 +75,7 @@ export function StreakFlame({
     return (
       <span className="flex items-center gap-1.5">
         <span aria-hidden="true">{tone === 'broken' || tone === 'none' ? '○' : '▲'}</span>
-        <span className="font-data text-2 tabular-nums">{streak}</span>
+        <span className="meta">{streak}</span>
       </span>
     );
   }
@@ -91,7 +91,7 @@ export function StreakFlame({
         >
           {streak}
         </span>
-        <span className="font-data text-1 text-[var(--ink-muted)]">
+        <span className="meta text-[var(--ink-muted)]">
           day streak{freezes > 0 ? ` · ${freezes} freeze${freezes === 1 ? '' : 's'}` : ''}
         </span>
       </div>

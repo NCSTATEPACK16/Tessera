@@ -144,7 +144,7 @@ export function DailyHub({
           <div className="text-2 text-[var(--ink-primary)]">
             {dateLabel} · {photoName}
           </div>
-          <div className="font-data text-1 tabular-nums text-[var(--ink-muted)]">
+          <div className="meta text-[var(--ink-muted)]">
             {progress
               ? `${progress.placed} / ${progress.total} placed`
               : `${daily.targetCount} pieces`}
