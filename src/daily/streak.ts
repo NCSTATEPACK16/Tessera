@@ -186,6 +186,9 @@ export function repair(state: StreakState, today: DateKey): StreakState {
   return { ...state, frozen, lastRepairMonth: monthKeyOf(today) };
 }
 
+/** How the streak reads today — what `StreakFlame` and Today's streak card draw. */
+export type StreakTone = 'none' | 'alive' | 'at-risk' | 'broken';
+
 export type DayStatus = 'completed' | 'frozen' | 'missed' | 'today' | 'future' | 'inactive';
 
 export interface DayCell {

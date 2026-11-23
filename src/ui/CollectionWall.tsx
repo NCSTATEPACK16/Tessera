@@ -5,34 +5,18 @@
  * erasing finished puzzles.
  *
  * A CSS-grid mosaic of `thumbnailBlob` tiles, newest first (the store already
- * sorts). Tapping a tile re-shows its card, re-composed from the stored
- * thumbnail and denormalised meta — the completions store keeps a small row,
- * not a full-size PNG, so the card is rebuilt on demand.
+ * sorts). Tapping a tile re-shows its card (`ReopenedCard`).
  *
  * Empty state is an invitation, not an apology (§10, design doc screen 02):
  * one line pointing at the next puzzle. Never a printed zero.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CompletionRecord } from '@/persist/completions';
-import { curatedPhotoById } from '@/play/curated';
-import { composeCard } from '@/render/card';
-import type { CardMeta } from '@/play/card';
-import { CompletionCard } from './CompletionCard';
+import { ReopenedCard } from './ReopenedCard';
 
 export interface CollectionWallProps {
   entries: readonly CompletionRecord[];
-}
-
-function metaOf(entry: CompletionRecord): CardMeta {
-  return {
-    title: (entry.photoId ? curatedPhotoById(entry.photoId)?.name : undefined) ?? 'Your photo',
-    elapsedMs: entry.elapsedMs,
-    pieceCount: entry.pieceCount,
-    mode: entry.mode,
-    cleanRun: entry.cleanRun,
-    attribution: entry.attribution,
-  };
 }
 
 function WallTile({
@@ -75,49 +59,6 @@ function WallTile({
 
 export function CollectionWall({ entries }: CollectionWallProps): React.ReactElement {
   const [selected, setSelected] = useState<CompletionRecord | null>(null);
-  const [cardBlob, setCardBlob] = useState<Blob | null>(null);
-
-  const selectedMeta = useMemo(() => (selected ? metaOf(selected) : null), [selected]);
-
-  // Re-compose the card from the stored thumbnail when a tile opens.
-  useEffect(() => {
-    if (!selected) {
-      setCardBlob(null);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      const bitmap = await createImageBitmap(selected.thumbnailBlob);
-      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-      canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
-      bitmap.close();
-      await document.fonts.ready;
-      const blob = await composeCard(canvas, metaOf(selected));
-      if (!cancelled) setCardBlob(blob);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selected]);
-
-  if (selected && cardBlob && selectedMeta) {
-    // Reopened from the wall: no again-harder, no new-puzzle — both actions
-    // just close back to the mosaic. Share and Save operate on the rebuilt PNG.
-    return (
-      // Fixed over the whole window: the tab bar is hidden on the card (v2 §3).
-      <div className="fixed inset-0 z-50 bg-[var(--mat-void)]">
-        <CompletionCard
-          meta={selectedMeta}
-          cardBlob={cardBlob}
-          canGoHarder={false}
-          nextCount={null}
-          onAgainHarder={() => setSelected(null)}
-          onDone={() => setSelected(null)}
-          onNewPuzzle={() => setSelected(null)}
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="mx-auto flex w-full max-w-[60rem] flex-col gap-5 p-5 [animation:screen-in_var(--duration-slow)_var(--ease-standard)]">
@@ -136,6 +77,8 @@ export function CollectionWall({ entries }: CollectionWallProps): React.ReactEle
           ))}
         </div>
       )}
+      {/* Over the mosaic, which stays put underneath while the card composes. */}
+      {selected && <ReopenedCard entry={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

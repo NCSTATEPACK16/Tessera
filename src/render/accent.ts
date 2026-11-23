@@ -212,3 +212,38 @@ export function extractAccent(
     return fallbackAccentTokens();
   }
 }
+
+/** `#rrggbb` → sRGB, or null for anything else. */
+function rgbOfHex(hex: string): [number, number, number] | null {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!match) return null;
+  const n = parseInt(match[1]!, 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+/**
+ * Today's accent, before anything is cut (modernize spec §2): the curated
+ * manifest's precomputed `dominant` swatches through the same clamp and
+ * contrast pass `extractAccent` uses.
+ *
+ * The manifest lists swatches in colour-bin order, not by area, so the most
+ * chromatic one is taken — the swatch that carries the photo's hue. A grey
+ * first bin would otherwise turn every misty photo's Start into the same
+ * clamped teal. Never throws; nothing readable gives the fallback.
+ */
+export function accentFromDominant(dominant: readonly string[]): string {
+  let best: OkLab | null = null;
+  let bestChroma = -1;
+  for (const hex of dominant) {
+    const rgb = rgbOfHex(hex);
+    if (!rgb) continue;
+    const lab = srgbToOkLab(rgb);
+    const chroma = Math.hypot(lab.a, lab.b);
+    if (chroma > bestChroma) {
+      best = lab;
+      bestChroma = chroma;
+    }
+  }
+  if (!best) return ACCENT_FALLBACK;
+  return hexOf(ensureContrast(clampToAccentRange(best), MAT_RAISED_RGB, WCAG_MIN_CONTRAST));
+}

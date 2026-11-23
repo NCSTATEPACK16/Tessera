@@ -17,7 +17,7 @@ import type { PieceId } from '@/cut/types';
 import { MOVE_THRESHOLD_PX } from '@/input/pointer';
 import { PlayRuntime } from '@/play/runtime';
 import type { RuntimeSummary } from '@/play/runtime';
-import { fallbackAccentTokens } from '@/render/accent';
+import { accentFromDominant, fallbackAccentTokens } from '@/render/accent';
 import type { Lens } from '@/tray/lenses';
 import { DOCK_QUERY, useMediaQuery } from './useMediaQuery';
 import { useChrome } from './store';
@@ -53,8 +53,8 @@ import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
 import { Library } from './Library';
 import { Today } from './Today';
-import { TabBar } from './TabBar';
-import { SettingsSheet } from './SettingsSheet';
+import { collectionSummary, heroModel, puzzleTitle, streakModel } from '@/play/today';
+import { Shell } from './Shell';
 import { TAB_SCREEN, tabOf } from './tabs';
 import { PauseSheet } from './PauseSheet';
 import { CompletionCard } from './CompletionCard';
@@ -652,9 +652,9 @@ export function App(): React.ReactElement {
         source: bitmap,
         seed: entry.snapshot.seed,
         puzzleId,
-        // The snapshot does not carry which curated photo this was; a resumed
-        // daily recovers it from the date at card time (`buildCardMeta`).
-        photoId: null,
+        // Snapshots saved before modernize phase b carry no photo id; a resumed
+        // daily still recovers it from the date at card time (`buildCardMeta`).
+        photoId: entry.snapshot.photoId ?? null,
         targetCount: entry.snapshot.targetCount,
         mode: entry.snapshot.mode,
         rotation: entry.snapshot.rotation,
@@ -873,6 +873,9 @@ export function App(): React.ReactElement {
       });
     }
     await deleteLibraryEntry(playConfig.puzzleId);
+    // Today's Done hero and collection card read `completions` straight away,
+    // not only after the Collection tab next refreshes it (modernize §4).
+    setCompletions(await listCompletions());
     // §16: finishing the guided twelve is a real completion, so it earns the
     // same "never taught again" write every skip already gets — one gate,
     // covers every action this card offers (Done, New puzzle, or the
@@ -970,6 +973,7 @@ export function App(): React.ReactElement {
       source: playConfig.source,
       seed: playConfig.seed,
       puzzleId: playConfig.puzzleId,
+      photoId: playConfig.photoId,
       targetCount: playConfig.targetCount,
       difficulty: playConfig.difficulty,
       rotation: playConfig.rotation,
@@ -1279,62 +1283,87 @@ export function App(): React.ReactElement {
         />
       );
     } else {
-      // Most recent first — not "exactly one", which hid Continue the moment
-      // a second puzzle was started.
-      const continuing =
-        [...shelved].sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
+      // Most recent first (the library store already sorts; re-sorted so the
+      // order never depends on that). Today's daily is the hero, never a card.
+      const continuing = [...shelved]
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .map((entry) => ({
+          puzzleId: entry.puzzleId,
+          title: puzzleTitle(entry.puzzleId, entry.snapshot.photoId),
+          placed: entry.snapshot.placed,
+          total: entry.snapshot.total,
+          thumbnailBlob: entry.thumbnailBlob,
+        }));
+      const todaysEntry = libraryEntries.find((entry) => entry.puzzleId === daily.puzzleId);
+      const doneRecord = completions.find((r) => r.puzzleId === daily.puzzleId) ?? null;
       body = (
         <Today
-          dailyPreview={{
+          dateLabel={new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+          })}
+          daily={{
             title: curatedPhotoById(daily.photoId)?.name ?? 'Today’s photo',
             photoUrl: curatedPhotoUrl(daily.photoId) ?? '',
-            pieceCount: daily.targetCount,
-            resetsInMs: msUntilNextLocalMidnight(new Date()),
-            hintsIncluded: hintsAvailable(0, DAILY_CONFIG.mode),
           }}
-          dailyDone={doneToday}
+          hero={heroModel({
+            doneToday,
+            progress: todaysEntry
+              ? { placed: todaysEntry.snapshot.placed, total: todaysEntry.snapshot.total }
+              : null,
+            record: doneRecord,
+            pieceCount: daily.targetCount,
+            hintsIncluded: hintsAvailable(0, DAILY_CONFIG.mode),
+            resetsInMs: msUntilNextLocalMidnight(new Date()),
+          })}
+          heroThumbnail={todaysEntry?.thumbnailBlob ?? null}
+          doneRecord={doneRecord}
           continuing={continuing}
-          streak={streakCount}
-          streakTone={streakTone}
-          weekPips={weekPips(streak, today)}
-          onDaily={() => setScreen('daily')}
+          streak={{
+            ...streakModel(streakTone, streakCount, streak.freezes),
+            pips: weekPips(streak, today),
+            today,
+          }}
+          collection={collectionSummary(completions)}
+          onPlayDaily={() => {
+            void handleStartDaily();
+          }}
+          onOpenDaily={() => setScreen('daily')}
           onContinue={(puzzleId) => {
             void handleOpenLibraryEntry(puzzleId);
           }}
           onNewPuzzle={startNewPuzzle}
+          onAllPuzzles={() => setScreen('library')}
+          onOpenCollection={() => {
+            void openCollection();
+          }}
           onSettings={() => setSettingsOpen(true)}
         />
       );
     }
 
     return (
-      <div className="flex h-full w-full flex-col bg-[var(--mat-void)]">
-        <main
-          className="min-h-0 flex-1 overflow-y-auto"
-          style={{ paddingTop: 'env(safe-area-inset-top)' }}
-        >
-          {body}
-        </main>
-        <div className="order-last md:order-first md:flex md:justify-center">
-          <TabBar
-            active={activeTab}
-            todayBadge={!doneToday}
-            onSelect={(tab) => {
-              if (tab === 'collection') void openCollection();
-              else setScreen(TAB_SCREEN[tab]);
-            }}
-          />
-        </div>
-        <SettingsSheet
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          traySide={chrome.traySide}
-          onTraySide={(side) => {
+      <Shell
+        activeTab={activeTab}
+        todayBadge={!doneToday}
+        onSelectTab={(tab) => {
+          if (tab === 'collection') void openCollection();
+          else setScreen(TAB_SCREEN[tab]);
+        }}
+        accent={accentFromDominant(curatedPhotoById(daily.photoId)?.dominant ?? [])}
+        settings={{
+          open: settingsOpen,
+          onClose: () => setSettingsOpen(false),
+          traySide: chrome.traySide,
+          onTraySide: (side) => {
             chrome.setTraySide(side);
             void saveTraySide(side);
-          }}
-        />
-      </div>
+          },
+        }}
+      >
+        {body}
+      </Shell>
     );
   }
 

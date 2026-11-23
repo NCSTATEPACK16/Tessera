@@ -4,7 +4,14 @@
  * library read is a blob read — no re-cutting, no re-rendering.
  */
 
-const THUMBNAIL_WIDTH = 320;
+/**
+ * Measured, not guessed (modernize phase b, desktop Chromium, 250 pieces): the
+ * board-framed composite plus encode costs ~8ms at 320 and ~14ms at 480,
+ * against ~3.4ms for the old static-layer capture. Every autosave pays it on
+ * the main thread, so 320 stays — soft at 3× on Today's hero, which is the
+ * owner's call on hardware, not a frame budget to spend blind.
+ */
+export const THUMBNAIL_WIDTH = 320;
 
 /**
  * Encoded synchronously, on purpose — `toDataURL`, never `convertToBlob` or

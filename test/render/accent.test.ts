@@ -9,8 +9,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { CURATED_PHOTOS } from '@/play/curated';
 import {
   ACCENT_FALLBACK,
+  accentFromDominant,
   adaptiveGhostOpacity,
   clampToAccentRange,
   contrastRatio,
@@ -237,5 +239,34 @@ describe('fallbackAccentTokens', () => {
       accentBloom: ACCENT_FALLBACK,
       accentTray: ACCENT_FALLBACK,
     });
+  });
+});
+
+describe('accentFromDominant — Today, before anything is cut (modernize §2)', () => {
+  const MAT_VOID: [number, number, number] = [11, 13, 16];
+  const rgbOf = (hex: string): [number, number, number] => [
+    parseInt(hex.slice(1, 3), 16),
+    parseInt(hex.slice(3, 5), 16),
+    parseInt(hex.slice(5, 7), 16),
+  ];
+
+  it('clears AA against --mat-raised, and --mat-void ink on it clears AA, for every curated photo', () => {
+    for (const photo of CURATED_PHOTOS) {
+      const accent = rgbOf(accentFromDominant(photo.dominant));
+      expect(contrastRatio(accent, MAT_RAISED_RGB), photo.id).toBeGreaterThanOrEqual(WCAG_MIN_CONTRAST);
+      expect(contrastRatio(accent, MAT_VOID), photo.id).toBeGreaterThanOrEqual(WCAG_MIN_CONTRAST);
+    }
+  });
+
+  it('falls back when there is nothing to read', () => {
+    expect(accentFromDominant([])).toBe(ACCENT_FALLBACK);
+    expect(accentFromDominant(['not a colour'])).toBe(ACCENT_FALLBACK);
+  });
+
+  it('is deterministic, and follows the most chromatic swatch', () => {
+    const grey = '#808080';
+    const blue = '#2050c0';
+    expect(accentFromDominant([grey, blue])).toBe(accentFromDominant([blue, grey]));
+    expect(accentFromDominant([grey, blue])).toBe(accentFromDominant([blue]));
   });
 });

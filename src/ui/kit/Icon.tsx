@@ -75,6 +75,30 @@ export const Icon = {
       <polyline points="21 15 16 10 5 21" />
     </Svg>
   ),
+  Check: ({ size = 14 }: IconProps) => (
+    <Svg size={size}>
+      <polyline points="20 6 9 17 4 12" />
+    </Svg>
+  ),
+  /** A freeze: the streak pip that a freeze covered (modernize §4). */
+  Snowflake: ({ size = 10 }: IconProps) => (
+    <Svg size={size}>
+      <line x1="12" y1="2" x2="12" y2="22" />
+      <line x1="3.3" y1="7" x2="20.7" y2="17" />
+      <line x1="3.3" y1="17" x2="20.7" y2="7" />
+    </Svg>
+  ),
+  Offline: ({ size = 18 }: IconProps) => (
+    <Svg size={size}>
+      <line x1="2" y1="2" x2="22" y2="22" />
+      <path d="M8.5 16.5a5 5 0 017 0" />
+      <path d="M5 13a10 10 0 015.2-2.8" />
+      <path d="M19 13a10 10 0 00-2.3-1.6" />
+      <path d="M2 8.8a15 15 0 014.2-2.6" />
+      <path d="M22 8.8A15 15 0 0011 5" />
+      <line x1="12" y1="20" x2="12.01" y2="20" />
+    </Svg>
+  ),
   Gear: ({ size = 22 }: IconProps) => (
     <Svg size={size}>
       <circle cx="12" cy="12" r="3" />

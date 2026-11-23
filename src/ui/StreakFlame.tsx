@@ -10,9 +10,9 @@
  * a full-sentence label as well as a fill.
  */
 
-import type { DayCell, DayStatus } from '@/daily/streak';
+import type { DayCell, DayStatus, StreakTone } from '@/daily/streak';
 
-export type StreakTone = 'none' | 'alive' | 'at-risk' | 'broken';
+export type { StreakTone };
 
 export interface StreakFlameProps {
   streak: number;
@@ -42,7 +42,7 @@ const PIP_GLYPH: Record<DayStatus, string> = {
   inactive: '·',
 };
 
-const PIP_LABEL: Record<DayStatus, string> = {
+export const PIP_LABEL: Record<DayStatus, string> = {
   completed: 'completed',
   frozen: 'covered by a freeze',
   missed: 'not played',
