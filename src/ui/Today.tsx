@@ -14,19 +14,19 @@
  * only draws what `App.tsx` hands it.
  */
 
-import { useState } from 'react';
-import type { CompletionRecord } from '@/persist/completions';
-import type { DateKey } from '@/daily/dates';
-import type { DayCell } from '@/daily/streak';
-import type { HeroModel } from '@/play/today';
-import { isNative } from '@/platform';
-import { ProgressRing } from './ProgressRing';
-import { PwaBanner } from './PwaBanner';
-import { ReopenedCard } from './ReopenedCard';
-import { CollectionCard, StreakCard, useObjectUrl } from './TodayCards';
-import { heroScrimBackground } from './scrim';
-import { useOnline } from './useOnline';
-import { Badge, Button, Icon } from './kit';
+import { useState } from "react";
+import type { CompletionRecord } from "@/persist/completions";
+import type { DateKey } from "@/daily/dates";
+import type { DayCell } from "@/daily/streak";
+import type { HeroModel } from "@/play/today";
+import { isNative } from "@/platform";
+import { ProgressRing } from "./ProgressRing";
+import { PwaBanner } from "./PwaBanner";
+import { ReopenedCard } from "./ReopenedCard";
+import { CollectionCard, StreakCard, useObjectUrl } from "./TodayCards";
+import { heroScrimBackground } from "./scrim";
+import { useOnline } from "./useOnline";
+import { Badge, Button, Icon } from "./kit";
 
 export interface RailItem {
   puzzleId: string;
@@ -47,8 +47,17 @@ export interface TodayProps {
   doneRecord: CompletionRecord | null;
   /** In-progress puzzles other than today's daily, most recent first. */
   continuing: readonly RailItem[];
-  streak: { numeral: number; line: string; pips: readonly DayCell[]; today: DateKey };
-  collection: { finished: number; piecesPlaced: number; recent: readonly CompletionRecord[] };
+  streak: {
+    numeral: number;
+    line: string;
+    pips: readonly DayCell[];
+    today: DateKey;
+  };
+  collection: {
+    finished: number;
+    piecesPlaced: number;
+    recent: readonly CompletionRecord[];
+  };
   /** Start, or resume, today's daily — the same library entry either way. */
   onPlayDaily: () => void;
   onOpenDaily: () => void;
@@ -65,26 +74,34 @@ function Hero({
   heroThumbnail,
   onAction,
 }: {
-  daily: TodayProps['daily'];
+  daily: TodayProps["daily"];
   hero: HeroModel;
   heroThumbnail: Blob | null;
   onAction: () => void;
 }): React.ReactElement {
-  const thumbnailUrl = useObjectUrl(hero.state === 'progress' ? heroThumbnail : null);
+  const thumbnailUrl = useObjectUrl(
+    hero.state === "progress" ? heroThumbnail : null
+  );
   const imageUrl = thumbnailUrl ?? daily.photoUrl;
   const actionName =
-    hero.action?.label === 'Start'
+    hero.action?.label === "Start"
       ? `Start today’s puzzle: ${daily.title}`
-      : hero.action?.label === 'Keep going'
-        ? `Keep going: ${daily.title}, ${hero.percent ?? 0}%`
-        : hero.action?.label;
+      : hero.action?.label === "Keep going"
+      ? `Keep going: ${daily.title}, ${hero.percent ?? 0}%`
+      : hero.action?.label;
 
   return (
     <section
       aria-label="Today’s puzzle"
-      className="relative h-[380px] overflow-hidden rounded-[var(--radius-lg)] bg-[var(--mat-deep)] [grid-area:hero] lg:h-[392px]"
+      className="relative h-[380px] shrink-0 overflow-hidden rounded-[var(--radius-lg)] bg-[var(--mat-deep)] lg:h-[392px]"
     >
-      {imageUrl && <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
       {/* The hairline sits on the photo, not around it. */}
       <div
         aria-hidden="true"
@@ -98,7 +115,7 @@ function Hero({
         style={{ background: heroScrimBackground() }}
       >
         {/* `.eyebrow` is unlayered CSS and outranks a utility colour. */}
-        <span className="eyebrow" style={{ color: 'var(--ink-secondary)' }}>
+        <span className="eyebrow" style={{ color: "var(--ink-secondary)" }}>
           {hero.eyebrow}
         </span>
         <h2 className="m-0 font-display text-6 font-normal leading-tight text-[var(--ink-primary)] lg:text-7">
@@ -120,11 +137,17 @@ function Hero({
           {hero.percent !== null && (
             <span className="flex items-center gap-2">
               <ProgressRing completion={hero.percent / 100} size={32} />
-              <span className="meta text-[var(--ink-secondary)]">{hero.percent}%</span>
+              <span className="meta text-[var(--ink-secondary)]">
+                {hero.percent}%
+              </span>
             </span>
           )}
-          {hero.state === 'done' && (
-            <Badge label="Done today" tone="success" icon={<Icon.Check size={12} />} />
+          {hero.state === "done" && (
+            <Badge
+              label="Done today"
+              tone="success"
+              icon={<Icon.Check size={12} />}
+            />
           )}
         </div>
       </div>
@@ -177,9 +200,14 @@ function KeepGoing({
   onAllPuzzles: () => void;
 }): React.ReactElement {
   return (
-    <section aria-label="Keep going" className="flex min-w-0 flex-col [grid-area:rail]">
+    <section
+      aria-label="Keep going"
+      className="flex min-w-0 flex-col [grid-area:rail]"
+    >
       <div className="flex items-center justify-between px-1">
-        <h2 className="m-0 text-3 font-normal text-[var(--ink-primary)]">Keep going</h2>
+        <h2 className="m-0 text-3 font-normal text-[var(--ink-primary)]">
+          Keep going
+        </h2>
         <button
           type="button"
           onClick={onAllPuzzles}
@@ -207,13 +235,22 @@ function KeepGoing({
   );
 }
 
-function Invitation({ onNewPuzzle }: { onNewPuzzle: () => void }): React.ReactElement {
+function Invitation({
+  onNewPuzzle,
+}: {
+  onNewPuzzle: () => void;
+}): React.ReactElement {
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius-md)] border border-[var(--edge-hair)] bg-[var(--mat-raised)] p-5 [grid-area:rail]">
       <p className="m-0 text-3 text-[var(--ink-secondary)]">
         Any photo works. Start with one you like looking at.
       </p>
-      <Button variant="default" size="lg" aria-label="New puzzle" onClick={onNewPuzzle}>
+      <Button
+        variant="default"
+        size="lg"
+        aria-label="New puzzle"
+        onClick={onNewPuzzle}
+      >
         <span className="flex items-center justify-center gap-2">
           <Icon.Plus size={18} />
           New puzzle
@@ -246,7 +283,9 @@ export function Today({
   return (
     <div className="mx-auto flex w-full max-w-[40rem] flex-col gap-4 px-4 pb-6 pt-1 text-3 [animation:screen-in_var(--duration-slow)_var(--ease-standard)] lg:max-w-[72rem] lg:px-7">
       <header className="flex items-center justify-between gap-3 pl-1">
-        <h1 className="m-0 font-display text-5 font-normal text-[var(--ink-primary)]">Tessera</h1>
+        <h1 className="m-0 font-display text-5 font-normal text-[var(--ink-primary)]">
+          Tessera
+        </h1>
         <span className="flex items-center gap-1">
           <span className="meta text-[var(--ink-secondary)]">{dateLabel}</span>
           <button
@@ -260,23 +299,27 @@ export function Today({
         </span>
       </header>
 
-      <div className="grid gap-4 [grid-template-areas:'hero'_'offline'_'rail'_'cards'] lg:grid-cols-[640px_1fr] lg:[grid-template-areas:'hero_cards'_'offline_cards'_'rail_rail']">
-        <Hero
-          daily={daily}
-          hero={hero}
-          heroThumbnail={heroThumbnail}
-          onAction={() => {
-            if (hero.state === 'done') setCardOpen(true);
-            else onPlayDaily();
-          }}
-        />
+      <div className="grid gap-4 [grid-template-areas:'hero'_'rail'_'cards'] lg:grid-cols-[640px_1fr] lg:[grid-template-areas:'hero_cards'_'rail_rail']">
+        {/* The offline row lives in the hero's column, so on a wide screen it
+            never opens an empty grid row beside the cards. */}
+        <div className="flex min-w-0 flex-col gap-4 [grid-area:hero]">
+          <Hero
+            daily={daily}
+            hero={hero}
+            heroThumbnail={heroThumbnail}
+            onAction={() => {
+              if (hero.state === "done") setCardOpen(true);
+              else onPlayDaily();
+            }}
+          />
 
-        {!online && (
-          <div className="flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--edge-hair)] bg-[var(--mat-raised)] px-4 py-3 text-2 text-[var(--ink-secondary)] [grid-area:offline]">
-            <Icon.Offline />
-            <span>You’re offline. Puzzles you’ve started still work.</span>
-          </div>
-        )}
+          {!online && (
+            <div className="flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--edge-hair)] bg-[var(--mat-raised)] px-4 py-3 text-2 text-[var(--ink-secondary)]">
+              <Icon.Offline />
+              <span>You’re offline. Puzzles you’ve started still work.</span>
+            </div>
+          )}
+        </div>
 
         {continuing.length > 0 ? (
           <KeepGoing

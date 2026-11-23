@@ -139,7 +139,7 @@ export function CollectionCard({
       onClick={onOpen}
       className={CARD}
     >
-      <span aria-hidden="true" className="mb-2 grid grid-cols-4 gap-[3px]">
+      <span aria-hidden="true" className="mb-2 grid w-full max-w-[208px] grid-cols-4 gap-[3px]">
         {recent.map((entry) => (
           <MosaicTile key={entry.puzzleId} entry={entry} />
         ))}
