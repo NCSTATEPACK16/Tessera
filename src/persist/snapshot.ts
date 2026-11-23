@@ -19,6 +19,13 @@ import type { Lens } from '@/tray/lenses';
 export interface SessionSnapshot {
   version: 1;
   puzzleId: string;
+  /**
+   * The curated photo this was cut from, or null for an upload. Optional: a
+   * snapshot saved before modernize phase b has none, and `puzzleTitle` still
+   * names a daily from its id. Without it a resumed curated puzzle's card and
+   * rail entry read "Your photo".
+   */
+  photoId?: string | null;
   seed: number;
   cols: number;
   rows: number;

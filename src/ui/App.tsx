@@ -652,9 +652,9 @@ export function App(): React.ReactElement {
         source: bitmap,
         seed: entry.snapshot.seed,
         puzzleId,
-        // The snapshot does not carry which curated photo this was; a resumed
-        // daily recovers it from the date at card time (`buildCardMeta`).
-        photoId: null,
+        // Snapshots saved before modernize phase b carry no photo id; a resumed
+        // daily still recovers it from the date at card time (`buildCardMeta`).
+        photoId: entry.snapshot.photoId ?? null,
         targetCount: entry.snapshot.targetCount,
         mode: entry.snapshot.mode,
         rotation: entry.snapshot.rotation,
@@ -970,6 +970,7 @@ export function App(): React.ReactElement {
       source: playConfig.source,
       seed: playConfig.seed,
       puzzleId: playConfig.puzzleId,
+      photoId: playConfig.photoId,
       targetCount: playConfig.targetCount,
       difficulty: playConfig.difficulty,
       rotation: playConfig.rotation,

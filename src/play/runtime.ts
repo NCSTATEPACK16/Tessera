@@ -114,6 +114,8 @@ export interface PlayRuntimeOptions {
   seed: number;
   /** Step 5c: the library/save key for this puzzle instance. */
   puzzleId: string;
+  /** The curated photo, or null for an upload — written into every snapshot. */
+  photoId?: string | null;
   /**
    * Step 5c: reopen a saved session instead of starting fresh.
    *
@@ -439,6 +441,7 @@ export class PlayRuntime {
     return {
       version: 1,
       puzzleId: this.options.puzzleId,
+      photoId: this.options.photoId ?? null,
       seed: this.options.seed,
       cols: this.summary.cut.cols,
       rows: this.summary.cut.rows,

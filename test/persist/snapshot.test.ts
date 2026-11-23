@@ -12,6 +12,9 @@ import type { BoardInput } from '@/board/board';
 import { packPieces, unpackPieces } from '@/persist/snapshot';
 import type { SessionSnapshot } from '@/persist/snapshot';
 import { WorksetStore } from '@/play/workset';
+import { CURATED_PHOTOS } from '@/play/curated';
+import { puzzleTitle } from '@/play/today';
+import { dailyFor, dailyPuzzleId } from '@/daily/daily';
 
 function threePieceInput(): BoardInput[] {
   return [
@@ -112,5 +115,22 @@ describe('worksets in the save format', () => {
       pieceIds: [3, 4],
     };
     expect(written).not.toHaveProperty('collapsed');
+  });
+});
+
+describe('the photo a snapshot was cut from (modernize phase b)', () => {
+  type Named = Pick<SessionSnapshot, 'puzzleId' | 'photoId'>;
+  const photo = CURATED_PHOTOS[1]!;
+
+  it('a snapshot that carries its curated photo names itself by it', () => {
+    const written: Named = { puzzleId: 'some-uuid', photoId: photo.id };
+    expect(puzzleTitle(written.puzzleId, written.photoId)).toBe(photo.name);
+  });
+
+  it('a snapshot written before the field existed still loads and still names a daily', () => {
+    const legacy: Named = { puzzleId: dailyPuzzleId('2026-11-21') };
+    expect(legacy.photoId).toBeUndefined();
+    const expected = CURATED_PHOTOS.find((p) => p.id === dailyFor('2026-11-21').photoId)!.name;
+    expect(puzzleTitle(legacy.puzzleId, legacy.photoId)).toBe(expected);
   });
 });
