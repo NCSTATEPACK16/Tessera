@@ -28,7 +28,8 @@ export interface HeroInput {
 
 export interface HeroAction {
   label: 'Start' | 'Keep going' | 'See your card';
-  variant: 'primary' | 'ghost';
+  /** Outline, not ghost: ghost's ink is `--ink-muted`, which never goes on the hero. */
+  variant: 'primary' | 'outline';
 }
 
 export interface HeroModel {
@@ -63,7 +64,7 @@ export function heroModel(input: HeroInput): HeroModel {
       line: r
         ? `${r.pieceCount} pieces in ${formatElapsed(r.elapsedMs)}${r.cleanRun ? ' · clean run' : ''}`
         : `New puzzle in ${resets}`,
-      action: r ? { label: 'See your card', variant: 'ghost' } : null,
+      action: r ? { label: 'See your card', variant: 'outline' } : null,
       percent: null,
     };
   }

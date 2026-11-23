@@ -215,7 +215,7 @@ test.describe('iPad layout', () => {
     await board.dragOut((await board.mountedIds())[0]!, await board.matPoint());
     await page.waitForTimeout(1200);
     await page.reload({ waitUntil: 'load' });
-    await page.getByText('Continue your puzzle').click();
+    await page.getByRole('button', { name: /^Continue your puzzle/ }).click();
     await board.waitForCut();
 
     const tray = (await board.tray.boundingBox())!;

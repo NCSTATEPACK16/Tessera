@@ -65,7 +65,7 @@ describe('heroModel', () => {
     expect(hero.state).toBe('done');
     expect(hero.eyebrow).toBe('Daily · done');
     expect(hero.line).toBe('200 pieces in 24:18 · clean run');
-    expect(hero.action).toEqual({ label: 'See your card', variant: 'ghost' });
+    expect(hero.action).toEqual({ label: 'See your card', variant: 'outline' });
   });
 
   it('done without a clean run says nothing about it', () => {

@@ -38,8 +38,8 @@ test('the hero caption is readable over the photo', async ({ page }) => {
   // B7: the caption was `--mat-void` on a black gradient — 1.0:1. It must be
   // light ink now; the scrim under it is what makes that hold on any photo.
   const color = await page
-    .getByRole('button', { name: /Play today's puzzle/ })
-    .locator('.font-display')
+    .getByRole('region', { name: 'Today’s puzzle' })
+    .getByRole('heading')
     .evaluate((el) => getComputedStyle(el).color);
   const [r, g, b] = color.match(/\d+/g)!.map(Number);
   expect((r! + g! + b!) / 3).toBeGreaterThan(200);

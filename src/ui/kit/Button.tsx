@@ -7,7 +7,7 @@
 
 import type { ButtonHTMLAttributes } from 'react';
 
-export type ButtonVariant = 'primary' | 'default' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'default' | 'ghost' | 'outline' | 'danger';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -22,6 +22,9 @@ const VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-[var(--accent)] text-[var(--mat-void)]',
   default: 'border border-[var(--edge-hair)] bg-[var(--mat-raised)] text-[var(--ink-primary)]',
   ghost: 'border border-[var(--edge-hair)] text-[var(--ink-muted)]',
+  // Over a photo (Today's hero): primary ink, no fill — `ghost`'s muted ink
+  // fails AA on the scrim (modernize §4).
+  outline: 'border border-[var(--edge-hair-light)] text-[var(--ink-primary)]',
   danger:
     'border border-[color-mix(in_srgb,var(--danger)_25%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]',
 };

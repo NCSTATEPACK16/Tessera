@@ -43,7 +43,7 @@ test('the hub is reachable from Today on a first visit', async ({ page }) => {
   await freshVisit(page);
   // v2: the picker is a pushed step, not a hub — Back reaches Today's daily.
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await page.getByLabel(/^Play today's puzzle/).click();
+  await page.getByLabel(/^Daily streak/).click();
 
   // Every state of screen 11 that a brand-new player should see.
   await expect(page.getByLabel('Start today’s')).toBeVisible();
@@ -67,9 +67,9 @@ test('the hub is reachable from Today, and today’s daily is not listed in Puzz
   await expect(page.getByLabel(/Open puzzle:/).first()).toBeVisible();
   const ordinaryCards = await page.getByLabel(/Open puzzle:/).count();
 
-  // v2 spec §3: the hub is a push within Today, reached from its hero.
+  // The hub is a push within Today, reached from its streak card (modernize §4).
   await openTab(page, 'Today');
-  await page.getByLabel(/^Play today's puzzle/).click();
+  await page.getByLabel(/^Daily streak/).click();
   await expect(page.getByLabel('Start today’s')).toBeVisible();
 
   // Start the daily, leave it part-done, and come back to the library: the
@@ -91,7 +91,7 @@ test('starting the daily skips the picker, the crop, and the setup screen', asyn
   await freshVisit(page);
   // v2: the picker is a pushed step, not a hub — Back reaches Today's daily.
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await page.getByLabel(/^Play today's puzzle/).click();
+  await page.getByLabel(/^Daily streak/).click();
   await page.getByLabel('Start today’s').click();
 
   const board = new BoardPage(page);
@@ -107,7 +107,7 @@ test('the daily is the same board on every visit', async ({ page }) => {
   await freshVisit(page);
   // v2: the picker is a pushed step, not a hub — Back reaches Today's daily.
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await page.getByLabel(/^Play today's puzzle/).click();
+  await page.getByLabel(/^Daily streak/).click();
   await page.getByLabel('Start today’s').click();
 
   const board = new BoardPage(page);
@@ -121,9 +121,9 @@ test('the daily is the same board on every visit', async ({ page }) => {
 
   await page.waitForTimeout(1200);
   await page.reload({ waitUntil: 'load' });
-  // A session exists now, so the reload lands on Home (2026-08-22 spec);
-  // its own daily-preview card reaches the hub directly.
-  await page.getByRole('button', { name: /Play today.s puzzle/ }).click();
+  // A session exists now, so the reload lands on Today; its streak card
+  // reaches the hub (modernize §4).
+  await page.getByLabel(/^Daily streak/).click();
   await page.getByLabel('Continue today’s').click();
   await board.waitForCut();
 
@@ -143,7 +143,7 @@ test('finishing the daily starts the streak', async ({ page }) => {
   test.setTimeout(120_000);
   await freshVisit(page);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await page.getByLabel(/^Play today's puzzle/).click();
+  await page.getByLabel(/^Daily streak/).click();
   await expect(page.getByText('Start a streak.')).toBeVisible();
   await page.getByLabel('Start today’s').click();
 

@@ -53,6 +53,7 @@ import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
 import { Library } from './Library';
 import { Today } from './Today';
+import { collectionSummary, heroModel, puzzleTitle, streakModel } from '@/play/today';
 import { Shell } from './Shell';
 import { TAB_SCREEN, tabOf } from './tabs';
 import { PauseSheet } from './PauseSheet';
@@ -1282,29 +1283,61 @@ export function App(): React.ReactElement {
         />
       );
     } else {
-      // Most recent first — not "exactly one", which hid Continue the moment
-      // a second puzzle was started.
-      const continuing =
-        [...shelved].sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
+      // Most recent first (the library store already sorts; re-sorted so the
+      // order never depends on that). Today's daily is the hero, never a card.
+      const continuing = [...shelved]
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .map((entry) => ({
+          puzzleId: entry.puzzleId,
+          title: puzzleTitle(entry.puzzleId, entry.snapshot.photoId),
+          placed: entry.snapshot.placed,
+          total: entry.snapshot.total,
+          thumbnailBlob: entry.thumbnailBlob,
+        }));
+      const todaysEntry = libraryEntries.find((entry) => entry.puzzleId === daily.puzzleId);
+      const doneRecord = completions.find((r) => r.puzzleId === daily.puzzleId) ?? null;
       body = (
         <Today
-          dailyPreview={{
+          dateLabel={new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+          })}
+          daily={{
             title: curatedPhotoById(daily.photoId)?.name ?? 'Today’s photo',
             photoUrl: curatedPhotoUrl(daily.photoId) ?? '',
-            pieceCount: daily.targetCount,
-            resetsInMs: msUntilNextLocalMidnight(new Date()),
-            hintsIncluded: hintsAvailable(0, DAILY_CONFIG.mode),
           }}
-          dailyDone={doneToday}
+          hero={heroModel({
+            doneToday,
+            progress: todaysEntry
+              ? { placed: todaysEntry.snapshot.placed, total: todaysEntry.snapshot.total }
+              : null,
+            record: doneRecord,
+            pieceCount: daily.targetCount,
+            hintsIncluded: hintsAvailable(0, DAILY_CONFIG.mode),
+            resetsInMs: msUntilNextLocalMidnight(new Date()),
+          })}
+          heroThumbnail={todaysEntry?.thumbnailBlob ?? null}
+          doneRecord={doneRecord}
           continuing={continuing}
-          streak={streakCount}
-          streakTone={streakTone}
-          weekPips={weekPips(streak, today)}
-          onDaily={() => setScreen('daily')}
+          streak={{
+            ...streakModel(streakTone, streakCount, streak.freezes),
+            pips: weekPips(streak, today),
+            today,
+          }}
+          collection={collectionSummary(completions)}
+          onPlayDaily={() => {
+            void handleStartDaily();
+          }}
+          onOpenDaily={() => setScreen('daily')}
           onContinue={(puzzleId) => {
             void handleOpenLibraryEntry(puzzleId);
           }}
           onNewPuzzle={startNewPuzzle}
+          onAllPuzzles={() => setScreen('library')}
+          onOpenCollection={() => {
+            void openCollection();
+          }}
           onSettings={() => setSettingsOpen(true)}
         />
       );

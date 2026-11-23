@@ -88,7 +88,7 @@ test('Today carries a dot while the daily is unplayed', async ({ page }) => {
 test('the daily hub is a push within Today, with a way back', async ({ page }) => {
   test.setTimeout(90_000);
   await seedHistory(page);
-  await page.getByRole('button', { name: /Play today's puzzle/ }).click();
+  await page.getByLabel(/^Daily streak/).click();
   await expect(page.getByRole('button', { name: /Start today/ })).toBeVisible();
   await expect(tab(page, 'Today')).toHaveAttribute('aria-current', 'page');
   await page.getByRole('button', { name: 'Back', exact: true }).click();
