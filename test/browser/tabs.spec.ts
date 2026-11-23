@@ -64,12 +64,16 @@ test('a phone gets a bottom bar', { tag: '@phone' }, async ({ page }) => {
   expect(Math.round(box!.y + box!.height)).toBe(viewport.height);
 });
 
-test('a wide screen gets a floating bar on top', async ({ page }) => {
+// Modernize §4: bottom-centre, a pill — on top it sat above Today's hero.
+test('a wide screen gets a floating pill bar, bottom-centre', async ({ page }) => {
   test.setTimeout(90_000);
   await seedHistory(page);
   const box = await tabs(page).boundingBox();
   const viewport = page.viewportSize()!;
-  expect(box!.y).toBeLessThan(40);
+  // Floating: inset from the bottom edge, not flush against it.
+  const gap = viewport.height - (box!.y + box!.height);
+  expect(gap).toBeGreaterThanOrEqual(12);
+  expect(gap).toBeLessThan(40);
   // Centred, and not edge to edge.
   expect(box!.width).toBeLessThan(viewport.width / 2);
   expect(Math.abs(box!.x + box!.width / 2 - viewport.width / 2)).toBeLessThan(2);
