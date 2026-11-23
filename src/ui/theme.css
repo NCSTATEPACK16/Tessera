@@ -40,6 +40,8 @@
   --radius-sm: 8px;
   --radius-md: 14px;
   --radius-lg: 22px;
+  /* Buttons and badges (modernize spec C8, owner ruling 2026-11-21). */
+  --radius-pill: 999px;
 
   --spacing-1: 4px;
   --spacing-2: 8px;
@@ -62,6 +64,9 @@
   --font-ui: 'Inter Tight', system-ui, sans-serif;
   --font-data: 'IBM Plex Mono', ui-monospace, monospace;
   --font-display: 'Instrument Serif', Georgia, serif;
+
+  /* Eyebrows and badges: the one tracked-caps setting. */
+  --tracking-eyebrow: 0.1em;
 
   --ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
   --duration-fast: 120ms;
@@ -146,9 +151,24 @@ button,
 .eyebrow {
   font-family: var(--font-data);
   font-size: var(--text-1);
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
   color: var(--ink-muted);
+}
+
+/*
+ * Static metadata — "62% · 150 pieces", "Ghost underlay 40%", a setting's
+ * subline. Pairing B (modernize spec §3, owner ruling 2026-11-21): mono is for
+ * eyebrows and numerals that tick in place; everything else a player reads is
+ * Inter Tight, at 14 rather than 12, with tabular numerals so a changing count
+ * does not shift its line. No colour here: this is unlayered CSS and would
+ * outrank the caller's `text-[var(--ink-*)]` utility.
+ * `test/ui/type-roles.test.ts` holds the line.
+ */
+.meta {
+  font-family: var(--font-ui);
+  font-size: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 
 /* One-shot entrances, and a skeleton that loops only while something loads.

@@ -154,7 +154,7 @@ export function PieceChip({
         </span>
       )}
       {onMat && (
-        <span className="pointer-events-none absolute bottom-[2px] right-[4px] font-data text-1 text-[var(--ink-muted)]">
+        <span className="pointer-events-none absolute bottom-[2px] right-[4px] text-1 text-[var(--ink-muted)]">
           mat
         </span>
       )}

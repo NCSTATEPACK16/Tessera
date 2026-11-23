@@ -65,7 +65,7 @@ function WallTile({
       {url && <img src={url} alt="" className="h-full w-full object-cover" />}
       {entry.cleanRun && (
         // A clean run is a glyph *and* a word, never colour alone (§13).
-        <span className="absolute bottom-1 left-1 rounded-[6px] bg-[color-mix(in_srgb,var(--mat-void)_70%,transparent)] px-1.5 py-0.5 font-data text-1 text-[var(--ink-primary)]">
+        <span className="absolute bottom-1 left-1 rounded-[6px] bg-[color-mix(in_srgb,var(--mat-void)_70%,transparent)] px-1.5 py-0.5 meta text-[var(--ink-primary)]">
           ✓ clean
         </span>
       )}
