@@ -40,6 +40,9 @@ import { drawMat } from './mat';
 import type { Scene, ScenePiece } from './scene';
 import { emptyScene } from './scene';
 
+/** `--mat-deep`: the thumbnail's ground before the photo is drawn over it. */
+const THUMBNAIL_GROUND = '#101318';
+
 /** §07's outline holds roughly as long as the glow it accompanies. */
 const HINT_OUTLINE_HOLD_MS = HINT_GLOW_DECAY_END_MS;
 /** Fallback accent, matching `ACCENT_FALLBACK` in `render/accent.ts` — used until `setAccent` is called. */
@@ -234,6 +237,85 @@ export class Renderer {
     const layer = this.byName.get('static');
     if (!layer) throw new Error('Renderer: no static layer');
     return layer.canvas;
+  }
+
+  /**
+   * The library thumbnail (modernize C3): the whole board, framed to the board
+   * whatever the camera is doing, with the photo *unlit* underneath, the placed
+   * pieces lit over it, and the progress bloom on top — so an early board reads
+   * as a photo waiting to be lit, not a black rectangle.
+   *
+   * Drawn off-screen into its own canvas: nothing here invalidates a layer or
+   * schedules a frame, so the idle board still draws nothing.
+   *
+   * The unlit look is `brightness(0.2) saturate(0.5)` done with composites
+   * rather than `ctx.filter`, which Safari only gained in 18: a grey fill in
+   * `saturation` mode at 0.5 halves the chroma, and black at 0.8 multiplies
+   * every channel by 0.2, which is exactly what CSS `brightness` does.
+   */
+  boardThumbnail(width: number, underlay: ImageBitmap | null): HTMLCanvasElement | null {
+    const { boardW, boardH } = this.scene;
+    if (boardW <= 0 || boardH <= 0 || width <= 0) return null;
+    const height = Math.max(1, Math.round((width * boardH) / boardW));
+    const scale = width / boardW;
+
+    const out = document.createElement('canvas');
+    out.width = width;
+    out.height = height;
+    const ctx = out.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = THUMBNAIL_GROUND;
+    ctx.fillRect(0, 0, width, height);
+
+    if (underlay) {
+      ctx.drawImage(underlay, 0, 0, width, height);
+      ctx.save();
+      ctx.globalCompositeOperation = 'saturation';
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillRect(0, 0, width, height);
+    }
+
+    // The lit layer on its own canvas, so the bloom is sourced from the pieces
+    // alone and never from the unlit photo under them.
+    const lit = document.createElement('canvas');
+    lit.width = width;
+    lit.height = height;
+    const litCtx = lit.getContext('2d');
+    if (!litCtx) return out;
+    litCtx.setTransform(scale, 0, 0, scale, 0, 0);
+    for (const piece of this.scene.placed) {
+      if (piece.rot === 0) {
+        litCtx.drawImage(piece.bitmap, piece.x, piece.y, piece.w, piece.h);
+      } else {
+        litCtx.save();
+        litCtx.translate(piece.x + piece.w / 2, piece.y + piece.h / 2);
+        litCtx.rotate(piece.rot);
+        litCtx.drawImage(piece.bitmap, -piece.w / 2, -piece.h / 2, piece.w, piece.h);
+        litCtx.restore();
+      }
+    }
+
+    const intensity = progressBloomIntensity(this.scene.completion);
+    if (intensity > 0) {
+      const bw = Math.max(1, Math.floor(width * 0.25));
+      const bh = Math.max(1, Math.floor(height * 0.25));
+      const small = document.createElement('canvas');
+      small.width = bw;
+      small.height = bh;
+      small.getContext('2d')?.drawImage(lit, 0, 0, bw, bh);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = intensity;
+      ctx.filter = 'blur(2px)';
+      ctx.drawImage(small, 0, 0, width, height);
+      ctx.restore();
+    }
+    ctx.drawImage(lit, 0, 0);
+    return out;
   }
 
   /**

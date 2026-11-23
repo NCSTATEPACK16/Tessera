@@ -50,6 +50,7 @@ import type { PuzzleAssists } from '@/play/setup';
 import { floorDifficulty } from '@/play/setup';
 import { packPieces, unpackPieces } from '@/persist/snapshot';
 import type { SessionSnapshot } from '@/persist/snapshot';
+import { THUMBNAIL_WIDTH } from '@/persist/thumbnail';
 import type { Lens } from '@/tray/lenses';
 
 /** Every assist off — what a puzzle configured without them saves as. */
@@ -238,6 +239,8 @@ export class PlayRuntime {
    * taken in `start()`, before the transfer, and only when the assist is on.
    */
   private ghostSource: ImageBitmap | null = null;
+  /** The source at thumbnail width, for the library thumbnail's unlit underlay. */
+  private thumbSource: ImageBitmap | null = null;
   /** §C Track 3: kept for `ghostSlots()` to build adaptive alpha from `meanColor`. */
   private cutPieces: CutPiece[] = [];
 
@@ -308,6 +311,9 @@ export class PlayRuntime {
       if (this.liveAssists.ghostOpacity > 0) {
         this.ghostSource = this.copySource(this.options.source);
       }
+      // The thumbnail's unlit underlay (modernize C3): always, and small —
+      // thumbnail-width, never a second full-size copy.
+      this.thumbSource = this.copySource(this.options.source, THUMBNAIL_WIDTH);
 
       const result = await cutInWorker({
         source: this.options.source,
@@ -358,6 +364,8 @@ export class PlayRuntime {
     this.renderer.destroy();
     this.ghostSource?.close();
     this.ghostSource = null;
+    this.thumbSource?.close();
+    this.thumbSource = null;
     this.audio.suspend();
   }
 
@@ -368,12 +376,14 @@ export class PlayRuntime {
    * be synchronous: the copy must exist before `cutInWorker` transfers the
    * original away, and awaiting here would put the transfer first.
    */
-  private copySource(source: ImageBitmap): ImageBitmap | null {
+  private copySource(source: ImageBitmap, maxWidth = source.width): ImageBitmap | null {
     try {
-      const canvas = new OffscreenCanvas(source.width, source.height);
+      const width = Math.min(source.width, Math.max(1, Math.round(maxWidth)));
+      const height = Math.max(1, Math.round((source.height * width) / source.width));
+      const canvas = new OffscreenCanvas(width, height);
       const ctx = canvas.getContext('2d');
       if (!ctx) return null;
-      ctx.drawImage(source, 0, 0);
+      ctx.drawImage(source, 0, 0, width, height);
       return canvas.transferToImageBitmap();
     } catch (error) {
       // A missing ghost is a missing assist, never a blocked puzzle (§13's
@@ -592,6 +602,19 @@ export class PlayRuntime {
    */
   boardCanvas(): HTMLCanvasElement {
     return this.renderer.getStaticCanvas();
+  }
+
+  /**
+   * The library thumbnail (modernize C3): the board framed to itself, photo
+   * unlit under the placed pieces. Falls back to the static layer before the
+   * board exists. Completions and the card keep `boardCanvas()` — §11's card
+   * is the assembled board, and that path is not this one.
+   */
+  thumbnailCanvas(): HTMLCanvasElement {
+    return (
+      this.renderer.boardThumbnail(THUMBNAIL_WIDTH, this.thumbSource) ??
+      this.renderer.getStaticCanvas()
+    );
   }
 
   /**
@@ -1048,7 +1071,7 @@ export class PlayRuntime {
       this.saveTimer = null;
     }
     if (!this.session || !this.options.onSave) return;
-    this.options.onSave(this, this.renderer.getStaticCanvas());
+    this.options.onSave(this, this.thumbnailCanvas());
   }
 
   private materialise(batch: CutPiece[]): void {
