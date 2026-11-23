@@ -40,6 +40,8 @@
   --radius-sm: 8px;
   --radius-md: 14px;
   --radius-lg: 22px;
+  /* Buttons and badges (modernize spec C8, owner ruling 2026-11-21). */
+  --radius-pill: 999px;
 
   --spacing-1: 4px;
   --spacing-2: 8px;

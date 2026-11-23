@@ -59,4 +59,12 @@ describe('chrome type roles', () => {
     expect(filesUsing(/\btracking-(wide|wider|widest|tight|\[0)/)).toEqual([]);
     expect(filesUsing(/\bfont-(medium|semibold|bold)\b/)).toEqual([]);
   });
+
+  it('Button and Badge are pills (C8)', () => {
+    for (const name of ['kit/Button.tsx', 'kit/Badge.tsx']) {
+      const src = FILES.get(name) ?? '';
+      expect(src, name).toContain('rounded-[var(--radius-pill)]');
+      expect(src, name).not.toMatch(/radius-(sm|md|lg)/);
+    }
+  });
 });

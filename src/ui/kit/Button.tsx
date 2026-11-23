@@ -1,7 +1,8 @@
 /**
  * The one button (2026-10-20 modern-look spec §2). Four variants, two sizes,
  * a press that scales to 0.96 — replacing the hand-written class strings that
- * had drifted apart screen by screen. Always clears `--touch-min`.
+ * had drifted apart screen by screen. Always clears `--touch-min`. A pill since
+ * the modernize spec's C8 (owner ruling 2026-11-21).
  */
 
 import type { ButtonHTMLAttributes } from 'react';
@@ -37,7 +38,7 @@ export function Button({
   return (
     <button
       type={type}
-      className={`touch-target rounded-[var(--radius-md)] transition-transform duration-[var(--duration-fast)] ease-[var(--ease-standard)] active:scale-[0.96] disabled:opacity-40 ${VARIANTS[variant]} ${SIZES[size]} ${className}`}
+      className={`touch-target rounded-[var(--radius-pill)] transition-transform duration-[var(--duration-fast)] ease-[var(--ease-standard)] active:scale-[0.96] disabled:opacity-40 ${VARIANTS[variant]} ${SIZES[size]} ${className}`}
       {...rest}
     />
   );
