@@ -17,7 +17,7 @@ import type { PieceId } from '@/cut/types';
 import { MOVE_THRESHOLD_PX } from '@/input/pointer';
 import { PlayRuntime } from '@/play/runtime';
 import type { RuntimeSummary } from '@/play/runtime';
-import { fallbackAccentTokens } from '@/render/accent';
+import { accentFromDominant, fallbackAccentTokens } from '@/render/accent';
 import type { Lens } from '@/tray/lenses';
 import { DOCK_QUERY, useMediaQuery } from './useMediaQuery';
 import { useChrome } from './store';
@@ -53,8 +53,7 @@ import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
 import { Library } from './Library';
 import { Today } from './Today';
-import { TabBar } from './TabBar';
-import { SettingsSheet } from './SettingsSheet';
+import { Shell } from './Shell';
 import { TAB_SCREEN, tabOf } from './tabs';
 import { PauseSheet } from './PauseSheet';
 import { CompletionCard } from './CompletionCard';
@@ -873,6 +872,9 @@ export function App(): React.ReactElement {
       });
     }
     await deleteLibraryEntry(playConfig.puzzleId);
+    // Today's Done hero and collection card read `completions` straight away,
+    // not only after the Collection tab next refreshes it (modernize §4).
+    setCompletions(await listCompletions());
     // §16: finishing the guided twelve is a real completion, so it earns the
     // same "never taught again" write every skip already gets — one gate,
     // covers every action this card offers (Done, New puzzle, or the
@@ -1309,33 +1311,26 @@ export function App(): React.ReactElement {
     }
 
     return (
-      <div className="flex h-full w-full flex-col bg-[var(--mat-void)]">
-        <main
-          className="min-h-0 flex-1 overflow-y-auto"
-          style={{ paddingTop: 'env(safe-area-inset-top)' }}
-        >
-          {body}
-        </main>
-        <div className="order-last md:order-first md:flex md:justify-center">
-          <TabBar
-            active={activeTab}
-            todayBadge={!doneToday}
-            onSelect={(tab) => {
-              if (tab === 'collection') void openCollection();
-              else setScreen(TAB_SCREEN[tab]);
-            }}
-          />
-        </div>
-        <SettingsSheet
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          traySide={chrome.traySide}
-          onTraySide={(side) => {
+      <Shell
+        activeTab={activeTab}
+        todayBadge={!doneToday}
+        onSelectTab={(tab) => {
+          if (tab === 'collection') void openCollection();
+          else setScreen(TAB_SCREEN[tab]);
+        }}
+        accent={accentFromDominant(curatedPhotoById(daily.photoId)?.dominant ?? [])}
+        settings={{
+          open: settingsOpen,
+          onClose: () => setSettingsOpen(false),
+          traySide: chrome.traySide,
+          onTraySide: (side) => {
             chrome.setTraySide(side);
             void saveTraySide(side);
-          }}
-        />
-      </div>
+          },
+        }}
+      >
+        {body}
+      </Shell>
     );
   }
 

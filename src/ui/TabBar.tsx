@@ -1,8 +1,9 @@
 /**
  * v2 spec §3's tab bar. A phone gets a bottom bar, 49pt plus the home
- * indicator's inset; at 768pt and wider it becomes a centred floating bar on
- * top (the iPadOS 18 pattern). `TabShell` decides which, by order alone — the
- * bar is the same element either way.
+ * indicator's inset; at 768pt and wider it becomes a floating pill
+ * bottom-centre (modernize §4 — on top, it sat above Today's hero and pushed
+ * the photo down). The same element either way; `Shell` pads its scroller so
+ * the last row clears the pill.
  *
  * Selected is an accent icon *and* a primary-ink label, never colour alone
  * (§13). The Today badge is a dot with its own accessible name, never a number.
@@ -29,8 +30,7 @@ export function TabBar({ active, onSelect, todayBadge }: TabBarProps): React.Rea
   return (
     <nav
       aria-label="Tabs"
-      className="flex shrink-0 justify-around border-t border-[var(--edge-hair)] bg-[var(--mat-raised)] md:mt-3 md:justify-center md:gap-1 md:self-center md:rounded-full md:border md:p-1 md:shadow-[var(--shadow-raise)]"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      className="flex shrink-0 justify-around border-t border-[var(--edge-hair)] bg-[var(--mat-raised)] pb-[env(safe-area-inset-bottom)] md:fixed md:bottom-[max(16px,env(safe-area-inset-bottom))] md:left-1/2 md:z-40 md:-translate-x-1/2 md:justify-center md:gap-1 md:rounded-full md:border md:p-1 md:shadow-[var(--shadow-raise)]"
     >
       {TABS.map((tab) => {
         const selected = tab === active;
