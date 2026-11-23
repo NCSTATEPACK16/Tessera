@@ -17,6 +17,7 @@ import type { LibraryEntry } from '@/persist/library';
 import { ProgressRing } from './ProgressRing';
 import { PwaBanner } from './PwaBanner';
 import { isNative } from '@/platform';
+import { heroScrimBackground } from './scrim';
 import { Badge, Button, Icon } from './kit';
 
 export interface TodayProps {
@@ -123,9 +124,13 @@ export function Today({
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
         />
-        {/* B7: a real scrim under real ink. The caption sat in `--mat-void` on a
-            black gradient — 1.0:1, measured — and was unreadable on any photo. */}
-        <div className="relative flex w-full flex-col gap-2 bg-gradient-to-t from-[rgb(0_0_0/0.85)] via-[rgb(0_0_0/0.55)] to-transparent p-5 pt-16">
+        {/* B7: a real scrim under real ink. Its alpha is a measured constant
+            (`scrim.ts`): the top padding is exactly the scrim's fade, so the
+            eyebrow sits on the solid part — 6.7:1 over a pure white sky. */}
+        <div
+          className="relative flex w-full flex-col gap-2 p-5 pt-16"
+          style={{ background: heroScrimBackground() }}
+        >
           <div className="flex items-center gap-2">
             {/* `.eyebrow` is unlayered CSS and outranks a utility colour. */}
             <span className="eyebrow" style={{ color: 'var(--ink-secondary)' }}>
