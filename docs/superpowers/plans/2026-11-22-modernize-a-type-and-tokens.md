@@ -27,7 +27,7 @@
 - The hero scrim on a dark photo: higher alpha only darkens, never lowers contrast — no test needed beyond the white case.
 - Pill buttons in Segmented/Toggle: those keep their own radius; only `kit/Button` and `Badge` change — Task 3.
 
-**Deferred to the phase that redesigns each surface (ruling):** default body 14 → 16 and serif puzzle names (spec §3) touch layout on every screen; they land with Today (b), the top bar and tray (c), and phase-3 screens (e), where each surface is re-laid out anyway. Motion spring constants land with their consumers (c, d).
+**Deferred to the phase that redesigns each surface (ruling):** default body 14 → 16 and serif puzzle names (spec §3) touch layout on every screen; they land with Today (b), the top bar and tray (c), and phase-3 screens (e), where each surface is re-laid out anyway. Motion spring constants land with their consumers (c, d). Lens pills (C8 covers "primaries and lenses") land with the tray redesign in phase c, which rebuilds `LensChips` as 36pt pills with mono counts (spec §5); this phase pills `kit/Button` and `Badge` only.
 
 ---
 

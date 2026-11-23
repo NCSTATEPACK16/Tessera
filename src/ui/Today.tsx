@@ -125,10 +125,10 @@ export function Today({
           className="absolute inset-0 h-full w-full object-cover"
         />
         {/* B7: a real scrim under real ink. Its alpha is a measured constant
-            (`scrim.ts`): the top padding is exactly the scrim's fade, so the
+            (`scrim.ts`): the top padding is exactly the scrim's fade, both in px, so the
             eyebrow sits on the solid part — 6.7:1 over a pure white sky. */}
         <div
-          className="relative flex w-full flex-col gap-2 p-5 pt-16"
+          className="relative flex w-full flex-col gap-2 p-5 pt-7"
           style={{ background: heroScrimBackground() }}
         >
           <div className="flex items-center gap-2">
