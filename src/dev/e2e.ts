@@ -16,7 +16,7 @@
  */
 
 import type { PuzzleMode } from '@/play/setup';
-import type { PlayRuntime, RuntimeSummary } from '@/play/runtime';
+import type { E2eClientRect, PlayRuntime, RuntimeSummary } from '@/play/runtime';
 
 export interface E2eStart {
   targetCount: number;
@@ -51,6 +51,10 @@ export interface E2eHook {
   idle(): boolean;
   /** Client-space centres of the loose pieces on the mat. */
   loosePoints(): { id: number; x: number; y: number }[];
+  /** The board frame, client space. */
+  frameRect(): E2eClientRect | null;
+  /** The union of every loose piece on the mat, client space; null when none. */
+  looseBounds(): E2eClientRect | null;
 }
 
 declare global {
@@ -79,5 +83,7 @@ export function installE2eHook(
       return total > 0 && done === total && !runtime.animating;
     },
     loosePoints: () => getRuntime()?.e2eLoosePoints() ?? [],
+    frameRect: () => getRuntime()?.e2eFrameRect() ?? null,
+    looseBounds: () => getRuntime()?.e2eLooseBounds() ?? null,
   };
 }

@@ -21,7 +21,7 @@ import { AudioEngine } from '@/audio/engine';
 import { BoardControls } from '@/input/board-controls';
 import { hintsLeft, msUntilNextHint } from '@/play/hints';
 import type { HintTier, PuzzleMode } from '@/play/hints';
-import { gridLayout } from '@/play/layout';
+import { firstRunScatter, gridLayout } from '@/play/layout';
 import { PlaySession } from '@/play/session';
 import type { PlayEvent } from '@/play/session';
 import { haptic } from '@/platform';
@@ -31,9 +31,8 @@ import { TrayModel } from '@/tray/tray';
 import {
   MIN_ZOOM,
   REGION_LENS_ZOOM,
-  clampZoom,
   createCamera,
-  fitCameraToBounds,
+  fitCameraToContent,
   fitScale,
   insetWorldRect,
   relativeZoom,
@@ -70,6 +69,14 @@ const DEFAULT_ASSISTS: PuzzleAssists = {
  * exact thing keeping the board out of React was for.
  */
 const REGION_SETTLE_MS = 160;
+
+/** Client-space rectangle in CSS px — the dev hook's shape for "is this on screen". */
+export interface E2eClientRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
 
 export interface RuntimeSummary {
   status: 'cutting' | 'playing' | 'complete' | 'failed';
@@ -671,6 +678,44 @@ export class PlayRuntime {
     });
   }
 
+  /** Dev-only: the board frame's client-space rectangle. */
+  e2eFrameRect(): E2eClientRect | null {
+    if (this.boardW <= 0 || this.boardH <= 0) return null;
+    return this.e2eClientRect({ x: 0, y: 0, w: this.boardW, h: this.boardH });
+  }
+
+  /** Dev-only: the client-space union of every loose piece's bitmap; null when none. */
+  e2eLooseBounds(): E2eClientRect | null {
+    const loose = this.session?.scene().loose ?? [];
+    if (loose.length === 0) return null;
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    for (const piece of loose) {
+      left = Math.min(left, piece.x);
+      top = Math.min(top, piece.y);
+      right = Math.max(right, piece.x + piece.w);
+      bottom = Math.max(bottom, piece.y + piece.h);
+    }
+    return this.e2eClientRect({ x: left, y: top, w: right - left, h: bottom - top });
+  }
+
+  private e2eClientRect(world: Rect): E2eClientRect {
+    const rect = this.options.container.getBoundingClientRect();
+    const tl = worldToScreen(this.camera, this.viewport, { x: world.x, y: world.y });
+    const br = worldToScreen(this.camera, this.viewport, {
+      x: world.x + world.w,
+      y: world.y + world.h,
+    });
+    return {
+      left: rect.left + tl.x,
+      top: rect.top + tl.y,
+      right: rect.left + br.x,
+      bottom: rect.top + br.y,
+    };
+  }
+
   /** The part of the mat the player can actually see and reach, in world units. */
   safeWorldRect(): Rect {
     return insetWorldRect(this.camera, this.viewport, this.insets);
@@ -814,19 +859,19 @@ export class PlayRuntime {
     // does. `startInTray: false` alone is not enough; the pieces must
     // actually be scattered, exactly as the step 1-2 dev harness always did
     // before the tray existed. Skipped on restore — a saved snapshot already
-    // has real positions.
+    // has real positions. The layout itself — centred under the board, row
+    // length chosen for the viewport — is `firstRunScatter` in `layout.ts`.
     if (!restore && this.options.startInTray === false) {
-      const rng = rngFor(this.options.seed, 'firstRunScatter', 0);
-      const perRow = Math.max(1, Math.ceil(Math.sqrt(cut.length * 1.6)));
+      const origins = firstRunScatter(
+        cut.length,
+        this.boardW,
+        this.boardH,
+        this.viewport,
+        rngFor(this.options.seed, 'firstRunScatter', 0),
+      );
       for (const [i, piece] of cut.entries()) {
-        const clusterId = session.board.clusterIdOf(piece.id);
-        const col = i % perRow;
-        const row = Math.floor(i / perRow);
-        session.board.moveCluster(
-          clusterId,
-          col * 1.35 + rng.range(-0.15, 0.15),
-          this.boardH + 0.8 + row * 1.35 + rng.range(-0.15, 0.15),
-        );
+        const origin = origins[i]!;
+        session.board.moveCluster(session.board.clusterIdOf(piece.id), origin.x, origin.y);
       }
       session.rebuild();
     }
@@ -1031,15 +1076,12 @@ export class PlayRuntime {
     const bounds = this.session
       ? this.session.contentBounds()
       : { x: 0, y: 0, w: this.boardW, h: this.boardH };
-    const framed = fitCameraToBounds(this.viewport, bounds);
-    this.camera = {
-      ...framed,
-      zoom: clampZoom(
-        framed.zoom,
-        fitScale(this.viewport, this.boardW, this.boardH),
-        this.liveAssists.largePieceMode ? REGION_LENS_ZOOM : undefined,
-      ),
-    };
+    this.camera = fitCameraToContent(
+      this.viewport,
+      bounds,
+      { w: this.boardW, h: this.boardH },
+      this.liveAssists.largePieceMode ? REGION_LENS_ZOOM : undefined,
+    );
   }
 
   private render(): void {

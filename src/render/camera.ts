@@ -108,6 +108,47 @@ export function fitCameraToBounds(viewport: Size, bounds: Rect, margin = 0.9): C
 }
 
 /**
+ * Frame content (board plus scatter), clamped to the zoom range — without ever
+ * clipping the board frame.
+ *
+ * When the content fits inside the zoom floor this is exactly
+ * `fitCameraToBounds`. When it doesn't, the clamp raises the zoom and
+ * centring on the content would crop it symmetrically — and if the board sits
+ * at one edge of the content, the board is what gets cut off. That was the
+ * guided twelve on a 402pt phone: frame off the left edge, and Fit landing in
+ * the same place. So on each axis where the board still fits at the clamped
+ * zoom, the centre slides just far enough to keep the whole board in view; on
+ * an axis where it can't fit (large-piece mode's higher floor), the content
+ * centre stands.
+ */
+export function fitCameraToContent(
+  viewport: Size,
+  content: Rect,
+  board: { w: number; h: number },
+  minRelativeZoom = MIN_ZOOM,
+): Camera {
+  const framed = fitCameraToBounds(viewport, content);
+  const zoom = clampZoom(framed.zoom, fitScale(viewport, board.w, board.h), minRelativeZoom);
+  if (zoom === framed.zoom) return framed;
+  return {
+    x: keepSpanInView(framed.x, board.w, viewport.w / 2 / zoom),
+    y: keepSpanInView(framed.y, board.h, viewport.h / 2 / zoom),
+    zoom,
+  };
+}
+
+/**
+ * Move `centre` the least distance that keeps `[0, span]` within `centre ±
+ * half`, if it can — inside the same 0.9 margin `fitScale` uses where there is
+ * room, so the frame is not left flush against the screen edge.
+ */
+function keepSpanInView(centre: number, span: number, half: number, margin = 0.9): number {
+  const reach = span <= half * margin * 2 ? half * margin : half;
+  if (span > reach * 2) return centre;
+  return Math.min(reach, Math.max(span - reach, centre));
+}
+
+/**
  * The visible world rectangle, inset from the viewport's edges by `insets`
  * screen pixels each side — the part of the mat the player can actually see
  * and reach once chrome (a docked tray, an iPhone sheet) is sitting on top of

@@ -5,20 +5,24 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { Size } from '@/core/geom';
 import {
   clampZoom,
   createCamera,
   fitCamera,
   fitCameraToBounds,
+  fitCameraToContent,
   fitScale,
   insetWorldRect,
   MAX_ZOOM,
   MIN_ZOOM,
+  REGION_LENS_ZOOM,
   relativeZoom,
   screenToWorld,
   visibleWorldBounds,
   worldToScreen,
   zoomAbout,
+  type Camera,
 } from '@/render/camera';
 
 const VIEWPORT = { w: 1024, h: 768 };
@@ -270,5 +274,50 @@ describe('insetWorldRect', () => {
       expect(full.w - inset.w).toBeCloseTo(expectedShrink, 10);
       expect(full.h - inset.h).toBeCloseTo(expectedShrink, 10);
     }
+  });
+});
+
+describe('fitCameraToContent', () => {
+  // The 402pt first-run clip (modernize spec §7): content wider than the zoom
+  // floor allows was centred on itself, and the board frame went off-screen.
+  const PHONE = { w: 402, h: 874 };
+  const BOARD = { w: 3, h: 4 };
+  const boardOnScreen = (cam: Camera, vp: Size) => ({
+    tl: worldToScreen(cam, vp, { x: 0, y: 0 }),
+    br: worldToScreen(cam, vp, { x: BOARD.w, y: BOARD.h }),
+  });
+
+  it('equals fitCameraToBounds when the content fits inside the zoom floor', () => {
+    const content = { x: -0.5, y: -0.5, w: 4, h: 9 };
+    expect(fitCameraToContent(PHONE, content, BOARD)).toEqual(fitCameraToBounds(PHONE, content));
+  });
+
+  it('keeps the board frame on screen when a wide scatter hits the floor (both orientations)', () => {
+    const content = { x: 0, y: 0, w: 20, h: 10 };
+    for (const vp of [PHONE, { w: 874, h: 402 }]) {
+      const cam = fitCameraToContent(vp, content, BOARD);
+      expect(cam.zoom).toBeCloseTo(fitScale(vp, BOARD.w, BOARD.h) * MIN_ZOOM, 6);
+      const { tl, br } = boardOnScreen(cam, vp);
+      expect(tl.x).toBeGreaterThanOrEqual(0);
+      expect(br.x).toBeLessThanOrEqual(vp.w);
+      expect(tl.y).toBeGreaterThanOrEqual(0);
+      expect(br.y).toBeLessThanOrEqual(vp.h);
+    }
+  });
+
+  it('keeps the frame when content runs off to the right', () => {
+    const cam = fitCameraToContent(PHONE, { x: 0, y: 0, w: 30, h: 4 }, BOARD);
+    expect(boardOnScreen(cam, PHONE).tl.x).toBeGreaterThanOrEqual(0);
+  });
+
+  it('keeps the content centre on an axis where the board itself cannot fit (large-piece floor)', () => {
+    const content = { x: 0, y: 0, w: 20, h: 10 };
+    const cam = fitCameraToContent(PHONE, content, BOARD, REGION_LENS_ZOOM);
+    // 3 world wide at 1.5x of fit is wider than 402pt: x is left alone.
+    expect(cam.x).toBeCloseTo(10, 6);
+    // 4 world tall still fits in 874pt: the frame stays in view vertically.
+    const { tl, br } = boardOnScreen(cam, PHONE);
+    expect(tl.y).toBeGreaterThanOrEqual(0);
+    expect(br.y).toBeLessThanOrEqual(PHONE.h);
   });
 });

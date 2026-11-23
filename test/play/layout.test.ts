@@ -9,8 +9,16 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { Rect } from '@/core/geom';
-import { PULL_OUT_SPACING, gridLayout } from '@/play/layout';
+import type { Point, Rect, Size } from '@/core/geom';
+import {
+  FIRST_RUN_PIECE_EXTENT,
+  PULL_OUT_SPACING,
+  dragMargin,
+  firstRunScatter,
+  gridLayout,
+} from '@/play/layout';
+import { MIN_ZOOM, fitCameraToBounds, fitScale } from '@/render/camera';
+import { rngFor } from '@/core/rng';
 
 const safe: Rect = { x: 0, y: 0, w: 40, h: 30 };
 
@@ -100,5 +108,83 @@ describe('gridLayout', () => {
     const plain = gridLayout(4, 1, 1, safe, null);
 
     expect(nudged).toEqual(plain);
+  });
+});
+
+describe('firstRunScatter', () => {
+  // The guided twelve's loose band (modernize spec §7). Left-anchored and
+  // sqrt(n)-wide, it outgrew a 402pt phone's zoom floor and pushed the board
+  // frame off-screen. A fixed board-width wrap fixed the phone and broke a
+  // desktop window instead (a 3-wide stack is too tall for 900px) — so the row
+  // length is chosen for the viewport.
+  const PHONE = { w: 402, h: 874 };
+  const DESK = { w: 1280, h: 900 };
+  const LAND = { w: 874, h: 402 };
+  const BOARD = { w: 3, h: 4 };
+  const scatter = (vp: Size, n = 12) =>
+    firstRunScatter(n, BOARD.w, BOARD.h, vp, rngFor(7, 'firstRunScatter', 0));
+  const perRowOf = (pts: Point[]) => pts.filter((p) => Math.abs(p.y - pts[0]!.y) < 0.5).length;
+  const contentBounds = (pts: Point[]): Rect => {
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    const left = Math.min(0, ...xs);
+    const right = Math.max(BOARD.w, ...xs.map((x) => x + FIRST_RUN_PIECE_EXTENT));
+    const bottom = Math.max(...ys) + FIRST_RUN_PIECE_EXTENT;
+    return { x: left, y: 0, w: right - left, h: bottom };
+  };
+
+  it('places one origin per piece, all below the board', () => {
+    const pts = scatter(PHONE);
+    expect(pts).toHaveLength(12);
+    for (const p of pts) expect(p.y).toBeGreaterThanOrEqual(4 + 0.8 - 0.15);
+  });
+
+  it('fits inside the zoom floor on a phone, a desktop window and a landscape phone', () => {
+    for (const vp of [PHONE, DESK, LAND]) {
+      const framed = fitCameraToBounds(vp, contentBounds(scatter(vp)));
+      expect(framed.zoom, `${vp.w}x${vp.h}`).toBeGreaterThanOrEqual(
+        fitScale(vp, BOARD.w, BOARD.h) * MIN_ZOOM,
+      );
+    }
+  });
+
+  it('stacks narrow on a portrait phone and spreads wide on a desktop', () => {
+    expect(perRowOf(scatter(PHONE))).toBe(3);
+    expect(perRowOf(scatter(DESK))).toBeGreaterThan(3);
+  });
+
+  it('centres every row under the board, the short last row too', () => {
+    for (const vp of [PHONE, DESK]) {
+      const pts = scatter(vp, 10);
+      const rows = new Map<number, number[]>();
+      for (const p of pts) {
+        const key = Math.round((p.y - 4.8) / 1.35);
+        rows.set(key, [...(rows.get(key) ?? []), p.x]);
+      }
+      for (const xs of rows.values()) {
+        const mid = (Math.min(...xs) + Math.max(...xs) + 1) / 2;
+        expect(Math.abs(mid - BOARD.w / 2), `${vp.w}x${vp.h}`).toBeLessThan(0.3);
+      }
+    }
+  });
+
+  it('never deals a piece outside the drag boundary horizontally (a landscape phone picked 12 across)', () => {
+    // CLAUDE.md hard number: clamp(sqrt(pieces) x 0.8, 4, 18) piece-widths each side.
+    // `clampAxis` refuses to move an out-of-bounds piece further out, so a piece
+    // dealt there is one the player cannot drag outward.
+    const margin = dragMargin(12);
+    expect(margin).toBe(4);
+    for (const vp of [PHONE, DESK, LAND]) {
+      for (const p of scatter(vp)) {
+        expect(p.x, `${vp.w}x${vp.h}`).toBeGreaterThanOrEqual(-margin - 0.15);
+        expect(p.x + FIRST_RUN_PIECE_EXTENT, `${vp.w}x${vp.h}`).toBeLessThanOrEqual(
+          BOARD.w + margin + 0.15,
+        );
+      }
+    }
+  });
+
+  it('is deterministic per seed and viewport', () => {
+    expect(scatter(PHONE)).toEqual(scatter(PHONE));
   });
 });

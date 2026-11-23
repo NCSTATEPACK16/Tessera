@@ -11,7 +11,7 @@
 
 import type { Point, Rect, Size } from '@/core/geom';
 import type { Camera } from './camera';
-import { clampZoom, fitCamera, fitCameraToBounds, fitScale, MIN_ZOOM, zoomAbout } from './camera';
+import { clampZoom, fitCamera, fitCameraToContent, fitScale, MIN_ZOOM, zoomAbout } from './camera';
 
 export interface CameraControlsOptions {
   element: HTMLElement;
@@ -108,11 +108,9 @@ export class CameraControls {
       return;
     }
 
-    const framed = fitCameraToBounds(viewport, bounds);
-    this.options.setCamera({
-      ...framed,
-      zoom: clampZoom(framed.zoom, this.fitScale(), this.minRelativeZoom),
-    });
+    this.options.setCamera(
+      fitCameraToContent(viewport, bounds, this.options.getBoard(), this.minRelativeZoom),
+    );
   }
 
   /** Pixels per world unit at 1×. The reference every clamp here measures against. */

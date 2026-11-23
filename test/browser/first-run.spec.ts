@@ -321,3 +321,39 @@ test('"Today\'s puzzle" from the guided twelve\'s card starts the real daily', a
   await expect(page.getByRole('img', { name: 'Puzzle card' })).toHaveCount(0);
   await expect(page.getByLabel('Pause')).toBeVisible();
 });
+
+// The 402pt clip (modernize spec §7): the scatter used to be left-anchored and
+// wider than the zoom floor allows, so the camera centred on the content and the
+// board frame — at the content's left edge — went off-screen. Fit used the same
+// clamp and landed in the same place. iPhone 17 Pro's width, not the project's.
+test.describe('@phone at 402pt', () => {
+  test.use({ viewport: { width: 402, height: 874 } });
+
+  test('@phone the guided twelve fits a 402pt phone, before and after Fit', async ({ page }) => {
+    await openFreshProfile(page);
+    await expect.poll(() => remaining(page)).toBe(12);
+    await expect.poll(() => page.evaluate(() => window.__tessera!.idle())).toBe(true);
+
+    const inView = async (when: string): Promise<void> => {
+      const [frame, loose] = await page.evaluate(() => [
+        window.__tessera!.frameRect(),
+        window.__tessera!.looseBounds(),
+      ]);
+      for (const [name, r] of [
+        ['frame', frame],
+        ['loose pieces', loose],
+      ] as const) {
+        expect(r, `${name} ${when}`).not.toBeNull();
+        expect(r!.left, `${name} left ${when}`).toBeGreaterThanOrEqual(0);
+        expect(r!.right, `${name} right ${when}`).toBeLessThanOrEqual(402);
+        expect(r!.top, `${name} top ${when}`).toBeGreaterThanOrEqual(0);
+        expect(r!.bottom, `${name} bottom ${when}`).toBeLessThanOrEqual(874);
+      }
+    };
+
+    await inView('at open');
+    await page.getByRole('button', { name: 'Fit' }).click();
+    await page.waitForTimeout(400);
+    await inView('after Fit');
+  });
+});

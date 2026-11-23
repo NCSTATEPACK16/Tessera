@@ -29,6 +29,7 @@ import type { Pose, Settle } from '@/board/settle';
 import type { MatFinish, Scene, SceneGroup, ScenePiece } from '@/render/scene';
 import type { HintTier, PuzzleMode } from './hints';
 import { canAffordTier, spendTier } from './hints';
+import { dragMargin } from './layout';
 import { WORKSET_DROP_TOLERANCE, WorksetStore, escapedBounds, worksetBounds } from './workset';
 
 /** §05: the held cluster rides 8pt above the finger, never under it. */
@@ -491,7 +492,7 @@ export class PlaySession {
    * (CLAUDE.md's coordinate-space table), so no further conversion.
    */
   private dragBounds(): Rect {
-    const margin = Math.min(18, Math.max(4, Math.sqrt(this.options.pieces.length) * 0.8));
+    const margin = dragMargin(this.options.pieces.length);
     return {
       x: -margin,
       y: -margin,
