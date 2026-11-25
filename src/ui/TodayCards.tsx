@@ -3,8 +3,9 @@
  * the daily hub, and the collection, which leads into the Collection tab.
  *
  * Shape carries every meaning here, never colour alone (§13): a played day is
- * a filled pip, a freeze is a dashed pip with a snowflake, today is a ring, and
- * each pip has a full-sentence accessible name besides.
+ * a filled pip, a freeze is a dashed pip with a snowflake, today is a ring.
+ * The card is a button, so the pips inside it are presentational to a screen
+ * reader; the week they draw is in the button's own name (`streakCardLabel`).
  */
 
 import { useEffect, useState } from 'react';
@@ -12,7 +13,7 @@ import type { CompletionRecord } from '@/persist/completions';
 import type { DateKey } from '@/daily/dates';
 import { weekdayOf } from '@/daily/dates';
 import type { DayCell } from '@/daily/streak';
-import { PIP_LABEL } from './StreakFlame';
+import { MOSAIC_TILES, streakCardLabel } from '@/play/today';
 import { Icon } from './kit';
 
 /** An object URL for a blob, revoked when the blob changes or the owner unmounts. */
@@ -38,7 +39,9 @@ const CARD =
 function pipShape(cell: DayCell): string {
   if (cell.status === 'completed') return 'border-[var(--ink-secondary)] bg-[var(--ink-secondary)]';
   if (cell.status === 'frozen') return 'border-dashed border-[var(--ink-secondary)] text-[var(--ink-secondary)]';
-  return 'border-[var(--edge-hair-light)]';
+  // Hollow (missed, not yet, to come): `--ink-muted` clears WCAG 1.4.11's
+  // 3:1 on `--mat-raised`; the hairline token was about 1.4:1 and vanished.
+  return 'border-[var(--ink-muted)]';
 }
 
 export function WeekPips({
@@ -49,20 +52,17 @@ export function WeekPips({
   today: DateKey;
 }): React.ReactElement {
   return (
-    <div role="list" aria-label="This week" className="mt-auto grid grid-cols-7 gap-[2px] pt-3">
+    <div aria-hidden="true" className="mt-auto grid grid-cols-7 gap-[2px] pt-3">
       {pips.map((cell) => {
         const isToday = cell.dateKey === today;
         return (
           <div
             key={cell.dateKey}
-            role="listitem"
-            aria-label={`${isToday ? 'Today' : cell.dateKey}: ${PIP_LABEL[cell.status]}`}
             className={`flex flex-col items-center gap-1 text-1 ${
               isToday ? 'text-[var(--ink-primary)]' : 'text-[var(--ink-muted)]'
             }`}
           >
             <span
-              aria-hidden="true"
               className={`grid h-[14px] w-[14px] place-items-center rounded-full border-[1.5px] ${pipShape(cell)} ${
                 // Today is a ring around whatever the day is — played or not.
                 isToday ? 'outline outline-2 outline-offset-1 outline-[var(--accent)]' : ''
@@ -70,7 +70,7 @@ export function WeekPips({
             >
               {cell.status === 'frozen' && <Icon.Snowflake size={9} />}
             </span>
-            <span aria-hidden="true">{WEEKDAY_LETTER[weekdayOf(cell.dateKey)]}</span>
+            <span>{WEEKDAY_LETTER[weekdayOf(cell.dateKey)]}</span>
           </div>
         );
       })}
@@ -94,7 +94,7 @@ export function StreakCard({
   return (
     <button
       type="button"
-      aria-label={`Daily streak: ${numeral} day${numeral === 1 ? '' : 's'}. ${line}. Open the daily`}
+      aria-label={streakCardLabel(numeral, line, pips)}
       onClick={onOpen}
       className={CARD}
     >
@@ -131,7 +131,7 @@ export function CollectionCard({
   recent: readonly CompletionRecord[];
   onOpen: () => void;
 }): React.ReactElement {
-  const slots = Array.from({ length: 8 - recent.length }, (_, i) => i);
+  const slots = Array.from({ length: Math.max(0, MOSAIC_TILES - recent.length) }, (_, i) => i);
   return (
     <button
       type="button"

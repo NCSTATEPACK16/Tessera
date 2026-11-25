@@ -8,7 +8,7 @@
  */
 
 import type { CompletionRecord } from '@/persist/completions';
-import type { StreakTone } from '@/daily/streak';
+import type { DayCell, StreakTone } from '@/daily/streak';
 import { dailyDateKeyOf, dailyFor } from '@/daily/daily';
 import { curatedPhotoById } from './curated';
 import { formatElapsed } from './card';
@@ -53,9 +53,10 @@ export function heroModel(input: HeroInput): HeroModel {
   const eyebrow = `Daily · ${input.pieceCount} pieces`;
   const resets = formatResetsIn(input.resetsInMs);
 
-  // Done wins: a finished daily is deleted from the library after its
-  // completion is written, so a progress entry beside `doneToday` is a stale
-  // read, never a second state.
+  // Done wins. A finished daily is deleted from the library after its
+  // completion is written, but DailyHub's "Play it again" starts a fresh entry
+  // under the same id, so progress beside `doneToday` is a real replay. Today
+  // still shows the finish; the replay stays reachable through the hub.
   if (input.doneToday) {
     const r = input.record;
     return {
@@ -103,7 +104,8 @@ export function streakModel(
   return { numeral: 0, line: 'Start one today' };
 }
 
-const MOSAIC_TILES = 8;
+/** Today's collection card shows this many of the newest finishes. */
+export const MOSAIC_TILES = 8;
 
 /** From `completions` only — the wall's store, newest first as stored. */
 export function collectionSummary(records: readonly CompletionRecord[]): {
@@ -123,7 +125,34 @@ export function collectionSummary(records: readonly CompletionRecord[]): {
  * still names a daily, from the date in its id.
  */
 export function puzzleTitle(puzzleId: string, photoId: string | null | undefined): string {
-  const dateKey = dailyDateKeyOf(puzzleId);
-  const id = photoId ?? (dateKey ? dailyFor(dateKey).photoId : null);
+  const id = photoIdOf(puzzleId, photoId);
   return (id ? curatedPhotoById(id)?.name : undefined) ?? 'Your photo';
+}
+
+/**
+ * The photo a puzzle was cut from. A daily saved before snapshots carried
+ * `photoId` recovers it from the date in its own id — never from today's daily,
+ * which names yesterday's resumed board after the wrong photo and credits the
+ * wrong photographer (§15).
+ */
+export function photoIdOf(puzzleId: string, photoId: string | null | undefined): string | null {
+  if (photoId) return photoId;
+  const dateKey = dailyDateKeyOf(puzzleId);
+  return dateKey ? dailyFor(dateKey).photoId : null;
+}
+
+/**
+ * The streak card's accessible name. The card is a button, so the pips inside
+ * it are presentational and their own names are never read: the week they
+ * draw is summarised here instead.
+ */
+export function streakCardLabel(numeral: number, line: string, pips: readonly DayCell[]): string {
+  const played = pips.filter((c) => c.status === 'completed').length;
+  const frozen = pips.filter((c) => c.status === 'frozen').length;
+  const week =
+    played === 0 && frozen === 0
+      ? 'none played yet'
+      : [`${played} played`, ...(frozen > 0 ? [`${frozen} covered by a freeze`] : [])].join(', ');
+  const sentence = line.replace(/\.$/, '');
+  return `Daily streak: ${numeral} day${numeral === 1 ? '' : 's'}. ${sentence}. This week: ${week}. Open the daily`;
 }

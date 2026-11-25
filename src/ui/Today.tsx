@@ -82,7 +82,10 @@ function Hero({
   const thumbnailUrl = useObjectUrl(
     hero.state === "progress" ? heroThumbnail : null
   );
-  const imageUrl = thumbnailUrl ?? daily.photoUrl;
+  // In progress, the board or nothing: falling back to the photo while the
+  // object URL is minted flashes it at full brightness for a frame.
+  const imageUrl =
+    hero.state === "progress" && heroThumbnail ? thumbnailUrl : daily.photoUrl;
   const actionName =
     hero.action?.label === "Start"
       ? `Start today’s puzzle: ${daily.title}`
