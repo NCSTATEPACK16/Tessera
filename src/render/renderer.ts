@@ -93,6 +93,9 @@ export class Renderer {
 
   /** Scratch canvas for the light system's downsample-and-blur pass (§07). */
   private readonly bloomCanvas = document.createElement('canvas');
+  /** `boardThumbnail`'s scratch layers, kept across autosaves like `bloomCanvas`. */
+  private readonly thumbLit = document.createElement('canvas');
+  private readonly thumbSmall = document.createElement('canvas');
   /** `performance.now()` timestamp `completePuzzle` was called, or null before completion. */
   private completionStartMs: number | null = null;
   /** Tier 1's localised region, world units, or null when no hint is active. */
@@ -281,10 +284,8 @@ export class Renderer {
 
     // The lit layer on its own canvas, so the bloom is sourced from the pieces
     // alone and never from the unlit photo under them.
-    const lit = document.createElement('canvas');
-    lit.width = width;
-    lit.height = height;
-    const litCtx = lit.getContext('2d');
+    const lit = this.thumbLit;
+    const litCtx = clearedTo(lit, width, height);
     if (!litCtx) return out;
     litCtx.setTransform(scale, 0, 0, scale, 0, 0);
     for (const piece of this.scene.placed) {
@@ -303,10 +304,8 @@ export class Renderer {
     if (intensity > 0) {
       const bw = Math.max(1, Math.floor(width * 0.25));
       const bh = Math.max(1, Math.floor(height * 0.25));
-      const small = document.createElement('canvas');
-      small.width = bw;
-      small.height = bh;
-      small.getContext('2d')?.drawImage(lit, 0, 0, bw, bh);
+      const small = this.thumbSmall;
+      clearedTo(small, bw, bh)?.drawImage(lit, 0, 0, bw, bh);
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = intensity;
@@ -828,4 +827,21 @@ export class Renderer {
     }
     return drawn;
   }
+}
+
+/**
+ * A scratch canvas at `w`×`h`, blank, with an identity transform. Resizing
+ * already clears it; at an unchanged size it is cleared by hand, so a reused
+ * canvas never reallocates its backing store between autosaves.
+ */
+function clearedTo(canvas: HTMLCanvasElement, w: number, h: number): CanvasRenderingContext2D | null {
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+    return canvas.getContext('2d');
+  }
+  const ctx = canvas.getContext('2d');
+  ctx?.setTransform(1, 0, 0, 1, 0, 0);
+  ctx?.clearRect(0, 0, w, h);
+  return ctx;
 }

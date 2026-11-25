@@ -93,13 +93,17 @@ function Hero({
   return (
     <section
       aria-label="Today’s puzzle"
-      className="relative h-[380px] shrink-0 overflow-hidden rounded-[var(--radius-lg)] bg-[var(--mat-deep)] lg:h-[392px]"
+      className="relative flex min-h-[380px] shrink-0 flex-col justify-end overflow-hidden rounded-[var(--radius-lg)] bg-[var(--mat-deep)] lg:min-h-[392px]"
     >
       {imageUrl && (
         <img
           src={imageUrl}
           alt=""
-          className="absolute inset-0 h-full w-full object-cover"
+          className={`absolute inset-0 h-full w-full ${
+            // The board thumbnail has the board's aspect, not the hero's:
+            // cropping it would cut off the border pieces placed first.
+            thumbnailUrl ? "object-contain" : "object-cover"
+          }`}
         />
       )}
       {/* The hairline sits on the photo, not around it. */}
@@ -109,9 +113,11 @@ function Hero({
       />
       {/* B7: real ink on a measured scrim (`scrim.ts`). The top padding is the
           scrim's fade, both in px, so the eyebrow sits on the solid part —
-          6.7:1 over a pure white sky. `--ink-muted` never goes here. */}
+          6.7:1 over a pure white sky. `--ink-muted` never goes here. In flow,
+          not absolute: at 200% type the copy outgrows 380px, and the hero
+          grows with it rather than clipping the title off the top. */}
       <div
-        className="absolute inset-x-0 bottom-0 flex flex-col gap-2 p-5 pt-7"
+        className="relative flex flex-col gap-2 p-5 pt-7"
         style={{ background: heroScrimBackground() }}
       >
         {/* `.eyebrow` is unlayered CSS and outranks a utility colour. */}

@@ -93,7 +93,9 @@
 
   /* Derived from the live accent, which App.tsx sets on this same element
      per photo — so a selected fill or glow always matches the extracted hue
-     rather than the fallback blue. */
+     rather than the fallback blue. Re-declared on `[data-accent-scope]` below:
+     a custom property resolves its var() where it is declared, so a scope that
+     sets only `--accent` would inherit these already mixed from :root's. */
   --accent-dim: color-mix(in srgb, var(--accent) 18%, transparent);
   --accent-glow: color-mix(in srgb, var(--accent) 50%, transparent);
 
@@ -104,6 +106,14 @@
   --touch-min: 44px;
 
   color-scheme: dark;
+}
+
+/* A subtree with its own accent (Shell, on the daily's hue) re-derives the
+   tokens built from it. */
+[data-accent-scope] {
+  --accent-dim: color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 50%, transparent);
+  --shadow-accent: 0 4px 20px var(--accent-glow);
 }
 
 /* §C Track 3: comfort mode retargets the one variable every touch target reads. */
