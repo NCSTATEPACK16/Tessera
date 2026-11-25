@@ -16,9 +16,23 @@
  * Bump it on purpose, and run `npx playwright install chromium` when you do.
  */
 
+import { totalmem } from 'node:os';
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 5179;
+
+/**
+ * Three, not four: on a six-core machine a fourth Chromium oversubscribes the
+ * CPU, and the per-change run measured 157s at 3 against 179s at 4 (see
+ * docs/superpowers/specs/2026-11-15-redundancy-and-test-review.md §5, G7).
+ *
+ * Two below 12 GB of RAM: on an 8 GB Mac, three Chromiums plus the dev server
+ * ran out of memory and three tests timed out at a minute each in `:full`
+ * (modernize phase b, 2026-11-23) — all three passed alone. A memory-starved
+ * worker fails as a timeout, which reads as a flaky test rather than a full
+ * machine. `--workers` on the command line still overrides either.
+ */
+const WORKERS = totalmem() < 12 * 1024 ** 3 ? 2 : 3;
 
 export default defineConfig({
   testDir: './test/browser',
@@ -31,10 +45,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 1 : 0,
-  // Three, not four: on a six-core machine a fourth Chromium oversubscribes the
-  // CPU, and the per-change run measured 157s at 3 against 179s at 4 (see
-  // docs/superpowers/specs/2026-11-15-redundancy-and-test-review.md §5, G7).
-  workers: 3,
+  workers: WORKERS,
   // Headroom for a loaded machine (the suite is meant to run in the background);
   // a healthy test here finishes in under fifteen seconds.
   timeout: 60_000,
