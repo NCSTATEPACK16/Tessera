@@ -275,7 +275,7 @@ reading the code had missed — a select-mode hold that deselected the piece it 
 shelf rendered below the fold at peek. Neither had any unit-test surface; both are fixed.
 
 `@playwright/test` boots vite itself and runs `test/browser/*.spec.ts` in three projects, on three
-workers (four oversubscribes six cores — measured slower): **`timing`** (tests tagged `@timing` — mutation counts, idle-draws-nothing — alone on one
+workers (four oversubscribes six cores — measured slower; two below 12 GB of RAM, where a third Chromium starves for memory and its tests time out): **`timing`** (tests tagged `@timing` — mutation counts, idle-draws-nothing — alone on one
 worker, before anything else starts), **`dock`** (everything else), and **`phone`** (only tests
 tagged `@phone`, the ones about the sheet form factor). `@slow` marks the few that are long by
 nature (HEIC decode, two 150-piece cuts) and is left out of `npm run test:browser`. Vitest owns
