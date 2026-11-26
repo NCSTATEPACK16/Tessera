@@ -45,6 +45,27 @@ test.describe('the board never re-renders through React', { tag: ['@timing', '@s
     expect(await trayMutations(page)).toBeLessThan(before + RERENDER_BUDGET);
   });
 
+  // Modernize §5 (C1): the sheet follows the finger and springs to its detent
+  // by writing its own height, never through React state — a re-render per
+  // move would re-render the chip grid inside it per frame.
+  test('dragging the phone sheet does not churn the tray', async ({ page }) => {
+    await page.setViewportSize({ width: 402, height: 874 });
+    await BoardPage.open(page);
+    await page.waitForTimeout(400);
+
+    const handle = page.getByRole('separator', { name: 'Resize the piece tray' });
+    const box = (await handle.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const before = await trayMutations(page);
+    await page.mouse.move(x, box.y + box.height / 2);
+    await page.mouse.down();
+    for (let i = 1; i <= 40; i++) await page.mouse.move(x, box.y - i * 8);
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+
+    expect(await trayMutations(page)).toBeLessThan(before + RERENDER_BUDGET);
+  });
+
   test('dragging a piece for sixty frames does not re-render per frame', async ({ page }) => {
     const board = await BoardPage.open(page);
     const centre = await board.matPoint();
