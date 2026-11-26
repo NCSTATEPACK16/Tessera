@@ -41,6 +41,7 @@ export function Shell({
   return (
     <div
       className="flex h-full w-full flex-col bg-[var(--mat-void)]"
+      data-accent-scope=""
       style={{ '--accent': accent, '--color-accent': accent } as React.CSSProperties}
     >
       {/* At `md` the bar floats over the bottom of this scroller, so the last

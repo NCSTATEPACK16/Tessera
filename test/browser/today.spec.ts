@@ -78,6 +78,8 @@ test('in progress: Keep going, with its ring, back onto the same board', async (
   await expect(hero(page).getByRole('button', { name: /^Start today/ })).toHaveCount(0);
   await expect(hero(page).getByRole('progressbar')).toBeVisible();
   await expect(hero(page)).toContainText(`${saved.placed} of ${saved.total} placed`);
+  // The board thumbnail has the board's aspect; the hero shows all of it.
+  await expect(hero(page).locator('img')).toHaveCSS('object-fit', 'contain');
   // The daily is never a rail card — one puzzle, one place to resume it.
   await expect(page.getByRole('button', { name: /^Continue your puzzle/ })).toHaveCount(0);
 
@@ -121,4 +123,33 @@ test('offline: the row sits below the hero, never over its button', async ({ pag
   const rowBox = (await row.boundingBox())!;
   expect(rowBox.y).toBeGreaterThanOrEqual(heroBox.y + heroBox.height);
   await context.setOffline(false);
+});
+
+test('at 200% type the hero grows to hold its copy, never clipping it', async ({ page }) => {
+  await firstVisitToday(page);
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '32px'; // 200% of the 16px root
+  });
+  const heroBox = (await hero(page).boundingBox())!;
+  const title = (await hero(page).getByRole('heading').boundingBox())!;
+  const start = (await hero(page).getByRole('button', { name: /^Start today/ }).boundingBox())!;
+  expect(title.y).toBeGreaterThanOrEqual(heroBox.y);
+  expect(start.y + start.height).toBeLessThanOrEqual(heroBox.y + heroBox.height);
+});
+
+test('the derived accent tokens follow the daily’s accent, not the root’s', async ({ page }) => {
+  await firstVisitToday(page);
+  const { accent, dim, glow } = await page.evaluate(() => {
+    const shell = document.querySelector('main')!.parentElement!;
+    const style = getComputedStyle(shell);
+    return {
+      accent: shell.style.getPropertyValue('--accent').trim(),
+      dim: style.getPropertyValue('--accent-dim'),
+      glow: style.getPropertyValue('--accent-glow'),
+    };
+  });
+  // A daily accent that happened to equal the fallback would prove nothing.
+  expect(accent.toLowerCase()).not.toBe('#6fa8ff');
+  expect(dim).toContain(accent);
+  expect(glow).toContain(accent);
 });
