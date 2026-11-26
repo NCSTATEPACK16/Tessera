@@ -220,6 +220,8 @@ const FIRST_RUN_PUZZLE_ID = 'first-run';
 export function App(): React.ReactElement {
   const boardRef = useRef<HTMLDivElement>(null);
   const trayRef = useRef<HTMLDivElement>(null);
+  /** The top bar, measured so the board frames below it (spec §5). */
+  const topBarRef = useRef<HTMLElement>(null);
   const shelfRef = useRef<HTMLDivElement>(null);
   const runtime = useRef<PlayRuntime | null>(null);
 
@@ -1459,6 +1461,8 @@ export function App(): React.ReactElement {
           ) : null
         ) : (
           <TopBar
+            rootRef={topBarRef}
+            title={puzzleTitle(playConfig.puzzleId, playConfig.photoId)}
             status={summary.status}
             placed={summary.placed}
             total={summary.total}

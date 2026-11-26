@@ -25,7 +25,8 @@ test.describe('the tray', () => {
     expect(total).toBeGreaterThan(0);
 
     // The real computed number, never the target (§04) — "200" lands on 204.
-    await expect(page.locator('header')).toContainText(/\d+ × \d+/);
+    const cut = await page.evaluate(() => window.__tessera!.summary()!.cut);
+    await expect(page.locator('header')).toContainText(`0 / ${cut.cols * cut.rows}`);
   });
 
   test('virtualises — far fewer chips exist than pieces', async ({ page }) => {

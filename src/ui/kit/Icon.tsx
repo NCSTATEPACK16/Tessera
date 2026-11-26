@@ -41,6 +41,15 @@ export const Icon = {
       <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none" />
     </Svg>
   ),
+  /** Fit: four corner brackets — frame the whole board. */
+  Fit: ({ size = 18 }: IconProps) => (
+    <Svg size={size}>
+      <polyline points="4 9 4 4 9 4" />
+      <polyline points="15 4 20 4 20 9" />
+      <polyline points="20 15 20 20 15 20" />
+      <polyline points="9 20 4 20 4 15" />
+    </Svg>
+  ),
   Lightbulb: ({ size = 20 }: IconProps) => (
     <Svg size={size}>
       <line x1="9" y1="18" x2="15" y2="18" />
