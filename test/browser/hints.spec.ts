@@ -73,13 +73,53 @@ test.describe('hints (§07)', () => {
   });
 });
 
-// v2 spec §5.1: the pill says what is left, so a spend is never a surprise.
-test('a Classic puzzle shows its hint allowance on the pill', async ({ page }) => {
+// Modernize C4: a 52pt lightbulb, its count a numeral badge — what is left,
+// so a spend is never a surprise.
+test('a Classic puzzle: a 52pt lightbulb with its allowance as a badge', async ({ page }) => {
   await BoardPage.open(page);
-  await expect(page.locator('button[aria-label^="Hint"]')).toHaveText('Hint · 3');
+  const hint = page.locator('button[aria-label^="Hint"]');
+  const box = (await hint.boundingBox())!;
+  expect(Math.abs(box.width - 52)).toBeLessThanOrEqual(1);
+  expect(Math.abs(box.height - 52)).toBeLessThanOrEqual(1);
+  await expect(hint.locator('[data-hint-badge]')).toHaveText('3');
+});
+
+test('a spend bumps the badge once, and it settles', async ({ page }) => {
+  const board = await BoardPage.open(page);
+  const [pieceId] = await board.mountedIds();
+  const dropPoint = await board.matPoint();
+  await board.dragOut(pieceId!, dropPoint);
+  await board.tapAt(dropPoint);
+
+  const hint = page.locator('button[aria-label^="Hint"]');
+  await expect(hint).toBeEnabled();
+  const box = (await hint.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(700); // past 450ms, short of 1200: tier 2, which costs one
+  await page.mouse.up();
+
+  // Read in the page, the frame the new badge appears: a round trip per
+  // poll can outlast a 200ms bump.
+  const running = await page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const read = (): void => {
+          const el = document.querySelector('[data-hint-badge]');
+          if (el?.textContent === '2') resolve(el.getAnimations().length);
+          else requestAnimationFrame(read);
+        };
+        read();
+      }),
+  );
+  expect(running).toBe(1);
+  const badge = hint.locator('[data-hint-badge]');
+  // One bump, never an idle loop.
+  await page.waitForTimeout(350);
+  expect(await badge.evaluate((el) => el.getAnimations().length)).toBe(0);
 });
 
 test('a Zen puzzle shows no count — its hints are unlimited', async ({ page }) => {
   await BoardPage.open(page, { mode: 'Zen' });
-  await expect(page.locator('button[aria-label^="Hint"]')).toHaveText('Hint');
+  await expect(page.locator('button[aria-label^="Hint"] [data-hint-badge]')).toHaveCount(0);
 });

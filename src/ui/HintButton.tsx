@@ -1,6 +1,7 @@
 /**
  * The hint button (§07/§12). Bottom-right, thumb-adjacent per the design
- * mockup — the same corner on both dock and phone.
+ * mockup — the same corner on both dock and phone. Modernize C4: a 52pt
+ * lightbulb, its allowance a numeral badge that bumps once when spent.
  *
  * Tap fires Tier 1 (free, unlimited — "the default button behaviour").
  * Holding past a threshold escalates to Tier 2, and further to Tier 3 — the
@@ -16,6 +17,7 @@
 import { useRef } from 'react';
 import type { HintTier } from '@/play/hints';
 import { tierForHoldMs } from '@/play/hints';
+import { Icon } from './kit';
 
 export interface HintButtonProps {
   /** Whether a loose piece has been tapped to receive the hint. */
@@ -83,9 +85,22 @@ export function HintButton({
             ? clearanceBottomPx + 16
             : 'max(16px, env(safe-area-inset-bottom))',
       }}
-      className={`pointer-events-auto z-10 flex touch-target items-center justify-center rounded-full border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-2 text-[var(--ink-primary)] backdrop-blur-[12px] disabled:opacity-40 ${count === 0 ? 'opacity-60' : ''}`}
+      className={`pointer-events-auto z-10 flex h-[52px] w-[52px] items-center justify-center rounded-full border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] text-[var(--ink-primary)] backdrop-blur-[12px] disabled:opacity-40 ${count === 0 ? 'opacity-60' : ''}`}
     >
-      {count === null ? 'Hint' : `Hint · ${count}`}
+      <Icon.Lightbulb size={22} />
+      {count !== null && (
+        // C4: the count as a numeral badge. Keyed on the count, so a spend
+        // remounts it and the bump plays once; nothing ever loops.
+        <span
+          key={count}
+          data-hint-badge
+          aria-hidden
+          className="absolute -right-[2px] -top-[2px] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--accent)] px-[4px] font-data text-1 tabular-nums text-[var(--mat-void)]"
+          style={{ animation: 'badge-bump var(--duration-base) var(--ease-standard)' }}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }

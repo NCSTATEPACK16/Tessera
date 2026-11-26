@@ -214,6 +214,13 @@ button,
 
 /* §16 Track 4: the guided twelve's tray-reveal beat, once, on mount. The
    reduced-motion rule below already zeroes this out — no separate guard. */
+/* Modernize C4: the hint badge on a spend — once, 1 → 1.15 → 1, never idle. */
+@keyframes badge-bump {
+  50% {
+    transform: scale(1.15);
+  }
+}
+
 @keyframes lens-chip-pulse {
   from {
     opacity: 0.3;
