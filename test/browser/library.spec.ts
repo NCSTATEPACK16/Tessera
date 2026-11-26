@@ -84,15 +84,24 @@ test("an early board's thumbnail shows the photo, framed to the board", async ({
       sumSq += y * y;
     }
     const mean = sum / n;
+    // The board frame's own rect — camera maths, not clipped to the viewport.
+    const frame = (
+      window as unknown as {
+        __tessera: { frameRect(): { left: number; top: number; right: number; bottom: number } | null };
+      }
+    ).__tessera.frameRect()!;
     return {
       aspect: bitmap.width / bitmap.height,
+      boardAspect: (frame.right - frame.left) / (frame.bottom - frame.top),
       gridAspect: session!.cols / session!.rows,
       stdDev: Math.sqrt(sumSq / n - mean * mean),
     };
   });
 
-  // Pieces are near-square (0.82–1.22), so the board's aspect is the grid's to
-  // within that band — the viewport's (1280 × 900 less the tray) is not.
+  // The board's own aspect, to the thumbnail's pixel rounding — a capture of
+  // the zoomed camera view would carry the viewport's instead.
+  expect(Math.abs(read.aspect / read.boardAspect - 1)).toBeLessThan(0.02);
+  // And near the grid's, since pieces are near-square (0.82–1.22).
   expect(read.aspect / read.gridAspect).toBeGreaterThan(0.82);
   expect(read.aspect / read.gridAspect).toBeLessThan(1.22);
   // A flat dark rectangle has a deviation of ~0; the unlit photo has texture.

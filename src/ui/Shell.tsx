@@ -11,6 +11,7 @@
 
 import type { ReactNode } from 'react';
 import type { TraySide } from '@/persist/prefs';
+import { AccentContext, accentScope } from './accent-scope';
 import { SettingsSheet } from './SettingsSheet';
 import { TabBar } from './TabBar';
 import type { Tab } from './tabs';
@@ -39,11 +40,8 @@ export function Shell({
   children,
 }: ShellProps): React.ReactElement {
   return (
-    <div
-      className="flex h-full w-full flex-col bg-[var(--mat-void)]"
-      data-accent-scope=""
-      style={{ '--accent': accent, '--color-accent': accent } as React.CSSProperties}
-    >
+    <AccentContext.Provider value={accent}>
+    <div className="flex h-full w-full flex-col bg-[var(--mat-void)]" {...accentScope(accent)}>
       {/* At `md` the bar floats over the bottom of this scroller, so the last
           row clears it: the pill's 49pt plus its 16pt inset and a gutter. */}
       <main
@@ -60,5 +58,6 @@ export function Shell({
         onTraySide={settings.onTraySide}
       />
     </div>
+    </AccentContext.Provider>
   );
 }

@@ -8,12 +8,13 @@
  * closes back to where it was opened. Share and Save operate on the rebuilt PNG.
  */
 
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CompletionRecord } from '@/persist/completions';
 import { curatedPhotoById } from '@/play/curated';
 import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
+import { AccentContext, accentScope } from './accent-scope';
 import { CompletionCard } from './CompletionCard';
 
 export function cardMetaOf(entry: CompletionRecord): CardMeta {
@@ -35,6 +36,12 @@ export function ReopenedCard({
   onClose: () => void;
 }): React.ReactElement | null {
   const [cardBlob, setCardBlob] = useState<Blob | null>(null);
+  // The portal leaves Shell's subtree; carry its accent across.
+  const accent = useContext(AccentContext);
+  // Read through a ref: openers pass an inline arrow, and a dependency on it
+  // would recompose the card on every parent render.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     setCardBlob(null);
@@ -45,9 +52,17 @@ export function ReopenedCard({
       canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
       bitmap.close();
       await document.fonts.ready;
-      const blob = await composeCard(canvas, cardMetaOf(entry));
-      if (!cancelled) setCardBlob(blob);
-    })();
+      return composeCard(canvas, cardMetaOf(entry));
+    })().then(
+      (blob) => {
+        if (!cancelled) setCardBlob(blob);
+      },
+      () => {
+        // A thumbnail that will not decode has no card to show. Closing hands
+        // the tap back, so the opener's button is never left dead.
+        if (!cancelled) closeRef.current();
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -57,7 +72,7 @@ export function ReopenedCard({
   // Portalled to `body`, fixed over the whole window: the tab bar is hidden on
   // the card (v2 §3), and no animating ancestor's transform can re-anchor it.
   return createPortal(
-    <div className="fixed inset-0 z-50 bg-[var(--mat-void)]">
+    <div className="fixed inset-0 z-50 bg-[var(--mat-void)]" {...accentScope(accent)}>
       <CompletionCard
         meta={cardMetaOf(entry)}
         cardBlob={cardBlob}

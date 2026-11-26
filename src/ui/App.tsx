@@ -53,7 +53,7 @@ import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
 import { Library } from './Library';
 import { Today } from './Today';
-import { collectionSummary, heroModel, puzzleTitle, streakModel } from '@/play/today';
+import { collectionSummary, heroModel, photoIdOf, puzzleTitle, streakModel } from '@/play/today';
 import { Shell } from './Shell';
 import { TAB_SCREEN, tabOf } from './tabs';
 import { PauseSheet } from './PauseSheet';
@@ -825,13 +825,12 @@ export function App(): React.ReactElement {
 
   /**
    * The completion card's meta, assembled from the frozen run numbers and the
-   * photo. A resumed daily recovers its `photoId` from the date, since the
-   * snapshot does not store it (§15 attribution still shows on a resumed daily).
+   * photo. A daily saved before snapshots carried `photoId` recovers it from
+   * its own date (`photoIdOf`), so §15 attribution names the right photo.
    */
   const buildCardMeta = useCallback((): CardMeta | null => {
     if (!playConfig) return null;
-    const photoId =
-      playConfig.photoId ?? (isDailyPuzzleId(playConfig.puzzleId) ? daily.photoId : null);
+    const photoId = photoIdOf(playConfig.puzzleId, playConfig.photoId);
     const curated = photoId ? curatedPhotoById(photoId) : undefined;
     return {
       title: curated?.name ?? 'Your photo',
@@ -841,7 +840,7 @@ export function App(): React.ReactElement {
       cleanRun: summary.cleanRun,
       attribution: curated?.licence.attribution ?? null,
     };
-  }, [playConfig, daily, summary.elapsedMs, summary.total, summary.cleanRun]);
+  }, [playConfig, summary.elapsedMs, summary.total, summary.cleanRun]);
 
   /**
    * §15: record the finish, then remove the in-progress entry — in that order,
@@ -855,8 +854,7 @@ export function App(): React.ReactElement {
     const rt = runtime.current;
     await saveInFlight.current.catch(() => {});
     if (rt) {
-      const photoId =
-        playConfig.photoId ?? (isDailyPuzzleId(playConfig.puzzleId) ? daily.photoId : null);
+      const photoId = photoIdOf(playConfig.puzzleId, playConfig.photoId);
       const curated = photoId ? curatedPhotoById(photoId) : undefined;
       await waitForSettled(rt);
       const thumbnailBlob = await captureThumbnail(rt.boardCanvas());
@@ -881,7 +879,7 @@ export function App(): React.ReactElement {
     // covers every action this card offers (Done, New puzzle, or the
     // first-run-only pair below).
     if (playConfig.puzzleId === FIRST_RUN_PUZZLE_ID) void markFirstRunDone();
-  }, [playConfig, daily, summary.elapsedMs, summary.total, summary.cleanRun]);
+  }, [playConfig, summary.elapsedMs, summary.total, summary.cleanRun]);
 
   const clearCard = useCallback((): void => {
     setCardBlob(null);
