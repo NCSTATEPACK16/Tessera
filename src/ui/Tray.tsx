@@ -79,6 +79,8 @@ export interface TrayProps {
   dragging: boolean;
   /** §06's pull-out. The button that calls it is disabled below two pieces. */
   onPullSelection: (pieceIds: readonly PieceId[]) => void;
+  /** Ruling R5: the selection bar's Pin. Ends select mode before it is called. */
+  onPinSelected: (pieceIds: readonly PieceId[]) => void;
   /** §06 D: a plain tap on a pinned shelf chip. */
   onUnpin: (pieceId: PieceId) => void;
   /** Step 5c: the grid's scroll position, captured for the save format. */
@@ -258,6 +260,11 @@ export function Tray(props: TrayProps): React.ReactElement {
   const selectionBar = chrome.selecting && (
     <SelectionBar
       count={chrome.selectedCount}
+      onPin={() => {
+        const ids = selection.current.ordered;
+        exitSelect();
+        props.onPinSelected(ids);
+      }}
       onPullOut={() => {
         const ids = selection.current.ordered;
         exitSelect();

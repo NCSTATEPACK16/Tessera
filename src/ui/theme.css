@@ -157,6 +157,18 @@ button,
   min-width: var(--touch-min);
 }
 
+/*
+ * A tray chip's press (modernize §5): it rises to the finger over 120ms. CSS
+ * on `:active`, never React state — a state flip here would re-render the
+ * chip grid on every press. Reduced motion zeroes the transition globally.
+ */
+.chip {
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+.chip:active {
+  transform: scale(1.06);
+}
+
 /* Section labels: mono, small, uppercase, tracked. */
 .eyebrow {
   font-family: var(--font-data);

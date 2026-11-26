@@ -811,6 +811,30 @@ export class PlayRuntime {
     return id;
   }
 
+  /**
+   * Modernize §5 (ruling R5): the selection bar's Pin — every selected piece
+   * still in the tray goes onto the shelf. The same `TrayModel.pin` a drop on
+   * the shelf reaches through its `return` event, and the same autosave.
+   * Returns how many were newly pinned.
+   */
+  pinPieces(ids: readonly PieceId[]): number {
+    const tray = this.tray;
+    const session = this.session;
+    if (!tray || !session) return 0;
+    let pinned = 0;
+    for (const id of ids) {
+      if (session.locationOf(id) !== 'tray' || tray.isPinned(id)) continue;
+      tray.pin(id);
+      pinned += 1;
+    }
+    if (pinned > 0) {
+      this.bumpTray();
+      this.scheduleSave();
+      this.wake();
+    }
+    return pinned;
+  }
+
   /** §06 D: a plain tap on a pinned shelf chip sends it back, undeployed. */
   unpinFromShelf(pieceId: PieceId): void {
     this.tray?.unpin(pieceId);

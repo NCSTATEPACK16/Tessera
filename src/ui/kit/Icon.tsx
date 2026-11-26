@@ -77,6 +77,13 @@ export const Icon = {
       <rect x="14" y="14" width="7" height="7" rx="1" />
     </Svg>
   ),
+  /** The shelf's label: a pushpin, head up. */
+  Pin: ({ size = 14 }: IconProps) => (
+    <Svg size={size}>
+      <path d="M9 3h6l-1 6 3 3H7l3-3-1-6z" />
+      <line x1="12" y1="12" x2="12" y2="21" />
+    </Svg>
+  ),
   Photo: ({ size = 22 }: IconProps) => (
     <Svg size={size}>
       <rect x="3" y="3" width="18" height="18" rx="2" />

@@ -158,3 +158,28 @@ test.describe('the tray header and lenses', () => {
     expect(fits).toBe(true);
   });
 });
+
+test.describe('the chips', () => {
+  test('frameless, ringed and numbered when selected, and lifted while pressed', { tag: '@phone' }, async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page);
+    const [first, second] = await board.mountedIds();
+    const chip = board.chip(first!);
+    expect(await chip.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe('0px');
+
+    // Held, under the select-hold: the press scale is CSS, never React state.
+    const box = (await chip.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(150);
+    const scale = await chip.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+    await page.mouse.up();
+    expect(Math.abs(scale - 1.06)).toBeLessThan(0.01);
+
+    await board.enterSelect(second!);
+    const selected = board.chipAny(second!);
+    await expect(selected).toContainText('1');
+    expect(await selected.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe('none');
+  });
+});

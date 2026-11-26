@@ -67,6 +67,13 @@ export function PieceChip({
     const h = bitmap.height * scale;
 
     ctx.clearRect(0, 0, element.width, element.height);
+    // One shared soft shadow, drawn once here at mount (ruling R4) — the chip
+    // has no frame, so the shadow is what lifts the silhouette off the felt.
+    // Baked into the pixels rather than a CSS filter, which would be re-run on
+    // every scroll frame for every mounted chip.
+    ctx.shadowColor = 'rgb(0 0 0 / 0.45)';
+    ctx.shadowBlur = 6 * ratio;
+    ctx.shadowOffsetY = 2 * ratio;
     ctx.drawImage(bitmap, (size * ratio - w) / 2, (size * ratio - h) / 2, w, h);
   }, [bitmap, size]);
 
@@ -118,11 +125,13 @@ export function PieceChip({
         userSelect: 'none',
         WebkitTouchCallout: 'none',
       }}
+      // No frame and no fill: the piece on the felt (modernize §5). `chip` is
+      // the press scale, pure CSS (`theme.css`), never React state. Selected
+      // is a ring; the numeral badge below is what it reads on.
       className={[
-        'relative flex items-center justify-center rounded-[8px] border transition-colors',
-        onMat ? 'opacity-40' : 'active:border-[var(--accent)]',
-        pinned && !onMat ? 'border-[var(--accent)]' : 'border-[var(--edge-hair)]',
-        'bg-[var(--mat-felt)]',
+        'relative flex items-center justify-center rounded-[10px]',
+        onMat ? 'opacity-40' : 'chip',
+        badge > 0 ? 'ring-2 ring-[var(--accent)]' : '',
       ].join(' ')}
     >
       <canvas ref={canvas} style={{ width: size, height: size }} className="pointer-events-none" />
@@ -137,9 +146,8 @@ export function PieceChip({
       {pinned && !onMat && (
         // The pinned glyph — drawn, not typed, matching the notch's approach
         // above. A free corner (badge top-right, notch top-left, mat label
-        // bottom-right), because colour is never the only signal: the accent
-        // border is decoration, this shape is what the state actually reads
-        // on, colour vision or not.
+        // bottom-right), because colour is never the only signal: this shape
+        // is what the state reads on, colour vision or not.
         <span
           aria-hidden
           className="pointer-events-none absolute bottom-[2px] left-[3px] h-[9px] w-[7px] bg-[var(--accent)] opacity-80"

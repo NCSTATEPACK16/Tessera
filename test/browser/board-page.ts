@@ -94,7 +94,10 @@ export class BoardPage {
   readonly gridBody: Locator;
   /** Select mode's action bar (§06). Present only while select mode is on. */
   readonly pullOutButton: Locator;
+  readonly pinButton: Locator;
   readonly cancelButton: Locator;
+  /** The bar's `{n} selected` line — the count lives here, not in a button label. */
+  readonly selectedLabel: Locator;
 
   constructor(readonly page: Page) {
     this.tray = page.locator('[aria-label="Pieces"]');
@@ -103,7 +106,9 @@ export class BoardPage {
     this.shelf = page.locator('[aria-label="Shelf"]');
     this.gridBody = page.locator('[aria-label="Pieces"] .overflow-y-auto');
     this.pullOutButton = page.locator('[aria-label="Pieces"] button:has-text("Pull out")');
+    this.pinButton = this.tray.getByRole('button', { name: 'Pin', exact: true });
     this.cancelButton = page.locator('[aria-label="Pieces"] button:has-text("Cancel")');
+    this.selectedLabel = this.tray.getByText(/^\d+ selected$/);
   }
 
   /**
