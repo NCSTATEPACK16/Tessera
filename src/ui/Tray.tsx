@@ -13,23 +13,23 @@
  * the canvas.
  */
 
-import { useEffect, useRef } from 'react';
-import type { PieceId } from '@/cut/types';
-import type { ColourBin } from '@/tray/colour';
-import type { Lens } from '@/tray/lenses';
-import { TraySelection } from '@/tray/selection';
-import { LensChips } from './LensChips';
-import { PieceGrid } from './PieceGrid';
-import { ReferenceButton } from './ReferenceButton';
-import { ReferencePanel } from './ReferencePanel';
-import { SelectionBar } from './SelectionBar';
-import { Shelf } from './Shelf';
-import { Sheet } from './Sheet';
-import { TRAY_MAX_WIDTH, TRAY_MIN_WIDTH, useChrome } from './store';
-import { CHIP_CELL_PX, CHIP_GAP_PX } from './sheet-detents';
-import type { SheetDetent } from './store';
-import type { TraySide } from '@/persist/prefs';
-import { useTrayDrag } from './useTrayDrag';
+import { useEffect, useRef } from "react";
+import type { PieceId } from "@/cut/types";
+import type { ColourBin } from "@/tray/colour";
+import type { Lens } from "@/tray/lenses";
+import { TraySelection } from "@/tray/selection";
+import { LensChips } from "./LensChips";
+import { PieceGrid } from "./PieceGrid";
+import { ReferenceButton } from "./ReferenceButton";
+import { ReferencePanel } from "./ReferencePanel";
+import { SelectionBar } from "./SelectionBar";
+import { Shelf } from "./Shelf";
+import { Sheet } from "./Sheet";
+import { TRAY_MAX_WIDTH, TRAY_MIN_WIDTH, useChrome } from "./store";
+import { CHIP_CELL_PX, CHIP_GAP_PX } from "./sheet-detents";
+import type { SheetDetent } from "./store";
+import type { TraySide } from "@/persist/prefs";
+import { useTrayDrag } from "./useTrayDrag";
 
 /** 44pt floor with air around the thumbnail. */
 const CELL = CHIP_CELL_PX;
@@ -79,6 +79,8 @@ export interface TrayProps {
   dragging: boolean;
   /** §06's pull-out. The button that calls it is disabled below two pieces. */
   onPullSelection: (pieceIds: readonly PieceId[]) => void;
+  /** Modernize §5: the piece that just went home, from `RuntimeSummary.arriving`. */
+  arriving: PieceId | null;
   /** Ruling R5: the selection bar's Pin. Ends select mode before it is called. */
   onPinSelected: (pieceIds: readonly PieceId[]) => void;
   /** §06 D: a plain tap on a pinned shelf chip. */
@@ -161,10 +163,10 @@ export function Tray(props: TrayProps): React.ReactElement {
   useEffect(() => {
     if (!chrome.selecting) return;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') exitSelect();
+      if (event.key === "Escape") exitSelect();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [chrome.selecting]);
 
   const { onChipPointerDown: pressChip } = useTrayDrag({
@@ -175,7 +177,10 @@ export function Tray(props: TrayProps): React.ReactElement {
 
   // A new press is a new gesture, so whatever the last one armed is spent.
   // This is the disarm half of `openedSelect` and the reason it cannot leak.
-  const onChipPointerDown = (pieceId: PieceId, event: React.PointerEvent): void => {
+  const onChipPointerDown = (
+    pieceId: PieceId,
+    event: React.PointerEvent
+  ): void => {
     openedSelect.current = null;
     pressChip(pieceId, event);
   };
@@ -239,22 +244,46 @@ export function Tray(props: TrayProps): React.ReactElement {
     />
   );
 
+  // Ruling R6: a lens change fades the new grid in over 120ms. Imperative and
+  // on the wrapper, so the grid is neither remounted (its scroll position and
+  // virtualisation survive) nor re-rendered by the fade; a virtualised grid
+  // has no old layer worth cross-fading from. The canonical order never moves.
+  const gridWrap = useRef<HTMLDivElement>(null);
+  const lensShown = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${props.lens}:${props.lensArg ?? ""}`;
+    const first = lensShown.current === null;
+    lensShown.current = key;
+    if (first) return;
+    const reduced =
+      globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ??
+      false;
+    if (reduced) return;
+    gridWrap.current?.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 120,
+      easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+    });
+  }, [props.lens, props.lensArg]);
+
   const grid = (
-    <PieceGrid
-      ids={props.ids}
-      cell={CELL}
-      gap={GAP}
-      bitmapOf={props.bitmapOf}
-      isEdge={props.isEdge}
-      isOnMat={props.isOnMat}
-      onChipPointerDown={onChipPointerDown}
-      onLocate={props.onLocate}
-      selecting={chrome.selecting}
-      badgeOf={(id) => selection.current.badgeOf(id)}
-      onChipClick={toggleSelected}
-      onScroll={props.onScroll}
-      initialScrollTop={props.initialScrollTop}
-    />
+    <div ref={gridWrap} className="flex min-h-0 flex-1 flex-col">
+      <PieceGrid
+        ids={props.ids}
+        cell={CELL}
+        gap={GAP}
+        bitmapOf={props.bitmapOf}
+        isEdge={props.isEdge}
+        isOnMat={props.isOnMat}
+        onChipPointerDown={onChipPointerDown}
+        onLocate={props.onLocate}
+        selecting={chrome.selecting}
+        badgeOf={(id) => selection.current.badgeOf(id)}
+        onChipClick={toggleSelected}
+        onScroll={props.onScroll}
+        initialScrollTop={props.initialScrollTop}
+        arriving={props.arriving}
+      />
+    </div>
   );
 
   const selectionBar = chrome.selecting && (
@@ -305,14 +334,20 @@ export function Tray(props: TrayProps): React.ReactElement {
     <aside
       ref={props.rootRef}
       aria-label="Pieces"
-      className={`relative flex h-full shrink-0 flex-col border-[var(--edge-hair)] bg-[var(--mat-raised)] ${props.side === 'left' ? 'border-r' : 'border-l'}`}
+      className={`relative flex h-full shrink-0 flex-col border-[var(--edge-hair)] bg-[var(--mat-raised)] ${
+        props.side === "left" ? "border-r" : "border-l"
+      }`}
       style={
-        props.side === 'left'
-          ? { width: props.width, paddingLeft: 'env(safe-area-inset-left)' }
-          : { width: props.width, paddingRight: 'env(safe-area-inset-right)' }
+        props.side === "left"
+          ? { width: props.width, paddingLeft: "env(safe-area-inset-left)" }
+          : { width: props.width, paddingRight: "env(safe-area-inset-right)" }
       }
     >
-      <ResizeEdge width={props.width} side={props.side} onWidth={props.onWidth} />
+      <ResizeEdge
+        width={props.width}
+        side={props.side}
+        onWidth={props.onWidth}
+      />
       <div className="flex shrink-0 flex-col gap-[12px] px-[12px] pb-[12px] pt-[16px]">
         {title}
         {lenses}
@@ -346,8 +381,10 @@ function ResizeEdge({
       aria-valuemax={TRAY_MAX_WIDTH}
       // Wider than it looks: a 1px hairline is a 1px target, and §13 puts the
       // floor at 44pt for everything.
-      className={`absolute top-0 z-10 h-full w-[20px] cursor-col-resize ${side === 'left' ? 'right-[-10px]' : 'left-[-10px]'}`}
-      style={{ touchAction: 'none' }}
+      className={`absolute top-0 z-10 h-full w-[20px] cursor-col-resize ${
+        side === "left" ? "right-[-10px]" : "left-[-10px]"
+      }`}
+      style={{ touchAction: "none" }}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
         origin.current = { x: event.clientX, width };
@@ -358,7 +395,7 @@ function ResizeEdge({
         // The inner edge faces the board: dragging toward it widens the tray,
         // which is leftward for a right dock and rightward for a left one.
         const travel = event.clientX - start.x;
-        onWidth(start.width + (side === 'left' ? travel : -travel));
+        onWidth(start.width + (side === "left" ? travel : -travel));
       }}
       onPointerUp={() => {
         origin.current = null;

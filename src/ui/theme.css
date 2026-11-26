@@ -169,6 +169,14 @@ button,
   transform: scale(1.06);
 }
 
+/* A returned piece's chip, as its flight home lands — once, on mount. */
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
 /* Section labels: mono, small, uppercase, tracked. */
 .eyebrow {
   font-family: var(--font-data);

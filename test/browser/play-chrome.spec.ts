@@ -192,3 +192,65 @@ test.describe('the chips', () => {
     expect(await selected.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe('none');
   });
 });
+
+test.describe('a piece dropped on the tray', () => {
+  /**
+   * Drag a piece already on the mat onto the tray's handle row — inside the
+   * tray at every detent and above the shelf, so it returns rather than pins —
+   * and report, from the page, how many animations its chip carries on the
+   * first frame it exists. Read in-page: the chip-in is 320ms all told, and a
+   * round trip under load can outlast it.
+   */
+  async function dropOnTray(page: import('@playwright/test').Page, board: BoardPage): Promise<{
+    id: number;
+    animations: number;
+  }> {
+    const id = (await board.mountedIds())[0]!;
+    const mat = await board.matPoint();
+    await board.dragOut(id, mat);
+    await board.waitForIdle();
+
+    const tray = (await board.tray.boundingBox())!;
+    await page.mouse.move(mat.x, mat.y);
+    await page.mouse.down();
+    await page.mouse.move(mat.x - 30, mat.y - 20, { steps: 8 });
+    await page.mouse.move(tray.x + tray.width / 2, tray.y + 10, { steps: 12 });
+    const probe = page.evaluate(
+      (pieceId) =>
+        new Promise<number>((res) => {
+          const started = performance.now();
+          const look = (): void => {
+            const chip = document.querySelector(
+              `[aria-label="Pieces"] button[aria-label="Piece ${pieceId}"]`,
+            );
+            if (chip) res(chip.getAnimations().length);
+            else if (performance.now() - started > 2000) res(-1);
+            else requestAnimationFrame(look);
+          };
+          look();
+        }),
+      id,
+    );
+    await page.mouse.up();
+    return { id, animations: await probe };
+  }
+
+  test('is in the tray at once, homes, and lets the board go idle', { tag: '@phone' }, async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page, { pieceCount: 50, mode: 'Zen' });
+    const { animations } = await dropOnTray(page, board);
+    expect(animations).toBe(1);
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => (window as unknown as { __tessera: { idle(): boolean } }).__tessera.idle())).toBe(true);
+  });
+
+  test('under reduced motion, arrives with no animation at all', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const board = await BoardPage.open(page, { pieceCount: 50, mode: 'Zen' });
+    const { animations } = await dropOnTray(page, board);
+    expect(animations).toBe(0);
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => (window as unknown as { __tessera: { idle(): boolean } }).__tessera.idle())).toBe(true);
+  });
+});

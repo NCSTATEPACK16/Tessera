@@ -77,6 +77,7 @@ import type { StreakState } from '@/daily/streak';
 import { loadStreak, saveStreak } from '@/persist/daily';
 import { DailyHub } from './DailyHub';
 import type { StreakTone } from './StreakFlame';
+import { CHIP_CELL_PX } from './sheet-detents';
 import { DEFAULT_PUZZLE_CONFIG } from '@/play/setup';
 import { hintsAvailable } from '@/play/hints';
 import { HEIC_HEAD_BYTES, looksLikeHeic, namedLikeHeic } from '@/play/heic';
@@ -348,6 +349,7 @@ export function App(): React.ReactElement {
     regionUnlocked: false,
     regionRevision: 0,
     trayRevision: 0,
+    arriving: null,
     hintTarget: null,
     hintsUsed: 0,
     hintsLeft: null,
@@ -1026,6 +1028,8 @@ export function App(): React.ReactElement {
       },
       isOverTray: (client) => overTray.current(client),
       isOverShelf: (client) => overShelf.current(client),
+      trayRect: () => trayRef.current?.getBoundingClientRect() ?? null,
+      chipPx: CHIP_CELL_PX,
       onDragStateChange: (isDragging) => {
         // §06: dragging a piece out auto-collapses the sheet to peek and
         // re-expands on release, so the mat is never obscured mid-drag.
@@ -1612,6 +1616,7 @@ export function App(): React.ReactElement {
             runtime.current?.pullOut(pieceIds);
           }}
           onPinSelected={(pieceIds) => runtime.current?.pinPieces(pieceIds)}
+          arriving={summary.arriving}
           onUnpin={(id) => runtime.current?.unpinFromShelf(id)}
           onScroll={(top) => {
             trayScrollRef.current = top;

@@ -16,6 +16,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { PieceId } from '@/cut/types';
+import { CHIP_INSET } from '@/play/handoff';
 
 export interface PieceChipProps {
   pieceId: PieceId;
@@ -30,6 +31,11 @@ export interface PieceChipProps {
   badge?: number;
   pinned?: boolean;
   selecting?: boolean;
+  /**
+   * Modernize §5: this chip's piece was just dropped on the tray. It fades in
+   * after the 200ms flight home (`handoff.ts`) — once, on mount, never idle.
+   */
+  arriving?: boolean;
 }
 
 export function PieceChip({
@@ -43,6 +49,7 @@ export function PieceChip({
   badge = 0,
   pinned,
   selecting,
+  arriving = false,
 }: PieceChipProps): React.ReactElement {
   const canvas = useRef<HTMLCanvasElement>(null);
 
@@ -60,7 +67,7 @@ export function PieceChip({
     // Fit the piece inside the cell with a little air, preserving its aspect —
     // a squashed thumbnail is unrecognisable against the piece on the mat, and
     // recognising it is the entire job of this element.
-    const inset = size * 0.1 * ratio;
+    const inset = size * CHIP_INSET * ratio;
     const box = size * ratio - inset * 2;
     const scale = Math.min(box / bitmap.width, box / bitmap.height);
     const w = bitmap.width * scale;
@@ -124,6 +131,9 @@ export function PieceChip({
         WebkitUserSelect: 'none',
         userSelect: 'none',
         WebkitTouchCallout: 'none',
+        ...(arriving
+          ? { animation: 'chip-in var(--duration-fast) var(--ease-standard) 200ms both' }
+          : {}),
       }}
       // No frame and no fill: the piece on the felt (modernize §5). `chip` is
       // the press scale, pure CSS (`theme.css`), never React state. Selected

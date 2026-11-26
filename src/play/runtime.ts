@@ -22,6 +22,7 @@ import { BoardControls } from '@/input/board-controls';
 import { hintsLeft, msUntilNextHint } from '@/play/hints';
 import type { HintTier, PuzzleMode } from '@/play/hints';
 import { firstRunScatter, gridLayout } from '@/play/layout';
+import { CHIP_INSET, HANDOFF_MS, handoffLiftScale, homingRect } from '@/play/handoff';
 import { PlaySession } from '@/play/session';
 import type { PlayEvent } from '@/play/session';
 import { haptic } from '@/platform';
@@ -89,6 +90,12 @@ export interface RuntimeSummary {
   regionRevision: number;
   /** Ticks whenever a piece changed hands, so the tray re-reads itself. */
   trayRevision: number;
+  /**
+   * Modernize §5: the piece that just went home on this tray revision, so its
+   * chip can arrive as the flight lands. Null on every other revision, and
+   * always null under reduced motion.
+   */
+  arriving: PieceId | null;
   /** §07: the loose mat piece a hint would act on, or null. Set by a tap. */
   hintTarget: PieceId | null;
   hintsUsed: number;
@@ -150,6 +157,14 @@ export interface PlayRuntimeOptions {
    * exists, and `board-controls.ts` gains nothing.
    */
   isOverShelf?: (client: Point) => boolean;
+  /**
+   * Where a piece dropped on the tray flies to (modernize §5), in viewport
+   * coordinates, and a tray cell's size in CSS px. Without both, the piece is
+   * simply home on the release tick with no flight — which is also what
+   * reduced motion gets.
+   */
+  trayRect?: () => DOMRect | null;
+  chipPx?: number;
   /** The tray collapses to peek while a piece is out of it (§06). */
   onDragStateChange?: (dragging: boolean) => void;
   /**
@@ -182,6 +197,10 @@ export class PlayRuntime {
 
   private pumping = false;
   private lastFrameMs = 0;
+  /** A chip just adopted from the tray, growing to the lift (`handoff.ts`). */
+  private handoff: { t0: number; start: number } | null = null;
+  /** Pictures of pieces already home, still flying there (`handoff.ts`). */
+  private homing: HomingFlight[] = [];
   private regionTimer: ReturnType<typeof setTimeout> | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private hintTimer: ReturnType<typeof setTimeout> | null = null;
@@ -214,6 +233,7 @@ export class PlayRuntime {
     regionUnlocked: false,
     regionRevision: 0,
     trayRevision: 0,
+    arriving: null,
     hintTarget: null,
     hintsUsed: 0,
     hintsLeft: null,
@@ -542,6 +562,7 @@ export class PlayRuntime {
     // dragged to the mat is simply on the mat, and returning it does not
     // restore the pin — one less piece of state to keep coherent.
     this.tray?.unpin(pieceId);
+    this.startHandoff();
     this.options.onDragStateChange?.(true);
     this.bumpTray();
     this.wake();
@@ -615,7 +636,8 @@ export class PlayRuntime {
    * a canvas with a piece-shaped hole in it.
    */
   get animating(): boolean {
-    return this.session?.animating ?? false;
+    // A homing flight is on the dynamic layer only, like a spring.
+    return (this.session?.animating ?? false) || this.homing.length > 0;
   }
 
   /**
@@ -1005,8 +1027,14 @@ export class PlayRuntime {
         // release path stays unaware a shelf exists; `board-controls.ts` gains
         // nothing.
         const pin = this.options.isOverShelf?.(client) ?? false;
+        // Read before the return: once home, the piece is no longer in hand.
+        const flight = this.homingFlight();
         const returned = session.returnToTray(clusterId, pin);
-        if (returned) this.bumpTray();
+        if (returned) {
+          if (flight) this.homing.push(flight.ghost);
+          this.bumpTray(flight?.id ?? null);
+          this.wake();
+        }
         return returned;
       },
       onTap: (clusterId) => this.onBoardTap(clusterId),
@@ -1173,8 +1201,52 @@ export class PlayRuntime {
     if (this.controls) this.controls.camera.atFit = true;
   }
 
+  /** Modernize §5: the lift starts at the chip's size, not the piece's (`handoff.ts`). */
+  private startHandoff(): void {
+    this.handoff = null;
+    const chipPx = this.options.chipPx;
+    const held = this.session?.scene().held[0];
+    if (!chipPx || !held || prefersReducedMotion()) return;
+    // The chip fits the same bitmap into its cell less `CHIP_INSET` a side.
+    const chip = chipPx * (1 - 2 * CHIP_INSET);
+    const start = chip / (Math.max(held.w, held.h) * this.camera.zoom);
+    this.handoff = { t0: performance.now(), start };
+  }
+
+  /** The piece in hand, as a picture flying from the lift to the tray's centre. */
+  private homingFlight(): { id: PieceId; ghost: HomingFlight } | null {
+    const trayRect = this.options.trayRect?.();
+    const chipPx = this.options.chipPx;
+    const scene = this.session?.scene();
+    const piece = scene?.held[0];
+    if (!trayRect || !chipPx || !scene || !piece || prefersReducedMotion()) return null;
+
+    // From exactly where the lift draws it: scaled about its centre, raised.
+    const { scale, offsetPx } = scene.heldLift;
+    const centre = worldToScreen(this.camera, this.viewport, {
+      x: piece.x + piece.w / 2,
+      y: piece.y + piece.h / 2,
+    });
+    const w = piece.w * this.camera.zoom * scale;
+    const h = piece.h * this.camera.zoom * scale;
+    const from = { x: centre.x - w / 2, y: centre.y - h / 2 - offsetPx, w, h };
+
+    // To the tray's centre, at the size its chip will draw it.
+    const container = this.options.container.getBoundingClientRect();
+    const fit = (chipPx * (1 - 2 * CHIP_INSET)) / Math.max(piece.w, piece.h);
+    const tw = piece.w * fit;
+    const th = piece.h * fit;
+    const to = {
+      x: trayRect.left + trayRect.width / 2 - container.left - tw / 2,
+      y: trayRect.top + trayRect.height / 2 - container.top - th / 2,
+      w: tw,
+      h: th,
+    };
+    return { id: piece.id, ghost: { bitmap: piece.bitmap, from, to, t0: performance.now() } };
+  }
+
   private render(): void {
-    const scene: Scene = this.session
+    let scene: Scene = this.session
       ? this.session.scene()
       : {
           ...emptyScene(),
@@ -1182,6 +1254,25 @@ export class PlayRuntime {
           boardH: this.boardH,
           loose: [...this.materialising],
         };
+    const now = performance.now();
+    if (this.handoff) {
+      const elapsed = now - this.handoff.t0;
+      if (elapsed >= HANDOFF_MS || scene.held.length === 0) this.handoff = null;
+      else {
+        const scale = handoffLiftScale(elapsed, this.handoff.start, scene.heldLift.scale);
+        scene = { ...scene, heldLift: { ...scene.heldLift, scale } };
+      }
+    }
+    if (this.homing.length > 0) {
+      const ghosts: { bitmap: ImageBitmap; rect: Rect }[] = [];
+      this.homing = this.homing.filter((flight) => {
+        const rect = homingRect(flight.from, flight.to, now - flight.t0);
+        if (rect) ghosts.push({ bitmap: flight.bitmap, rect });
+        return rect !== null;
+      });
+      // Called with the empty list too: that is what clears the last frame.
+      this.renderer.setHoming(ghosts);
+    }
     this.renderer.draw(scene, this.camera);
   }
 
@@ -1209,7 +1300,7 @@ export class PlayRuntime {
 
     this.render();
 
-    if (stillMoving || handDown) {
+    if (stillMoving || handDown || this.homing.length > 0) {
       requestAnimationFrame(this.pump);
     } else {
       this.pumping = false;
@@ -1239,8 +1330,8 @@ export class PlayRuntime {
     }, REGION_SETTLE_MS);
   }
 
-  private bumpTray(): void {
-    this.patch({ trayRevision: this.summary.trayRevision + 1 });
+  private bumpTray(arriving: PieceId | null = null): void {
+    this.patch({ trayRevision: this.summary.trayRevision + 1, arriving });
   }
 
   /**
@@ -1278,4 +1369,16 @@ export class PlayRuntime {
     Object.assign(this.summary, next);
     this.options.notify({ ...this.summary, cut: { ...this.summary.cut } });
   }
+}
+
+function prefersReducedMotion(): boolean {
+  return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+}
+
+/** A piece already home, drawn on its way there (`handoff.ts`). */
+interface HomingFlight {
+  bitmap: ImageBitmap;
+  from: Rect;
+  to: Rect;
+  t0: number;
 }
