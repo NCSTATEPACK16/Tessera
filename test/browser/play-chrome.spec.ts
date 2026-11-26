@@ -169,12 +169,21 @@ test.describe('the chips', () => {
     expect(await chip.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe('0px');
 
     // Held, under the select-hold: the press scale is CSS, never React state.
+    // A handle, and the 150ms waited in-page: under load a round trip can
+    // outlast the 450ms select-hold, which relabels the chip out from under a
+    // locator (the scale is the same either way — `:active` is still held).
+    const handle = (await chip.elementHandle())!;
     const box = (await chip.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
-    await page.waitForTimeout(150);
-    const scale = await chip.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+    const scale = await handle.evaluate(
+      (el) =>
+        new Promise<number>((res) =>
+          setTimeout(() => res(new DOMMatrix(getComputedStyle(el).transform).a), 150),
+        ),
+    );
     await page.mouse.up();
+    await page.keyboard.press('Escape');
     expect(Math.abs(scale - 1.06)).toBeLessThan(0.01);
 
     await board.enterSelect(second!);
