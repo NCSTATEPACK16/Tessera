@@ -56,6 +56,7 @@ import { Today } from './Today';
 import { collectionSummary, heroModel, photoIdOf, puzzleTitle, streakModel } from '@/play/today';
 import { Shell } from './Shell';
 import { TAB_SCREEN, tabOf } from './tabs';
+import { PlayScreen } from './PlayScreen';
 import { PauseSheet } from './PauseSheet';
 import { CompletionCard } from './CompletionCard';
 import { CollectionWall } from './CollectionWall';
@@ -1394,13 +1395,10 @@ export function App(): React.ReactElement {
   }
 
   return (
-    // v2 spec §5.3: a left dock is the same row, reversed — the tray stays after
-    // the board in the DOM, so focus order and the sheet path are unchanged.
-    <div
-      className={`flex h-full w-full bg-[var(--mat-void)] ${docked && chrome.traySide === 'left' ? 'flex-row-reverse' : ''}`}
-    >
-      <div className="relative min-w-0 flex-1">
-        {/* The canvas layers live in here and React never touches them again. */}
+    <PlayScreen
+      reversed={docked && chrome.traySide === 'left'}
+      /* The canvas layers live in here and React never touches them again. */
+      board={
         <div
           ref={boardRef}
           className="absolute inset-0"
@@ -1425,8 +1423,8 @@ export function App(): React.ReactElement {
             if (id !== null && id !== undefined) setRenaming(id);
           }}
         />
-
-        {summary.status === 'complete' ? (
+      }
+      header={summary.status === 'complete' ? (
           cardBlob && cardMeta ? (
             <CompletionCard
               meta={cardMeta}
@@ -1469,8 +1467,7 @@ export function App(): React.ReactElement {
             onPause={() => setPauseOpen(true)}
           />
         )}
-
-        {summary.status === 'playing' && (
+      hint={summary.status === 'playing' && (
           <HintButton
             hasTarget={summary.hintTarget !== null}
             count={summary.hintsLeft}
@@ -1479,7 +1476,8 @@ export function App(): React.ReactElement {
             corner={docked && chrome.traySide === 'left' ? 'left' : 'right'}
           />
         )}
-
+      overlays={
+        <>
         {renaming !== null && (
           <form
             className="absolute left-1/2 top-[64px] flex -translate-x-1/2 gap-[8px] rounded-[8px] border border-[var(--edge-hair)] bg-[var(--mat-felt)] p-[8px]"
@@ -1522,9 +1520,9 @@ export function App(): React.ReactElement {
             }}
           />
         )}
-      </div>
-
-      {/* §16: the tray is genuinely not mounted before the reveal beat —
+        </>
+      }
+      /* §16: the tray is genuinely not mounted before the reveal beat —
           "slides in on its own" means absent, not collapsed. Ordinary play
           (screen !== 'first-run') is unaffected.
 
@@ -1534,8 +1532,8 @@ export function App(): React.ReactElement {
           beside or behind the completion card (docked: a flex sibling
           eating half the screen; phone: the sheet's own overlay), which is
           how the reference thumbnail ended up visible next to "Your photo"
-          on the completion screen. */}
-      {summary.status !== 'complete' && (screen !== 'first-run' || trayRevealed) && (
+          on the completion screen. */
+      tray={summary.status !== 'complete' && (screen !== 'first-run' || trayRevealed) && (
         <Tray
           rootRef={trayRef}
           shelfRef={shelfRef}
@@ -1580,10 +1578,9 @@ export function App(): React.ReactElement {
           loadReferenceBitmap={loadReferenceBitmap}
         />
       )}
-
-      {/* An overlay, never a replacement: the board stays mounted underneath,
-          so pausing does not tear down `PlayRuntime` and re-cut on resume. */}
-      {pauseOpen && (
+      /* An overlay, never a replacement: the board stays mounted underneath,
+          so pausing does not tear down `PlayRuntime` and re-cut on resume. */
+      pause={pauseOpen && (
         <PauseSheet
           puzzleId={playConfig.puzzleId}
           onResume={() => setPauseOpen(false)}
@@ -1605,6 +1602,6 @@ export function App(): React.ReactElement {
           }}
         />
       )}
-    </div>
+    />
   );
 }
