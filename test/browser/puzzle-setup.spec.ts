@@ -43,12 +43,12 @@ async function toSetupScreen(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'More options' }).click();
 }
 
-/** The cut's real grid, off the TopBar — never the target (CLAUDE.md). */
+/** The cut's real grid — never the target (CLAUDE.md) — and the TopBar's N agrees. */
 async function cutTotal(page: Page): Promise<number> {
-  const text = await page.getByText(/×/).first().textContent();
-  const [cols, rows] = (text ?? '').split('×').map((s) => Number(s.trim()));
-  expect(Number.isFinite(cols) && Number.isFinite(rows)).toBe(true);
-  return (cols as number) * (rows as number);
+  const cut = await page.evaluate(() => window.__tessera!.summary()!.cut);
+  const total = cut.cols * cut.rows;
+  await expect(page.locator('header')).toContainText(`/ ${total}`);
+  return total;
 }
 
 test.describe('puzzle setup', () => {

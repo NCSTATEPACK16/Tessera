@@ -9,7 +9,9 @@ import type { Size } from '@/core/geom';
 import {
   clampZoom,
   createCamera,
+  easeCamera,
   fitCamera,
+  fitCameraInRect,
   fitCameraToBounds,
   fitCameraToContent,
   fitScale,
@@ -319,5 +321,62 @@ describe('fitCameraToContent', () => {
     const { tl, br } = boardOnScreen(cam, PHONE);
     expect(tl.y).toBeGreaterThanOrEqual(0);
     expect(br.y).toBeLessThanOrEqual(PHONE.h);
+  });
+});
+
+describe('fitCameraInRect (modernize §5: the board framed above the sheet)', () => {
+  const viewport: Size = { w: 402, h: 800 };
+  // A top bar to 80px, a sheet over the bottom 300.
+  const visible = { x: 0, y: 80, w: 402, h: 420 };
+  const board = { w: 12, h: 8 };
+  const bounds = { x: 0, y: 0, w: 12, h: 8 };
+
+  it('centres the content on the visible rect, and keeps it inside', () => {
+    const camera = fitCameraInRect(viewport, visible, bounds, board);
+    const centre = worldToScreen(camera, viewport, { x: 6, y: 4 });
+    expect(centre.x).toBeCloseTo(visible.x + visible.w / 2);
+    expect(centre.y).toBeCloseTo(visible.y + visible.h / 2);
+    const tl = worldToScreen(camera, viewport, { x: 0, y: 0 });
+    const br = worldToScreen(camera, viewport, { x: 12, y: 8 });
+    expect(tl.x).toBeGreaterThanOrEqual(visible.x - 1e-6);
+    expect(tl.y).toBeGreaterThanOrEqual(visible.y - 1e-6);
+    expect(br.x).toBeLessThanOrEqual(visible.x + visible.w + 1e-6);
+    expect(br.y).toBeLessThanOrEqual(visible.y + visible.h + 1e-6);
+  });
+
+  it('measures its zoom floor against the whole viewport (R1), never below 0.5×', () => {
+    const sliver = { x: 0, y: 700, w: 402, h: 20 };
+    const camera = fitCameraInRect(viewport, sliver, bounds, board);
+    expect(camera.zoom).toBeCloseTo(0.5 * fitScale(viewport, board.w, board.h));
+  });
+
+  it('is fitCameraToContent when the visible rect is the whole viewport', () => {
+    const whole = { x: 0, y: 0, w: viewport.w, h: viewport.h };
+    expect(fitCameraInRect(viewport, whole, bounds, board)).toEqual(
+      fitCameraToContent(viewport, bounds, board),
+    );
+  });
+});
+
+describe('easeCamera', () => {
+  const from = { x: 0, y: 0, zoom: 10 };
+  const to = { x: 6, y: 3, zoom: 40 };
+
+  it('is exact at both ends', () => {
+    expect(easeCamera(from, to, 0)).toEqual(from);
+    expect(easeCamera(from, to, 1)).toEqual(to);
+  });
+
+  it('moves one way only, and zooms in log space', () => {
+    let last = -Infinity;
+    for (let i = 0; i <= 20; i++) {
+      const { x } = easeCamera(from, to, i / 20);
+      expect(x).toBeGreaterThanOrEqual(last);
+      last = x;
+    }
+    // Halfway through the eased curve, zoom is the geometric mix at that progress.
+    const mid = easeCamera(from, to, 0.5);
+    const progress = mid.x / to.x;
+    expect(mid.zoom).toBeCloseTo(10 * 4 ** progress, 6);
   });
 });

@@ -45,7 +45,8 @@ async function openFreshProfile(page: Page): Promise<void> {
 async function remaining(page: Page): Promise<number> {
   const text = await page.locator('header').innerText();
   const match = text.match(/(\d+)\s*\/\s*(\d+)/);
-  if (!match) throw new Error(`no progress in header "${text}"`);
+  // "Cutting", before the total is known: not yet a number, so a poll retries.
+  if (!match) return Number.NaN;
   return Number(match[2]) - Number(match[1]);
 }
 

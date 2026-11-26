@@ -19,10 +19,10 @@ describe('topBarModel', () => {
     });
   });
 
-  it('cutting counts the cut, and the line stays empty', () => {
+  it('cutting already reads n / N once the total is known; the line stays empty', () => {
     expect(
       topBarModel({ status: 'cutting', placed: 0, total: 104, cut: { done: 12, total: 104 } }),
-    ).toEqual({ count: 'Cutting 12 of 104', progress: 0 });
+    ).toEqual({ count: '0 / 104', progress: 0 });
     expect(topBarModel({ status: 'cutting', placed: 0, total: 0, cut }).count).toBe('Cutting');
   });
 

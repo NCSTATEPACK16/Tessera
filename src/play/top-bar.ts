@@ -19,8 +19,11 @@ export interface TopBarModel {
 }
 
 export function topBarModel({ status, placed, total, cut }: TopBarInput): TopBarModel {
+  // While the cut streams in, the count is already the real one: the player
+  // (and anything reading the bar) sees n / N from the first frame it exists.
+  // The cut's own progress is the board's to show (spec §6), not this line's.
   if (status === 'cutting') {
-    return { count: cut.total > 0 ? `Cutting ${cut.done} of ${cut.total}` : 'Cutting', progress: 0 };
+    return { count: total > 0 ? `${placed} / ${total}` : 'Cutting', progress: 0 };
   }
   if (status === 'failed') return { count: 'The cut failed', progress: 0 };
   return { count: `${placed} / ${total}`, progress: total > 0 ? placed / total : 0 };

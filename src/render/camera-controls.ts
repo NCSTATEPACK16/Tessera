@@ -11,7 +11,14 @@
 
 import type { Point, Rect, Size } from '@/core/geom';
 import type { Camera } from './camera';
-import { clampZoom, fitCamera, fitCameraToContent, fitScale, MIN_ZOOM, zoomAbout } from './camera';
+import {
+  clampZoom,
+  easeCamera,
+  fitCameraInRect,
+  fitScale,
+  MIN_ZOOM,
+  zoomAbout,
+} from './camera';
 
 export interface CameraControlsOptions {
   element: HTMLElement;
@@ -25,6 +32,12 @@ export interface CameraControlsOptions {
    * the board plus everything scattered around it. Falls back to the board.
    */
   getFitBounds?: () => Rect;
+  /**
+   * Modernize §5: the part of the viewport the player can see — below the top
+   * bar, above the phone sheet — in screen px. Fit frames into this. Falls
+   * back to the whole viewport.
+   */
+  getVisibleRect?: () => Rect;
   /**
    * Raise the zoom floor above the default 0.5× — large-piece mode passes
    * `REGION_LENS_ZOOM`. Defaults to `MIN_ZOOM`.
@@ -40,6 +53,8 @@ export interface CameraControlsOptions {
 }
 
 const DOUBLE_TAP_MS = 300;
+/** §5: the eased refit, `--duration-slow`. */
+const FIT_EASE_MS = 320;
 const DOUBLE_TAP_SLOP = 24;
 
 export class CameraControls {
@@ -99,18 +114,62 @@ export class CameraControls {
    * player is not allowed to return to once they have zoomed in, which reads as
    * the camera fighting them.
    */
-  fit(): void {
-    const viewport = this.options.getViewport();
-    const bounds = this.options.getFitBounds?.();
-    if (!bounds || bounds.w <= 0 || bounds.h <= 0) {
-      const board = this.options.getBoard();
-      this.options.setCamera(fitCamera(viewport, board.w, board.h));
+  fit({ animate = false }: { animate?: boolean } = {}): void {
+    this.cancelEase();
+    const target = this.fitTarget();
+    this.atFit = true;
+    const reduced =
+      globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    if (!animate || reduced) {
+      this.options.setCamera(target);
       return;
     }
+    // Finite by construction: the last frame lands exactly on `target` and
+    // schedules nothing after it, so an idle board still draws nothing.
+    const from = this.options.getCamera();
+    const start = performance.now();
+    const step = (now: number): void => {
+      const t = Math.min(1, (now - start) / FIT_EASE_MS);
+      this.options.setCamera(easeCamera(from, target, t));
+      this.easeFrame = t < 1 ? requestAnimationFrame(step) : null;
+    };
+    this.easeFrame = requestAnimationFrame(step);
+  }
 
-    this.options.setCamera(
-      fitCameraToContent(viewport, bounds, this.options.getBoard(), this.minRelativeZoom),
-    );
+  /**
+   * True while the camera is still where the last fit put it. Any pan, zoom or
+   * double-tap the player makes clears it, so a sheet opening never throws
+   * away a view they chose (ruling R2).
+   */
+  atFit = false;
+
+  private easeFrame: number | null = null;
+
+  private cancelEase(): void {
+    if (this.easeFrame !== null) cancelAnimationFrame(this.easeFrame);
+    this.easeFrame = null;
+  }
+
+  /** A gesture took the camera: it is the player's now, not the fit's. */
+  private take(camera: Camera): void {
+    this.cancelEase();
+    this.atFit = false;
+    this.options.setCamera(camera);
+  }
+
+  private fitTarget(): Camera {
+    const viewport = this.options.getViewport();
+    const board = this.options.getBoard();
+    const found = this.options.getFitBounds?.();
+    const bounds =
+      found && found.w > 0 && found.h > 0 ? found : { x: 0, y: 0, w: board.w, h: board.h };
+    const visible = this.options.getVisibleRect?.() ?? {
+      x: 0,
+      y: 0,
+      w: viewport.w,
+      h: viewport.h,
+    };
+    return fitCameraInRect(viewport, visible, bounds, board, this.minRelativeZoom);
   }
 
   /** Pixels per world unit at 1×. The reference every clamp here measures against. */
@@ -125,6 +184,11 @@ export class CameraControls {
   }
 
   private readonly onPointerDown = (event: PointerEvent): void => {
+    // A touch mid-refit stops the camera where it is, and it is the player's.
+    if (this.easeFrame !== null) {
+      this.cancelEase();
+      this.atFit = false;
+    }
     this.options.element.setPointerCapture(event.pointerId);
     const p = this.local(event);
     this.pointers.set(event.pointerId, p);
@@ -173,7 +237,7 @@ export class CameraControls {
       );
     }
 
-    this.options.setCamera(next);
+    this.take(next);
     this.lastCentroid = centroid;
     this.lastSpread = spread;
   };
@@ -190,7 +254,7 @@ export class CameraControls {
     const camera = this.options.getCamera();
     const fit = this.fitScale();
     const factor = Math.exp(-event.deltaY * 0.0015);
-    this.options.setCamera(
+    this.take(
       zoomAbout(
         camera,
         this.options.getViewport(),

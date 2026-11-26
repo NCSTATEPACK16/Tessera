@@ -32,7 +32,7 @@ import {
   MIN_ZOOM,
   REGION_LENS_ZOOM,
   createCamera,
-  fitCameraToContent,
+  fitCameraInRect,
   fitScale,
   insetWorldRect,
   relativeZoom,
@@ -565,6 +565,30 @@ export class PlayRuntime {
   }
 
   /**
+   * Modernize §5: the sheet came to rest at a new detent, so the visible part
+   * of the board changed. Refit — eased, 320ms — but only a camera still where
+   * the last fit left it (ruling R2), and never under a finger.
+   */
+  refitIfAtFit(): void {
+    const camera = this.controls?.camera;
+    if (!camera?.atFit || this.controls?.busy) return;
+    camera.fit({ animate: true });
+    this.scheduleRegion();
+  }
+
+  /** The board container less the top bar and the phone sheet, screen px. */
+  private visibleRect(): Rect {
+    const { w, h } = this.viewport;
+    const { left, right, top, bottom } = this.insets;
+    return {
+      x: left,
+      y: top,
+      w: Math.max(1, w - left - right),
+      h: Math.max(1, h - top - bottom),
+    };
+  }
+
+  /**
    * §07: a press on the board that lifted without becoming a drag. Only a
    * lone loose piece is a valid hint target — an island or a placed piece
    * (which `pickCluster` should never hand back, since the board is anchored)
@@ -944,6 +968,7 @@ export class PlayRuntime {
         this.scheduleRegion();
       },
       getBoard: () => ({ w: this.boardW, h: this.boardH }),
+      getVisibleRect: () => this.visibleRect(),
       minRelativeZoom: assists.largePieceMode ? REGION_LENS_ZOOM : undefined,
       tremorDamping: assists.comfort,
       onChange: () => this.wake(),
@@ -1114,12 +1139,14 @@ export class PlayRuntime {
     const bounds = this.session
       ? this.session.contentBounds()
       : { x: 0, y: 0, w: this.boardW, h: this.boardH };
-    this.camera = fitCameraToContent(
+    this.camera = fitCameraInRect(
       this.viewport,
+      this.visibleRect(),
       bounds,
       { w: this.boardW, h: this.boardH },
       this.liveAssists.largePieceMode ? REGION_LENS_ZOOM : undefined,
     );
+    if (this.controls) this.controls.camera.atFit = true;
   }
 
   private render(): void {

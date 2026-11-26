@@ -407,6 +407,38 @@ export function App(): React.ReactElement {
     );
   };
 
+  // Modernize §5: when the player moves the sheet to a new detent, the board
+  // refits to the space above it — once the sheet has come to rest (120ms
+  // with no further resize), never per frame while it moves. A collapse for a
+  // drag, and the restore after it, are not the player's choice and refit
+  // nothing: the board would shift under the piece they just dropped.
+  const refitPending = useRef(false);
+  const refitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRefit = useCallback((): void => {
+    if (refitTimer.current !== null) clearTimeout(refitTimer.current);
+    refitTimer.current = setTimeout(() => {
+      refitTimer.current = null;
+      if (!refitPending.current) return;
+      refitPending.current = false;
+      runtime.current?.refitIfAtFit();
+    }, 120);
+  }, []);
+  const lastDetent = useRef({ detent: chrome.detent, before: chrome.detentBeforeDrag });
+  useEffect(() => {
+    const prev = lastDetent.current;
+    lastDetent.current = { detent: chrome.detent, before: chrome.detentBeforeDrag };
+    if (docked || prev.detent === chrome.detent) return;
+    if (chrome.detentBeforeDrag !== null || prev.before !== null) return;
+    refitPending.current = true;
+    scheduleRefit();
+  }, [chrome.detent, chrome.detentBeforeDrag, docked, scheduleRefit]);
+  useEffect(
+    () => () => {
+      if (refitTimer.current !== null) clearTimeout(refitTimer.current);
+    },
+    [],
+  );
+
   // Shared by the mount effect and the resize effect below, so there is one
   // place that knows how to compute insets rather than two branches that can
   // drift. Keyed on `docked` because the docked tray contributes nothing (a
@@ -414,11 +446,17 @@ export function App(): React.ReactElement {
   // height is the whole point.
   const updateInsets = useCallback((): void => {
     const rect = trayRef.current?.getBoundingClientRect();
+    // Modernize §5: the board frames below the top bar, too — measured from
+    // the board container's own top, since that is where the camera's
+    // viewport starts.
+    const boardTop = boardRef.current?.getBoundingClientRect().top ?? 0;
+    const barBottom = topBarRef.current?.getBoundingClientRect().bottom ?? boardTop;
+    const top = Math.max(0, barBottom - boardTop);
     if (docked || !rect) {
-      runtime.current?.setTrayInsets({ left: 0, right: 0, top: 0, bottom: 0 });
+      runtime.current?.setTrayInsets({ left: 0, right: 0, top, bottom: 0 });
       setTrayHeight(0);
     } else {
-      runtime.current?.setTrayInsets({ left: 0, right: 0, top: 0, bottom: rect.height });
+      runtime.current?.setTrayInsets({ left: 0, right: 0, top, bottom: rect.height });
       // The hint button's own floor: the sheet is a fixed overlay across the
       // bottom of the viewport, at every detent, and a button bottom-anchored
       // to the raw viewport sits underneath it — visible in neither layout nor
@@ -1103,6 +1141,8 @@ export function App(): React.ReactElement {
     const observer = new ResizeObserver(() => {
       runtime.current?.resize();
       updateInsets();
+      // The sheet is still moving toward a new detent; wait for it to rest.
+      if (refitPending.current) scheduleRefit();
     });
     observer.observe(container);
     if (trayRef.current) observer.observe(trayRef.current);

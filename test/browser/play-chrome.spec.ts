@@ -46,3 +46,51 @@ test.describe('the top bar', () => {
     }
   });
 });
+
+test.describe('the board, framed above the sheet', () => {
+  // The sheet is the phone's form factor; the dock is a flex sibling and
+  // never overlaps the board at all.
+  test.beforeEach(() => {
+    test.skip(test.info().project.name !== 'phone', 'phone sheet only');
+  });
+
+  test('sits between the top bar and the sheet, at rest and after Fit', { tag: '@phone' }, async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page);
+    const check = async (): Promise<void> => {
+      const frame = await board.frameRect();
+      const bar = (await page.locator('header').first().boundingBox())!;
+      const sheet = (await board.tray.boundingBox())!;
+      expect(frame.top).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
+      expect(frame.bottom).toBeLessThanOrEqual(sheet.y + 1);
+    };
+    await check();
+    await page.getByRole('button', { name: 'Fit', exact: true }).click();
+    await page.waitForTimeout(100);
+    await check();
+  });
+
+  test('opening the sheet refits only a camera still at its fit', { tag: '@phone' }, async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page);
+    const viewport = page.viewportSize()!;
+
+    await board.dragSheetTo(viewport.height * 0.5);
+    const sheet = (await board.tray.boundingBox())!;
+    expect((await board.frameRect()).bottom).toBeLessThanOrEqual(sheet.y + 1);
+
+    // The player zooms in: from here the view is theirs (ruling R2).
+    const mat = await board.matPoint();
+    await page.mouse.move(mat.x, mat.y);
+    await page.mouse.wheel(0, -240);
+    await page.waitForTimeout(200);
+    const chosen = await board.frameRect();
+
+    await board.dragSheetTo(viewport.height * 0.85);
+    const after = await board.frameRect();
+    expect(Math.abs(after.top - chosen.top)).toBeLessThan(1);
+    expect(Math.abs(after.left - chosen.left)).toBeLessThan(1);
+  });
+});
