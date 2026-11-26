@@ -20,14 +20,19 @@ export interface ReferencePanelProps {
    */
   loadBitmap: () => Promise<ImageBitmap>;
   open: boolean;
-  onToggle: () => void;
+  /**
+   * The sheet's height budget: at default the pinned chrome must still leave
+   * two whole rows of pieces on a 664px phone, so the sheet's panel keeps the
+   * old open row's 44px. The dock has the height and shows the photo larger.
+   */
+  compact: boolean;
 }
 
 export function ReferencePanel({
   loadBitmap,
   open,
-  onToggle,
-}: ReferencePanelProps): React.ReactElement {
+  compact,
+}: ReferencePanelProps): React.ReactElement | null {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [failed, setFailed] = useState(false);
 
@@ -44,6 +49,11 @@ export function ReferencePanel({
         bitmap = bmp;
         const canvas = canvasRef.current;
         if (!canvas) return;
+        // Sized from the box it lands in, at most 2x: the tray's width is the
+        // player's to choose, and the panel spans it.
+        const dpr = Math.min(globalThis.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(canvas.clientWidth * dpr);
+        canvas.height = Math.round(canvas.clientHeight * dpr);
         const scale = Math.min(canvas.width / bmp.width, canvas.height / bmp.height);
         const w = bmp.width * scale;
         const h = bmp.height * scale;
@@ -60,47 +70,24 @@ export function ReferencePanel({
     };
   }, [open, loadBitmap]);
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        aria-label="Show reference photo"
-        onClick={onToggle}
-        className="touch-target flex w-full items-center justify-between px-[12px] text-1 text-[var(--ink-muted)]"
-      >
-        <span>Reference photo</span>
-        <span aria-hidden>Show</span>
-      </button>
-    );
-  }
+  // Closed is nothing at all: the title row's `ReferenceButton` is the toggle.
+  if (!open) return null;
 
   return (
-    <div className="flex items-center gap-[8px] px-[12px] pb-[8px]">
+    <div className="px-[12px] pb-[8px]">
       {failed ? (
-        <div
-          aria-hidden
-          className="h-[44px] w-[44px] shrink-0 rounded-[var(--radius-sm)] border border-[var(--edge-hair)]"
-        />
+        <p
+          className={`meta flex ${compact ? 'h-[44px]' : 'h-[96px]'} items-center justify-center rounded-[var(--radius-sm)] border border-[var(--edge-hair)] text-[var(--ink-muted)]`}
+        >
+          Reference photo not available yet
+        </p>
       ) : (
         <canvas
           ref={canvasRef}
-          width={88}
-          height={88}
-          className="h-[44px] w-[44px] shrink-0 rounded-[var(--radius-sm)]"
+          className={`block w-full rounded-[var(--radius-sm)] ${compact ? 'h-[44px]' : 'h-[96px]'}`}
           aria-label="Reference photo thumbnail"
         />
       )}
-      <span className="flex-1 text-1 text-[var(--ink-muted)]">
-        {failed ? 'Reference photo not available yet' : 'Reference photo'}
-      </span>
-      <button
-        type="button"
-        aria-label="Hide reference photo"
-        onClick={onToggle}
-        className="touch-target text-1 text-[var(--ink-muted)]"
-      >
-        Hide
-      </button>
     </div>
   );
 }

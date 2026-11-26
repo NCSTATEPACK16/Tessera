@@ -579,7 +579,13 @@ export async function watchTrayMutations(page: Page): Promise<void> {
         return;
       }
       new MutationObserver((records) => {
-        (window as unknown as { __mutations: number }).__mutations += records.length;
+        // The phone sheet writes its own height to its own style attribute,
+        // frame by frame, by design (modernize C1: off React). That is the
+        // drag working, not the tray re-rendering, so it is not counted.
+        const counted = records.filter(
+          (r) => !(r.target === tray && r.type === 'attributes' && r.attributeName === 'style'),
+        );
+        (window as unknown as { __mutations: number }).__mutations += counted.length;
       }).observe(tray, { childList: true, subtree: true, attributes: true });
     };
     start();

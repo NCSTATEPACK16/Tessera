@@ -94,3 +94,67 @@ test.describe('the board, framed above the sheet', () => {
     expect(Math.abs(after.left - chosen.left)).toBeLessThan(1);
   });
 });
+
+test.describe('the tray header and lenses', () => {
+  /** The resolved `font-data` family, read off a probe so the test names no font. */
+  const monoFamily = (page: import('@playwright/test').Page): Promise<string> =>
+    page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.className = 'font-data';
+      document.body.append(probe);
+      const family = getComputedStyle(probe).fontFamily;
+      probe.remove();
+      return family;
+    });
+
+  test('one row: a mono eyebrow and a reference thumbnail that toggles', { tag: '@phone' }, async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page, { pieceCount: 50, mode: 'Zen' });
+    const eyebrow = board.tray.locator('.eyebrow').first();
+    await expect(eyebrow).toHaveText(`TRAY · ${await board.remaining()} LOOSE`, {
+      useInnerText: true,
+    });
+    const family = await monoFamily(page);
+    expect(await eyebrow.evaluate((el) => getComputedStyle(el).fontFamily)).toBe(family);
+
+    const button = board.tray.getByRole('button', { name: 'Reference photo', exact: true });
+    const box = (await button.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByLabel('Reference photo thumbnail')).toBeVisible();
+    await button.click();
+    await expect(button).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByLabel('Reference photo thumbnail')).toBeHidden();
+    await button.click();
+    await expect(page.getByLabel('Reference photo thumbnail')).toBeVisible();
+  });
+
+  test('lenses are 36px pills with mono counts and a ringed active state', { tag: '@phone' }, async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page, { pieceCount: 50, mode: 'Zen' });
+    const all = board.tray.getByRole('button', { name: /^All/ });
+    const box = (await all.boundingBox())!;
+    expect(Math.abs(box.height - 36)).toBeLessThanOrEqual(1);
+    const family = await monoFamily(page);
+    expect(
+      await all.locator('span').last().evaluate((el) => getComputedStyle(el).fontFamily),
+    ).toBe(family);
+
+    await expect(all).toHaveAttribute('aria-pressed', 'true');
+    const marked = await all.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return style.boxShadow !== 'none' || style.outlineStyle !== 'none';
+    });
+    expect(marked).toBe(true);
+  });
+
+  test('the dock wraps the lens row instead of scrolling it', async ({ page }) => {
+    const board = await BoardPage.open(page, { pieceCount: 50, mode: 'Zen' });
+    const row = board.tray.getByRole('button', { name: /^All/ }).locator('..');
+    const fits = await row.evaluate((el) => el.scrollWidth <= el.clientWidth);
+    expect(fits).toBe(true);
+  });
+});

@@ -50,7 +50,7 @@ test('the reference thumbnail shows while playing, and its state survives a relo
     sheetBefore = await page.getByLabel('Pieces').boundingBox();
   }
 
-  await page.getByLabel('Hide reference photo').click();
+  await page.getByRole('button', { name: 'Reference photo', exact: true }).click();
   await expect(page.getByLabel('Reference photo thumbnail')).toBeHidden();
 
   if (!docked) {
@@ -96,6 +96,8 @@ test('the reference thumbnail shows while playing, and its state survives a relo
   await page.getByLabel(/Open puzzle:/).first().click();
   await board.waitForCut();
 
-  await expect(page.getByLabel('Show reference photo')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Reference photo', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByLabel('Reference photo thumbnail')).toBeHidden();
 });

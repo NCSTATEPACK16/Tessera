@@ -33,6 +33,32 @@ export interface LensChipsProps {
   onPick: (lens: Lens, arg?: number | null) => void;
   /** §16 Track 4: a single opacity beat on mount — the guided twelve's tray reveal only. */
   pulse?: boolean;
+  /**
+   * The dock wraps; the sheet scrolls sideways. The dock has the height to
+   * spare and no thumb arc to keep a row inside; the sheet has neither.
+   */
+  wrap: boolean;
+}
+
+/**
+ * A 36px pill whose hit area is still the touch floor: the pseudo-element
+ * extends it vertically to `--touch-min` (44pt, 60 in comfort mode), and a
+ * wrapped row's gap is exactly that difference, so two rows' targets meet
+ * rather than overlap.
+ */
+const PILL = [
+  // `min-h-0!`: the global `button` floor would otherwise make every pill 44px.
+  'relative flex h-[36px] min-h-0! shrink-0 items-center gap-[6px] rounded-full px-3 transition-colors',
+  "after:absolute after:inset-x-0 after:inset-y-[calc((36px-var(--touch-min))/2)] after:content-['']",
+].join(' ');
+const ACTIVE =
+  'bg-[color-mix(in_srgb,var(--color-accent-tray)_22%,transparent)] ring-1 ring-[var(--accent)] text-[var(--ink-primary)]';
+const INACTIVE = 'bg-[var(--mat-felt)] text-[var(--ink-muted)]';
+
+function rowClass(wrap: boolean): string {
+  return wrap
+    ? 'flex flex-wrap gap-x-[8px] gap-y-[calc(var(--touch-min)-36px)]'
+    : '-mx-[12px] flex gap-[8px] overflow-x-auto px-[12px] py-[calc((var(--touch-min)-36px)/2)] [scrollbar-width:none]';
 }
 
 export function LensChips({
@@ -43,14 +69,15 @@ export function LensChips({
   binCount,
   onPick,
   pulse = false,
+  wrap,
 }: LensChipsProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-[8px]">
-      {/* One row that scrolls sideways rather than wrapping: a wrapped second
-          row cost the phone sheet a whole chip row of pieces (v2 spec §5.2). */}
+      {/* The sheet keeps one row that scrolls sideways: a wrapped second row
+          cost the phone sheet a whole chip row of pieces (v2 spec §5.2). */}
       <div
-        className={`-mx-[12px] flex gap-[8px] overflow-x-auto px-[12px] [scrollbar-width:none] ${pulse ? 'lens-chip-pulse' : ''}`}
-        style={{ touchAction: 'pan-x' }}
+        className={`${rowClass(wrap)} ${pulse ? 'lens-chip-pulse' : ''}`}
+        style={wrap ? undefined : { touchAction: 'pan-x' }}
       >
         {LENSES.map((entry) => {
           const meta = counts.get(entry);
@@ -70,11 +97,9 @@ export function LensChips({
                   : 'Zoom past 1.5× and this shows the pieces that belong in view'
               }
               className={[
-                'flex shrink-0 items-center gap-[6px] rounded-[8px] border px-[12px] text-2',
-                'min-h-[var(--touch-min)] transition-colors',
-                active
-                  ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] text-[var(--ink-primary)]'
-                  : 'border-[var(--edge-hair)] text-[var(--ink-muted)]',
+                PILL,
+                'text-2',
+                active ? ACTIVE : INACTIVE,
                 enabled ? '' : 'cursor-not-allowed opacity-40',
               ].join(' ')}
             >
@@ -88,23 +113,14 @@ export function LensChips({
       </div>
 
       {lens === 'colour' && (
-        <div
-          className="-mx-[12px] flex gap-[8px] overflow-x-auto px-[12px] [scrollbar-width:none]"
-          style={{ touchAction: 'pan-x' }}
-        >
+        <div className={rowClass(wrap)} style={wrap ? undefined : { touchAction: 'pan-x' }}>
           {bins.map((bin) => (
             <button
               key={bin.index}
               type="button"
               aria-pressed={lensArg === bin.index}
               onClick={() => onPick('colour', bin.index)}
-              className={[
-                'flex shrink-0 items-center gap-[6px] rounded-[8px] border px-[10px] text-1',
-                'min-h-[var(--touch-min)] transition-colors',
-                lensArg === bin.index
-                  ? 'border-[var(--accent)] text-[var(--ink-primary)]'
-                  : 'border-[var(--edge-hair)] text-[var(--ink-muted)]',
-              ].join(' ')}
+              className={[PILL, 'text-1', lensArg === bin.index ? ACTIVE : INACTIVE].join(' ')}
             >
               <span
                 aria-hidden

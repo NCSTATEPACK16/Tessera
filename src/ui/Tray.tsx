@@ -20,6 +20,7 @@ import type { Lens } from '@/tray/lenses';
 import { TraySelection } from '@/tray/selection';
 import { LensChips } from './LensChips';
 import { PieceGrid } from './PieceGrid';
+import { ReferenceButton } from './ReferenceButton';
 import { ReferencePanel } from './ReferencePanel';
 import { SelectionBar } from './SelectionBar';
 import { Shelf } from './Shelf';
@@ -182,11 +183,13 @@ export function Tray(props: TrayProps): React.ReactElement {
   // the row that may clip, and a single header node offers nowhere to say so.
   // The dock has no peek to collide with and stacks them straight back up.
   const title = (
-    <div className="flex items-baseline justify-between">
-      <h2 className="text-3 text-[var(--ink-primary)]">Pieces</h2>
-      <span className="meta text-[var(--ink-muted)]">
-        {props.remaining} left
-      </span>
+    <div className="flex items-center justify-between gap-[12px]">
+      <h2 className="eyebrow">Tray · {props.remaining} loose</h2>
+      <ReferenceButton
+        loadBitmap={props.loadReferenceBitmap}
+        open={props.referenceOpen}
+        onToggle={props.onReferenceToggle}
+      />
     </div>
   );
 
@@ -198,6 +201,7 @@ export function Tray(props: TrayProps): React.ReactElement {
       bins={props.bins}
       binCount={props.binCount}
       pulse={props.pulseLenses ?? false}
+      wrap={props.docked}
       onPick={props.onPick}
     />
   );
@@ -229,7 +233,7 @@ export function Tray(props: TrayProps): React.ReactElement {
     <ReferencePanel
       loadBitmap={props.loadReferenceBitmap}
       open={props.referenceOpen}
-      onToggle={props.onReferenceToggle}
+      compact={!props.docked}
     />
   );
 
