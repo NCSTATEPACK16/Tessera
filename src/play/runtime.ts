@@ -704,6 +704,18 @@ export class PlayRuntime {
     });
   }
 
+  /** Dev-only: the client-space centre of a piece's solved slot. */
+  e2eSlotPoint(id: PieceId): { x: number; y: number } | null {
+    if (!this.session) return null;
+    const piece = this.session.board.piece(id);
+    const rect = this.options.container.getBoundingClientRect();
+    const at = worldToScreen(this.camera, this.viewport, {
+      x: piece.targetX + piece.w / 2,
+      y: piece.targetY + piece.h / 2,
+    });
+    return { x: rect.left + at.x, y: rect.top + at.y };
+  }
+
   /** Dev-only: the board frame's client-space rectangle. */
   e2eFrameRect(): E2eClientRect | null {
     if (this.boardW <= 0 || this.boardH <= 0) return null;

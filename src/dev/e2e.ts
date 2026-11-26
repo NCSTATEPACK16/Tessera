@@ -53,6 +53,8 @@ export interface E2eHook {
   loosePoints(): { id: number; x: number; y: number }[];
   /** The board frame, client space. */
   frameRect(): E2eClientRect | null;
+  /** The centre of a piece's solved slot, client space. */
+  slotPoint(id: number): { x: number; y: number } | null;
   /** The union of every loose piece on the mat, client space; null when none. */
   looseBounds(): E2eClientRect | null;
 }
@@ -84,6 +86,7 @@ export function installE2eHook(
     },
     loosePoints: () => getRuntime()?.e2eLoosePoints() ?? [],
     frameRect: () => getRuntime()?.e2eFrameRect() ?? null,
+    slotPoint: (id) => getRuntime()?.e2eSlotPoint(id) ?? null,
     looseBounds: () => getRuntime()?.e2eLooseBounds() ?? null,
   };
 }

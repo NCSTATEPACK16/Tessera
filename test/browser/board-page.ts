@@ -260,6 +260,11 @@ export class BoardPage {
     );
   }
 
+  /** The client-space centre of a piece's solved slot on the board. */
+  async slotPoint(pieceId: number): Promise<{ x: number; y: number } | null> {
+    return this.page.evaluate((id) => window.__tessera!.slotPoint(id), pieceId);
+  }
+
   /** Pieces not yet placed, from the top bar — unaffected by virtualisation. */
   async remaining(): Promise<number> {
     const text = await this.page.locator('header').innerText();
