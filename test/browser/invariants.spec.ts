@@ -66,6 +66,31 @@ test.describe('the board never re-renders through React', { tag: ['@timing', '@s
     expect(await trayMutations(page)).toBeLessThan(before + RERENDER_BUDGET);
   });
 
+  // The whole-branch review's catch: a sheet drag wrote its height into App's
+  // state through a ResizeObserver, re-rendering the tray (and every chip) per
+  // frame while changing no DOM at all — invisible to the mutation count above.
+  test('dragging the phone sheet does not re-render the tray through React', async ({ page }) => {
+    await page.setViewportSize({ width: 402, height: 874 });
+    await BoardPage.open(page);
+    await page.waitForTimeout(400);
+    const renders = (): Promise<number> =>
+      page.evaluate(() => window.__tessera!.renders('tray'));
+
+    const handle = page.getByRole('separator', { name: 'Resize the piece tray' });
+    const box = (await handle.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const before = await renders();
+    await page.mouse.move(x, box.y + box.height / 2);
+    await page.mouse.down();
+    for (let i = 1; i <= 40; i++) await page.mouse.move(x, box.y - i * 8);
+    await page.mouse.up();
+    await page.waitForTimeout(800);
+
+    // A detent change is one render, a refit's insets one more; forty is a
+    // render per move.
+    expect(await renders()).toBeLessThan(before + 6);
+  });
+
   test('dragging a piece for sixty frames does not re-render per frame', async ({ page }) => {
     const board = await BoardPage.open(page);
     const centre = await board.matPoint();

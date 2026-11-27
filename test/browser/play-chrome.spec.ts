@@ -6,7 +6,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage } from './board-page';
+import { BoardPage, openTab } from './board-page';
 
 test.describe('the top bar', () => {
   test('the puzzle’s name, n / N, and a progress line', async ({ page }) => {
@@ -89,6 +89,55 @@ test.describe('the board, framed above the sheet', () => {
     const chosen = await board.frameRect();
 
     await board.dragSheetTo(viewport.height * 0.85);
+    const after = await board.frameRect();
+    expect(Math.abs(after.top - chosen.top)).toBeLessThan(1);
+    expect(Math.abs(after.left - chosen.left)).toBeLessThan(1);
+  });
+});
+
+test.describe('a view the player chose survives a detent change', () => {
+  test.beforeEach(() => {
+    test.skip(test.info().project.name !== 'phone', 'phone sheet only');
+  });
+
+  // Whole-branch review: `frameContent` marks the camera at its fit, and a
+  // restore then overwrote the camera without clearing the mark — so the
+  // first sheet move after a resume threw a zoomed-in view away (R2).
+  test('a resumed zoomed-in save keeps its view when the sheet opens', { tag: '@phone' }, async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const board = await BoardPage.open(page, { pieceCount: 50, mode: 'Zen' });
+    await board.zoom(2);
+    // A play event is what saves; the camera rides along with it.
+    await board.dragOut((await board.mountedIds())[0]!, await board.matPoint());
+    await page.waitForTimeout(1500);
+    await page.reload({ waitUntil: 'load' });
+    await openTab(page, 'Puzzles');
+    await page.getByLabel(/Open puzzle:/).first().click();
+    await board.waitForCut();
+    await page.waitForTimeout(300);
+
+    const chosen = await board.frameRect();
+    await board.dragSheetTo(page.viewportSize()!.height * 0.5);
+    const after = await board.frameRect();
+    expect(Math.abs(after.top - chosen.top)).toBeLessThan(1);
+    expect(Math.abs(after.left - chosen.left)).toBeLessThan(1);
+  });
+
+  test('a piece found through Recent stays in view when the sheet opens', { tag: '@phone' }, async ({
+    page,
+  }) => {
+    const board = await BoardPage.open(page, { pieceCount: 50, mode: 'Zen' });
+    const id = (await board.mountedIds())[0]!;
+    await board.dragOut(id, await board.matPoint());
+    await board.waitForIdle();
+    await board.pick('Recent');
+    await board.tray.getByRole('button', { name: `Find piece ${id} on the mat` }).click();
+    await page.waitForTimeout(300);
+
+    const chosen = await board.frameRect();
+    await board.dragSheetTo(page.viewportSize()!.height * 0.5);
     const after = await board.frameRect();
     expect(Math.abs(after.top - chosen.top)).toBeLessThan(1);
     expect(Math.abs(after.left - chosen.left)).toBeLessThan(1);

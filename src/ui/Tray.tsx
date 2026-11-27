@@ -18,6 +18,7 @@ import type { PieceId } from "@/cut/types";
 import type { ColourBin } from "@/tray/colour";
 import type { Lens } from "@/tray/lenses";
 import { TraySelection } from "@/tray/selection";
+import { countRender } from "@/dev/e2e";
 import { LensChips } from "./LensChips";
 import { PieceGrid } from "./PieceGrid";
 import { ReferenceButton } from "./ReferenceButton";
@@ -106,6 +107,7 @@ export interface TrayProps {
 }
 
 export function Tray(props: TrayProps): React.ReactElement {
+  if (import.meta.env.DEV) countRender('tray');
   const chrome = useChrome();
 
   // Never in state — the badges come from `selectedCount` plus a render-time

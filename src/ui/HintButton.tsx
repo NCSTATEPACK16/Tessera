@@ -28,14 +28,6 @@ export interface HintButtonProps {
    */
   count: number | null;
   onFire: (tier: HintTier) => boolean;
-  /**
-   * Height of whatever overlays the bottom of the viewport right now — the
-   * iPhone sheet at its current detent, 0 when docked. Without this the
-   * button sits bottom-anchored to the raw viewport and ends up underneath
-   * the sheet: invisible, and unclickable because the sheet's own section
-   * intercepts the pointer event first.
-   */
-  clearanceBottomPx?: number;
   /** v2 spec §5.3: the corner opposite a left dock, so it stays thumb-adjacent. */
   corner?: 'left' | 'right';
 }
@@ -44,7 +36,6 @@ export function HintButton({
   hasTarget,
   count,
   onFire,
-  clearanceBottomPx = 0,
   corner = 'right',
 }: HintButtonProps): React.ReactElement {
   const downAt = useRef<number | null>(null);
@@ -80,10 +71,14 @@ export function HintButton({
         ...(corner === 'left'
           ? { left: 'max(16px, env(safe-area-inset-left))' }
           : { right: 'max(16px, env(safe-area-inset-right))' }),
-        bottom:
-          clearanceBottomPx > 0
-            ? clearanceBottomPx + 16
-            : 'max(16px, env(safe-area-inset-bottom))',
+        // `--sheet-clearance`: the height of whatever overlays the bottom of
+        // the viewport right now — the phone sheet at its current height, 0
+        // when docked. Without it the button sits under the sheet: invisible,
+        // and unclickable because the sheet intercepts the pointer first. A
+        // CSS variable written by `App.updateInsets`, never a prop: the sheet
+        // moves every frame of a drag, and a prop would re-render the tray
+        // with it.
+        bottom: 'max(calc(var(--sheet-clearance, 0px) + 16px), env(safe-area-inset-bottom))',
       }}
       className={`pointer-events-auto z-10 flex h-[52px] w-[52px] items-center justify-center rounded-full border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] text-[var(--ink-primary)] backdrop-blur-[12px] disabled:opacity-40 ${count === 0 ? 'opacity-60' : ''}`}
     >

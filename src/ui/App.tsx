@@ -338,8 +338,6 @@ export function App(): React.ReactElement {
   const [dragging, setDragging] = useState(false);
   // The group chip under a tap, mid-rename. `null` is "no rename open".
   const [renaming, setRenaming] = useState<number | null>(null);
-  // 0 when docked (the tray is a flex sibling, not an overlay). See `updateInsets`.
-  const [trayHeight, setTrayHeight] = useState(0);
 
   const [summary, setSummary] = useState<RuntimeSummary>({
     status: 'cutting',
@@ -456,7 +454,7 @@ export function App(): React.ReactElement {
     const top = Math.max(0, barBottom - boardTop);
     if (docked || !rect) {
       runtime.current?.setTrayInsets({ left: 0, right: 0, top, bottom: 0 });
-      setTrayHeight(0);
+      setSheetClearance(0);
     } else {
       runtime.current?.setTrayInsets({ left: 0, right: 0, top, bottom: rect.height });
       // The hint button's own floor: the sheet is a fixed overlay across the
@@ -464,8 +462,10 @@ export function App(): React.ReactElement {
       // to the raw viewport sits underneath it — visible in neither layout nor
       // hit-testing. `test/browser/hints.spec.ts` caught this on the phone
       // project; the dock passed because the docked tray is a flex sibling and
-      // never overlaps the board at all.
-      setTrayHeight(rect.height);
+      // never overlaps the board at all. A CSS variable, not React state: this
+      // runs every frame of a sheet drag, and state here re-rendered the whole
+      // tray per frame (whole-branch review, modernize c).
+      setSheetClearance(rect.height);
     }
   }, [docked]);
 
@@ -1520,7 +1520,6 @@ export function App(): React.ReactElement {
             hasTarget={summary.hintTarget !== null}
             count={summary.hintsLeft}
             onFire={(tier) => runtime.current?.fireHint(tier) ?? false}
-            clearanceBottomPx={trayHeight}
             corner={docked && chrome.traySide === 'left' ? 'left' : 'right'}
           />
         )}
@@ -1654,4 +1653,9 @@ export function App(): React.ReactElement {
       )}
     />
   );
+}
+
+/** The phone sheet's current height, for the hint button's floor (`HintButton`). */
+function setSheetClearance(px: number): void {
+  document.documentElement.style.setProperty('--sheet-clearance', `${px}px`);
 }

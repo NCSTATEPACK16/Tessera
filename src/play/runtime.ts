@@ -577,6 +577,8 @@ export class PlayRuntime {
     const origin = session.board.worldOf(pieceId);
     const piece = session.board.piece(pieceId);
     this.camera = { ...this.camera, x: origin.x + piece.w / 2, y: origin.y + piece.h / 2 };
+    // The player asked for this view: a sheet move must not refit it away (R2).
+    if (this.controls) this.controls.camera.atFit = false;
     this.render();
     this.scheduleRegion();
   }
@@ -1063,7 +1065,11 @@ export class PlayRuntime {
     // After `frameContent`, deliberately: a restore should reopen exactly
     // where the player left it, not on a freshly fitted view.
     if (restore) {
+      const fitted = this.camera;
       this.camera = { ...restore.snapshot.camera };
+      // Still "at fit" only if the save was the fitted view; a resumed
+      // zoomed-in view is the player's, and a sheet move must keep it (R2).
+      if (this.controls) this.controls.camera.atFit = sameView(fitted, this.camera);
       this.render();
     }
   }
@@ -1381,4 +1387,13 @@ interface HomingFlight {
   from: Rect;
   to: Rect;
   t0: number;
+}
+
+/** Two cameras that frame the same view, to within a pixel's worth of drift. */
+function sameView(a: Camera, b: Camera): boolean {
+  return (
+    Math.abs(a.zoom - b.zoom) / a.zoom < 0.005 &&
+    Math.abs(a.x - b.x) * a.zoom < 1 &&
+    Math.abs(a.y - b.y) * a.zoom < 1
+  );
 }

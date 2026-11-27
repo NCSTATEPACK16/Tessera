@@ -57,6 +57,18 @@ export interface E2eHook {
   slotPoint(id: number): { x: number; y: number } | null;
   /** The union of every loose piece on the mat, client space; null when none. */
   looseBounds(): E2eClientRect | null;
+  /** How many times a counted component has rendered (`countRender`). */
+  renders(name: string): number;
+}
+
+/**
+ * Dev-only render counter, for the one invariant DOM mutations cannot see: a
+ * React re-render that changes nothing on screen still re-runs every chip.
+ * Call sites guard on `import.meta.env.DEV` so a build folds this away.
+ */
+const renderCounts = new Map<string, number>();
+export function countRender(name: string): void {
+  renderCounts.set(name, (renderCounts.get(name) ?? 0) + 1);
 }
 
 declare global {
@@ -88,5 +100,6 @@ export function installE2eHook(
     frameRect: () => getRuntime()?.e2eFrameRect() ?? null,
     slotPoint: (id) => getRuntime()?.e2eSlotPoint(id) ?? null,
     looseBounds: () => getRuntime()?.e2eLooseBounds() ?? null,
+    renders: (name) => renderCounts.get(name) ?? 0,
   };
 }
