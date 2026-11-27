@@ -57,8 +57,13 @@ export function settleSheet(
   target: number,
   dtS: number,
 ): { h: number; v: number; done: boolean } {
-  const force = -STIFFNESS * (state.h - target) - DAMPING * state.v;
-  const v = state.v + (force / MASS) * dtS;
+  // Velocity pointing away from the detent — a flick released past full, or
+  // below peek, still moving outward — is dropped: carrying it would take the
+  // sheet further out before turning it back, which is a bounce.
+  const toward = Math.sign(target - state.h);
+  const v0 = Math.sign(state.v) === -toward ? 0 : state.v;
+  const force = -STIFFNESS * (state.h - target) - DAMPING * v0;
+  const v = v0 + (force / MASS) * dtS;
   const h = state.h + v * dtS;
   // Critical damping cannot overshoot from rest, but a flick faster than it
   // absorbs would: the detent is a wall, never a bounce.

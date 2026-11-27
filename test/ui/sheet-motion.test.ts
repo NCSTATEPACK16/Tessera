@@ -80,3 +80,24 @@ describe('settleSheet', () => {
     for (let i = 1; i < trace.length; i++) expect(trace[i]!).toBeLessThanOrEqual(trace[i - 1]!);
   });
 });
+
+describe('settleSheet, released moving away from its detent', () => {
+  // Whole-branch review: a flick released past full (or below peek) still
+  // moving outward carried on outward before turning back — a small bounce.
+  // From the release on, the sheet only ever moves toward its detent.
+  for (const [label, start, v, target] of [
+    ['past full, still rising', 790, 3000, 770],
+    ['below peek, still falling', 80, -3000, 96],
+  ] as const) {
+    it(`never moves further out: ${label}`, () => {
+      let state = { h: start as number, v: v as number };
+      for (let i = 0; i < 240; i++) {
+        const next = settleSheet(state, target, 1 / 60);
+        expect(Math.abs(next.h - target)).toBeLessThanOrEqual(Math.abs(state.h - target) + 1e-9);
+        state = next;
+        if (next.done) break;
+      }
+      expect(state.h).toBe(target);
+    });
+  }
+});
