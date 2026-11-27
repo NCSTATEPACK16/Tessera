@@ -348,12 +348,12 @@ export function Tray(props: TrayProps): React.ReactElement {
         side={props.side}
         onWidth={props.onWidth}
       />
-      <div className="flex shrink-0 flex-col gap-[12px] px-[12px] pb-[12px] pt-[16px]">
-        {title}
-        {lenses}
-      </div>
+      {/* The comp's order (tray-ipad): the title row and what it opens, the
+          pinned well, then the lenses over the grid they filter. */}
+      <div className="shrink-0 px-[12px] pb-[12px] pt-[16px]">{title}</div>
       {reference}
       {shelf}
+      <div className="shrink-0 px-[12px] pb-[12px] pt-[12px]">{lenses}</div>
       {grid}
       {selectionBar}
     </aside>

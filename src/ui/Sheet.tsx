@@ -279,8 +279,9 @@ export function Sheet({
         <div className="shrink-0 px-[12px]">{header}</div>
 
         {/* The one thing in the sheet that must survive peek — see `shelf`. */}
-        {shelf}
+        {/* The reference panel sits under the title row that toggles it. */}
         {reference}
+        {shelf}
       </div>
 
       {/* Pinned too, so the lenses stay in the thumb's arc at half and full.

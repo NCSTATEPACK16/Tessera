@@ -153,17 +153,9 @@ export function PieceChip({
           className="pointer-events-none absolute left-[3px] top-[3px] h-[9px] w-[9px] border-l-2 border-t-2 border-[var(--accent)] opacity-80"
         />
       )}
-      {pinned && !onMat && (
-        // The pinned glyph — drawn, not typed, matching the notch's approach
-        // above. A free corner (badge top-right, notch top-left, mat label
-        // bottom-right), because colour is never the only signal: this shape
-        // is what the state reads on, colour vision or not.
-        <span
-          aria-hidden
-          className="pointer-events-none absolute bottom-[2px] left-[3px] h-[9px] w-[7px] bg-[var(--accent)] opacity-80"
-          style={{ clipPath: 'polygon(50% 100%, 0% 35%, 15% 0%, 85% 0%, 100% 35%)' }}
-        />
-      )}
+      {/* No pinned glyph: a pinned chip leaves every lens and appears only on
+          the shelf, whose "Pinned" label and pin icon are the signal — a glyph
+          on each chip there would say it a second time (modernize §5). */}
       {badge > 0 && (
         // §06's numbered order badge. The numeral is the signal; the ring is
         // decoration, because colour is never the only signal.
