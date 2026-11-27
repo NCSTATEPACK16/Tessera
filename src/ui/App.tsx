@@ -1028,7 +1028,6 @@ export function App(): React.ReactElement {
       },
       isOverTray: (client) => overTray.current(client),
       isOverShelf: (client) => overShelf.current(client),
-      trayRect: () => trayRef.current?.getBoundingClientRect() ?? null,
       chipPx: CHIP_CELL_PX,
       onDragStateChange: (isDragging) => {
         // §06: dragging a piece out auto-collapses the sheet to peek and

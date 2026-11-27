@@ -169,7 +169,7 @@ button,
   transform: scale(1.06);
 }
 
-/* A returned piece's chip, as its flight home lands — once, on mount. */
+/* A returned piece's chip, arriving — once, on mount. */
 @keyframes chip-in {
   from {
     opacity: 0;

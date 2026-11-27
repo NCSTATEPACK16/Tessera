@@ -33,7 +33,7 @@ export interface PieceChipProps {
   selecting?: boolean;
   /**
    * Modernize §5: this chip's piece was just dropped on the tray. It fades in
-   * after the 200ms flight home (`handoff.ts`) — once, on mount, never idle.
+   * at once — once, on mount, never idle.
    */
   arriving?: boolean;
 }
@@ -132,7 +132,7 @@ export function PieceChip({
         userSelect: 'none',
         WebkitTouchCallout: 'none',
         ...(arriving
-          ? { animation: 'chip-in var(--duration-fast) var(--ease-standard) 200ms both' }
+          ? { animation: 'chip-in var(--duration-fast) var(--ease-standard) both' }
           : {}),
       }}
       // No frame and no fill: the piece on the felt (modernize §5). `chip` is

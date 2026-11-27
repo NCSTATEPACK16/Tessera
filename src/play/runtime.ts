@@ -22,7 +22,7 @@ import { BoardControls } from '@/input/board-controls';
 import { hintsLeft, msUntilNextHint } from '@/play/hints';
 import type { HintTier, PuzzleMode } from '@/play/hints';
 import { firstRunScatter, gridLayout } from '@/play/layout';
-import { CHIP_INSET, HANDOFF_MS, handoffLiftScale, homingRect } from '@/play/handoff';
+import { CHIP_INSET, HANDOFF_MS, handoffLiftScale } from '@/play/handoff';
 import { PlaySession } from '@/play/session';
 import type { PlayEvent } from '@/play/session';
 import { haptic } from '@/platform';
@@ -92,8 +92,8 @@ export interface RuntimeSummary {
   trayRevision: number;
   /**
    * Modernize §5: the piece that just went home on this tray revision, so its
-   * chip can arrive as the flight lands. Null on every other revision, and
-   * always null under reduced motion.
+   * chip can fade in. Null on every other revision, and always null under
+   * reduced motion.
    */
   arriving: PieceId | null;
   /** §07: the loose mat piece a hint would act on, or null. Set by a tap. */
@@ -158,12 +158,10 @@ export interface PlayRuntimeOptions {
    */
   isOverShelf?: (client: Point) => boolean;
   /**
-   * Where a piece dropped on the tray flies to (modernize §5), in viewport
-   * coordinates, and a tray cell's size in CSS px. Without both, the piece is
-   * simply home on the release tick with no flight — which is also what
-   * reduced motion gets.
+   * A tray cell's size in CSS px, so a chip pulled onto the mat starts its
+   * lift at the chip's own size (`handoff.ts`). Without it the lift starts
+   * at full size, which is also what reduced motion gets.
    */
-  trayRect?: () => DOMRect | null;
   chipPx?: number;
   /** The tray collapses to peek while a piece is out of it (§06). */
   onDragStateChange?: (dragging: boolean) => void;
@@ -199,8 +197,6 @@ export class PlayRuntime {
   private lastFrameMs = 0;
   /** A chip just adopted from the tray, growing to the lift (`handoff.ts`). */
   private handoff: { t0: number; start: number } | null = null;
-  /** Pictures of pieces already home, still flying there (`handoff.ts`). */
-  private homing: HomingFlight[] = [];
   private regionTimer: ReturnType<typeof setTimeout> | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private hintTimer: ReturnType<typeof setTimeout> | null = null;
@@ -638,8 +634,7 @@ export class PlayRuntime {
    * a canvas with a piece-shaped hole in it.
    */
   get animating(): boolean {
-    // A homing flight is on the dynamic layer only, like a spring.
-    return (this.session?.animating ?? false) || this.homing.length > 0;
+    return this.session?.animating ?? false;
   }
 
   /**
@@ -1030,13 +1025,12 @@ export class PlayRuntime {
         // nothing.
         const pin = this.options.isOverShelf?.(client) ?? false;
         // Read before the return: once home, the piece is no longer in hand.
-        const flight = this.homingFlight();
+        const pieceId = session.scene().held[0]?.id ?? null;
         const returned = session.returnToTray(clusterId, pin);
-        if (returned) {
-          if (flight) this.homing.push(flight.ghost);
-          this.bumpTray(flight?.id ?? null);
-          this.wake();
-        }
+        // Its chip arrives with a short fade (`chip-in`), unless motion is
+        // reduced. No flight is drawn: the drop point is over the tray, which
+        // in both layouts covers the board canvas a flight would be drawn on.
+        if (returned) this.bumpTray(prefersReducedMotion() ? null : pieceId);
         return returned;
       },
       onTap: (clusterId) => this.onBoardTap(clusterId),
@@ -1219,38 +1213,6 @@ export class PlayRuntime {
     this.handoff = { t0: performance.now(), start };
   }
 
-  /** The piece in hand, as a picture flying from the lift to the tray's centre. */
-  private homingFlight(): { id: PieceId; ghost: HomingFlight } | null {
-    const trayRect = this.options.trayRect?.();
-    const chipPx = this.options.chipPx;
-    const scene = this.session?.scene();
-    const piece = scene?.held[0];
-    if (!trayRect || !chipPx || !scene || !piece || prefersReducedMotion()) return null;
-
-    // From exactly where the lift draws it: scaled about its centre, raised.
-    const { scale, offsetPx } = scene.heldLift;
-    const centre = worldToScreen(this.camera, this.viewport, {
-      x: piece.x + piece.w / 2,
-      y: piece.y + piece.h / 2,
-    });
-    const w = piece.w * this.camera.zoom * scale;
-    const h = piece.h * this.camera.zoom * scale;
-    const from = { x: centre.x - w / 2, y: centre.y - h / 2 - offsetPx, w, h };
-
-    // To the tray's centre, at the size its chip will draw it.
-    const container = this.options.container.getBoundingClientRect();
-    const fit = (chipPx * (1 - 2 * CHIP_INSET)) / Math.max(piece.w, piece.h);
-    const tw = piece.w * fit;
-    const th = piece.h * fit;
-    const to = {
-      x: trayRect.left + trayRect.width / 2 - container.left - tw / 2,
-      y: trayRect.top + trayRect.height / 2 - container.top - th / 2,
-      w: tw,
-      h: th,
-    };
-    return { id: piece.id, ghost: { bitmap: piece.bitmap, from, to, t0: performance.now() } };
-  }
-
   private render(): void {
     let scene: Scene = this.session
       ? this.session.scene()
@@ -1268,16 +1230,6 @@ export class PlayRuntime {
         const scale = handoffLiftScale(elapsed, this.handoff.start, scene.heldLift.scale);
         scene = { ...scene, heldLift: { ...scene.heldLift, scale } };
       }
-    }
-    if (this.homing.length > 0) {
-      const ghosts: { bitmap: ImageBitmap; rect: Rect }[] = [];
-      this.homing = this.homing.filter((flight) => {
-        const rect = homingRect(flight.from, flight.to, now - flight.t0);
-        if (rect) ghosts.push({ bitmap: flight.bitmap, rect });
-        return rect !== null;
-      });
-      // Called with the empty list too: that is what clears the last frame.
-      this.renderer.setHoming(ghosts);
     }
     this.renderer.draw(scene, this.camera);
   }
@@ -1306,7 +1258,7 @@ export class PlayRuntime {
 
     this.render();
 
-    if (stillMoving || handDown || this.homing.length > 0) {
+    if (stillMoving || handDown) {
       requestAnimationFrame(this.pump);
     } else {
       this.pumping = false;
@@ -1381,13 +1333,6 @@ function prefersReducedMotion(): boolean {
   return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 }
 
-/** A piece already home, drawn on its way there (`handoff.ts`). */
-interface HomingFlight {
-  bitmap: ImageBitmap;
-  from: Rect;
-  to: Rect;
-  t0: number;
-}
 
 /** Two cameras that frame the same view, to within a pixel's worth of drift. */
 function sameView(a: Camera, b: Camera): boolean {

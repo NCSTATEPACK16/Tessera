@@ -272,7 +272,14 @@ test.describe('a piece dropped on the tray', () => {
             const chip = document.querySelector(
               `[aria-label="Pieces"] button[aria-label="Piece ${pieceId}"]`,
             );
-            if (chip) res(chip.getAnimations().length);
+            if (chip) {
+              const running = chip.getAnimations();
+              // Whole-branch review: the chip used to wait 200ms for a flight
+              // drawn under the tray, where no one could see it. It arrives at
+              // once; -1000 flags a delayed one.
+              const delayed = running.some((a) => Number(a.effect?.getTiming().delay ?? 0) > 0);
+              res(delayed ? -1000 : running.length);
+            }
             else if (performance.now() - started > 2000) res(-1);
             else requestAnimationFrame(look);
           };
@@ -284,7 +291,7 @@ test.describe('a piece dropped on the tray', () => {
     return { id, animations: await probe };
   }
 
-  test('is in the tray at once, homes, and lets the board go idle', { tag: '@phone' }, async ({
+  test('is in the tray at once, its chip fades in, and the board goes idle', { tag: '@phone' }, async ({
     page,
   }) => {
     const board = await BoardPage.open(page, { pieceCount: 50, mode: 'Zen' });

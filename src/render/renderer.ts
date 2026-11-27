@@ -89,7 +89,6 @@ export class Renderer {
   private viewport: Size = { w: 0, h: 0 };
   private pixelRatio: number;
   private scene: Scene = emptyScene();
-  private homing: readonly { bitmap: ImageBitmap; rect: Rect }[] = [];
   private camera: Camera = { x: 0, y: 0, zoom: 1 };
 
   /** Scratch canvas for the light system's downsample-and-blur pass (§07). */
@@ -178,16 +177,6 @@ export class Renderer {
     // layer is not exempt from it — it is exempt only from *time*.
     if (placedChanged || cameraMoved || boardChanged) this.scheduler.invalidate('static');
     this.scheduler.invalidate('dynamic', 'overlay');
-  }
-
-  /**
-   * Modernize §5: pictures of pieces already back in the tray, flying there.
-   * Screen rects, container-relative CSS px. The runtime owns their clock and
-   * clears the list to `[]` on the frame they land.
-   */
-  setHoming(ghosts: readonly { bitmap: ImageBitmap; rect: Rect }[]): void {
-    this.homing = ghosts;
-    this.scheduler.invalidate('dynamic');
   }
 
   /** Hold the frame loop open — a drag, a spring, a breathing hint glow. */
@@ -480,10 +469,6 @@ export class Renderer {
     ctx.restore();
     // Camera unwound; the device-pixel transform is back. Screen space from here.
     this.drawGroupChips(ctx);
-    for (const ghost of this.homing) {
-      const { x, y, w, h } = ghost.rect;
-      ctx.drawImage(ghost.bitmap, x, y, w, h);
-    }
   }
 
   /**
