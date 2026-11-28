@@ -6,7 +6,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage, openTab } from './board-page';
+import { BoardPage, ctrlWheel, openTab } from './board-page';
 
 test.describe('the top bar', () => {
   test('the puzzle’s name, n / N, and a progress line', async ({ page }) => {
@@ -84,7 +84,7 @@ test.describe('the board, framed above the sheet', () => {
     // The player zooms in: from here the view is theirs (ruling R2).
     const mat = await board.matPoint();
     await page.mouse.move(mat.x, mat.y);
-    await page.mouse.wheel(0, -240);
+    await ctrlWheel(page, -240);
     await page.waitForTimeout(200);
     const chosen = await board.frameRect();
 

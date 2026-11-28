@@ -54,6 +54,20 @@ export function screenToWorld(camera: Camera, viewport: Size, p: Point): Point {
 }
 
 /**
+ * The camera that keeps the world under the viewport's top-left corner fixed
+ * across a resize. `Camera` is centre-anchored, so without this every resize —
+ * a tray edge dragged, the window narrowed — slides the board by half the
+ * change, which reads as the board shaking.
+ */
+export function anchorTopLeft(camera: Camera, before: Size, after: Size): Camera {
+  return {
+    x: camera.x + (after.w - before.w) / 2 / camera.zoom,
+    y: camera.y + (after.h - before.h) / 2 / camera.zoom,
+    zoom: camera.zoom,
+  };
+}
+
+/**
  * Screen pixels per world unit at which the board exactly fits — the 1× the
  * zoom range is measured against.
  */

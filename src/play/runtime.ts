@@ -33,6 +33,7 @@ import {
   MIN_ZOOM,
   REGION_LENS_ZOOM,
   createCamera,
+  anchorTopLeft,
   fitCameraInRect,
   fitScale,
   insetWorldRect,
@@ -424,14 +425,32 @@ export class PlayRuntime {
     this.audio.suspend();
   }
 
+  /**
+   * A camera still at fit refits to the new size; one the player moved keeps
+   * the world under its top-left corner exactly where it was (`anchorTopLeft`).
+   * Neither ever moves the board under a finger.
+   */
   resize(): void {
+    const before = this.viewport;
     this.renderer.resize();
+    const after = this.viewport;
+    if ((before.w !== after.w || before.h !== after.h) && !this.controls?.busy) {
+      if (this.controls?.camera.atFit) this.controls.camera.fit();
+      else this.camera = anchorTopLeft(this.camera, before, after);
+    }
     this.render();
     this.scheduleRegion();
   }
 
   fit(): void {
     this.controls?.camera.fit();
+    this.render();
+    this.scheduleRegion();
+  }
+
+  /** The play chrome's zoom buttons: about the visible centre, same clamp as a pinch. */
+  zoomBy(factor: number): void {
+    this.controls?.camera.zoomBy(factor);
     this.render();
     this.scheduleRegion();
   }

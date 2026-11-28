@@ -82,6 +82,25 @@ export function pointInPolygon(poly: readonly number[], x: number, y: number): b
   return inside;
 }
 
+/** Shortest distance from a point to a closed polygon's edges. Pairs of x,y. */
+export function distanceToPolygon(poly: readonly number[], x: number, y: number): number {
+  const n = poly.length / 2;
+  let best = Infinity;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const ax = poly[j * 2]!;
+    const ay = poly[j * 2 + 1]!;
+    const bx = poly[i * 2]!;
+    const by = poly[i * 2 + 1]!;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2));
+    const d = Math.hypot(x - (ax + t * dx), y - (ay + t * dy));
+    if (d < best) best = d;
+  }
+  return best;
+}
+
 export interface HitIndexOptions {
   /** Cell edge in world units. One piece width is the natural choice. */
   cellSize?: number;
@@ -161,6 +180,47 @@ export class HitIndex {
       }
       const local = toLocal(piece, p);
       if (pointInPolygon(piece.poly, local.x, local.y)) best = piece;
+    }
+    return best;
+  }
+
+  /**
+   * `pick`, then — when the point lands on bare mat — the nearest piece whose
+   * outline lies within `slop` world units. A fingertip is far wider than a
+   * piece at 150+ pieces on a phone, and a near-miss used to become a camera
+   * pan, which reads as the board lurching away from the hand.
+   *
+   * An exact hit always wins over a near one, so overlapping pieces still pick
+   * by draw order exactly as before.
+   */
+  pickNear(p: Point, slop: number): HitPiece | null {
+    const exact = this.pick(p);
+    if (exact || slop <= 0) return exact;
+
+    const seen = new Set<number>();
+    const minCol = Math.floor((p.x - slop) / this.cellSize);
+    const maxCol = Math.floor((p.x + slop) / this.cellSize);
+    const minRow = Math.floor((p.y - slop) / this.cellSize);
+    const maxRow = Math.floor((p.y + slop) / this.cellSize);
+
+    let best: HitPiece | null = null;
+    let bestDist = slop;
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        for (const id of this.cells.get(cellKey(col, row)) ?? []) {
+          if (seen.has(id)) continue;
+          seen.add(id);
+          const piece = this.pieces.get(id);
+          if (!piece) continue;
+          // Rotation is rigid, so distance in the piece's frame is world distance.
+          const local = toLocal(piece, p);
+          const d = distanceToPolygon(piece.poly, local.x, local.y);
+          if (d < bestDist || (d === bestDist && best && piece.pick > best.pick)) {
+            best = piece;
+            bestDist = d;
+          }
+        }
+      }
     }
     return best;
   }

@@ -9,6 +9,9 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   // --mat-void, so the web view never flashes white before theme.css lands.
   backgroundColor: '#0B0D10',
+  // The web view itself never scrolls or bounces: the board pans through its
+  // own camera, and a rubber-banding page reads as the board shaking.
+  ios: { scrollEnabled: false },
 };
 
 export default config;

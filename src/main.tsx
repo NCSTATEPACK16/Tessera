@@ -23,6 +23,14 @@ import '@fontsource/ibm-plex-mono/latin-500.css';
 import '@fontsource/instrument-serif/latin-400.css';
 import './ui/theme.css';
 
+// iOS Safari ignores `user-scalable=no`, so a pinch that starts on chrome —
+// the top bar, a sheet — zooms the whole page and the board seems to lurch.
+// Safari's own gesture events are the only reliable stop. The board's pinch is
+// pointer events on a `touch-action: none` canvas and never sees these.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
+}
+
 const root = document.getElementById('root');
 if (!root) throw new Error('main: missing #root');
 

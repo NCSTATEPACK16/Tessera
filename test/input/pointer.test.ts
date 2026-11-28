@@ -211,6 +211,66 @@ describe('arbitration — two fingers always means camera (§05)', () => {
   });
 });
 
+describe('one touch never moves the camera', () => {
+  const touch = (id: number, x: number, y: number, t: number) => ({ id, x, y, t, kind: 'touch' as const });
+
+  it('ignores a touch on bare mat instead of panning', () => {
+    const { machine, log } = harness();
+    machine.down(touch(1, 500, 500, 0));
+    machine.move(touch(1, 560, 540, 16));
+
+    expect(machine.phase).toBe('ignored');
+    expect(log.camera).toEqual([]);
+    expect(log.grabs).toHaveLength(0);
+
+    machine.up(touch(1, 560, 540, 32));
+    expect(machine.phase).toBe('idle');
+    expect(log.camera).toEqual([]);
+  });
+
+  it('treats a pen like a finger', () => {
+    const { machine, log } = harness();
+    machine.down({ id: 1, x: 500, y: 500, t: 0, kind: 'pen' });
+    expect(machine.phase).toBe('ignored');
+    expect(log.camera).toEqual([]);
+  });
+
+  it('still pans for a mouse on bare mat — a mouse is precise', () => {
+    const { machine, log } = harness();
+    machine.down({ id: 1, x: 500, y: 500, t: 0, kind: 'mouse' });
+    expect(machine.phase).toBe('camera');
+    expect(log.camera).toEqual(['begin']);
+  });
+
+  it('turns an ignored touch into a camera gesture when a second finger lands', () => {
+    const { machine, log } = harness();
+    machine.down(touch(1, 500, 500, 0));
+    machine.down(touch(2, 600, 500, 8));
+    expect(machine.phase).toBe('camera');
+    expect(log.camera).toEqual(['begin']);
+  });
+
+  it('tells the host what kind of pointer is asking, so slop can be touch-only', () => {
+    const kinds: string[] = [];
+    const recorder = new PointerMachine({
+      toWorld: (p) => p,
+      pickCluster: (_world, kind) => {
+        kinds.push(kind);
+        return null;
+      },
+      onGrab: () => {},
+      onDragTo: () => {},
+      onRelease: () => {},
+      onCameraBegin: () => {},
+      onCameraEnd: () => {},
+    });
+    recorder.down(touch(1, 0, 0, 0));
+    recorder.up(touch(1, 0, 0, 8));
+    recorder.down(at(2, 0, 0, 16));
+    expect(kinds).toEqual(['touch', 'mouse']);
+  });
+});
+
 describe('interruption', () => {
   it('drops a held piece where it is when the pointer is cancelled', () => {
     // §05: on interruption "any held piece is released to its current position".

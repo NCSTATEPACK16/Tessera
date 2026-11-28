@@ -556,14 +556,26 @@ export class BoardPage {
     await this.page.waitForTimeout(250);
   }
 
+  /**
+   * Zoom by wheel notches. Held Control, because a plain wheel pans: a ctrl
+   * wheel is what a trackpad pinch arrives as (`camera-controls.ts`).
+   */
   async zoom(steps: number): Promise<void> {
     const at = await this.matPoint();
     await this.page.mouse.move(at.x, at.y);
-    for (let i = 0; i < Math.abs(steps); i++) {
-      await this.page.mouse.wheel(0, steps > 0 ? -240 : 240);
-    }
+    await ctrlWheel(this.page, steps > 0 ? -240 : 240, Math.abs(steps));
     // The Region lens re-reads the camera 160ms after it settles, not per frame.
     await this.page.waitForTimeout(500);
+  }
+}
+
+/** `count` wheel events of `deltaY` with Control held — a zoom, not a pan. */
+export async function ctrlWheel(page: Page, deltaY: number, count = 1): Promise<void> {
+  await page.keyboard.down('Control');
+  try {
+    for (let i = 0; i < count; i++) await page.mouse.wheel(0, deltaY);
+  } finally {
+    await page.keyboard.up('Control');
   }
 }
 

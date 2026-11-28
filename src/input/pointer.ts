@@ -10,7 +10,12 @@
  * Arbitration is strict and in this order:
  *   two fingers   → always camera, and any held cluster is let go where it is
  *   one on a piece → drag
- *   one on mat     → camera pan
+ *   one on mat     → camera pan for a mouse; nothing at all for touch or pen
+ *
+ * One touch never moves the camera. A fingertip on a phone is wider than a
+ * piece, so a near-miss on bare mat used to become a pan and the board lurched
+ * out from under the hand. Touch pans and zooms with two fingers or the zoom
+ * buttons; the mouse, which is precise, keeps drag-to-pan.
  *
  * There is no tap-to-select-then-tap-to-place, deliberately. Direct manipulation
  * only — the entire product promise is weight in the hand.
@@ -51,7 +56,14 @@ const VELOCITY_WINDOW_MS = 60;
 const TREMOR_LOW_PASS_ALPHA = 0.35;
 const TREMOR_DEAD_ZONE_PX = 1.5;
 
-export type PointerPhase = 'idle' | 'pressing' | 'dragging' | 'camera';
+/**
+ * `ignored`: a single touch that missed every piece. It owns the gesture so
+ * nothing else claims it, and does nothing until it lifts or a second finger
+ * turns it into a camera gesture.
+ */
+export type PointerPhase = 'idle' | 'pressing' | 'dragging' | 'camera' | 'ignored';
+
+export type PointerKind = 'mouse' | 'touch' | 'pen';
 
 export interface PointerSample {
   id: number;
@@ -60,6 +72,8 @@ export interface PointerSample {
   y: number;
   /** Milliseconds, monotonic. */
   t: number;
+  /** Omitted reads as mouse — the precise pointer, which may pan with one button. */
+  kind?: PointerKind;
 }
 
 export interface GrabEvent {
@@ -90,7 +104,7 @@ export interface PointerHost {
    * The topmost draggable cluster under a world point, or null for bare mat.
    * Anchored clusters — the board — must report null: the board does not move.
    */
-  pickCluster(world: Point): number | null;
+  pickCluster(world: Point, kind: PointerKind): number | null;
   onGrab(event: GrabEvent): void;
   onDragTo(event: DragEvent): void;
   onRelease(event: ReleaseEvent): void;
@@ -185,9 +199,11 @@ export class PointerMachine {
     }
 
     const world = this.host.toWorld({ x: sample.x, y: sample.y });
-    const cluster = this.host.pickCluster(world);
+    const kind = sample.kind ?? 'mouse';
+    const cluster = this.host.pickCluster(world, kind);
     if (cluster === null) {
-      this.beginCamera();
+      if (kind === 'mouse') this.beginCamera();
+      else this.phase_ = 'ignored';
       return;
     }
 

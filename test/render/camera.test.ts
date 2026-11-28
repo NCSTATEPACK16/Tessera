@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Size } from '@/core/geom';
 import {
+  anchorTopLeft,
   clampZoom,
   createCamera,
   easeCamera,
@@ -378,5 +379,24 @@ describe('easeCamera', () => {
     const mid = easeCamera(from, to, 0.5);
     const progress = mid.x / to.x;
     expect(mid.zoom).toBeCloseTo(10 * 4 ** progress, 6);
+  });
+});
+
+describe('anchorTopLeft — a resize never slides the board', () => {
+  it('keeps the world point under the top-left corner fixed', () => {
+    const camera: Camera = { x: 4, y: 3, zoom: 50 };
+    const before = { w: 1024, h: 768 };
+    const after = { w: 800, h: 700 };
+    const next = anchorTopLeft(camera, before, after);
+    const corner = screenToWorld(camera, before, { x: 0, y: 0 });
+    const cornerAfter = screenToWorld(next, after, { x: 0, y: 0 });
+    expect(cornerAfter.x).toBeCloseTo(corner.x, 10);
+    expect(cornerAfter.y).toBeCloseTo(corner.y, 10);
+    expect(next.zoom).toBe(50);
+  });
+
+  it('is the identity when the size has not changed', () => {
+    const camera: Camera = { x: 4, y: 3, zoom: 50 };
+    expect(anchorTopLeft(camera, VIEWPORT, VIEWPORT)).toEqual(camera);
   });
 });

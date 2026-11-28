@@ -50,6 +50,23 @@ export const Icon = {
       <polyline points="9 20 4 20 4 15" />
     </Svg>
   ),
+  /** Zoom in: a lens with a plus. */
+  ZoomIn: ({ size = 18 }: IconProps) => (
+    <Svg size={size}>
+      <circle cx="11" cy="11" r="6.5" />
+      <line x1="20" y1="20" x2="15.6" y2="15.6" />
+      <line x1="11" y1="8" x2="11" y2="14" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+    </Svg>
+  ),
+  /** Zoom out: a lens with a minus. */
+  ZoomOut: ({ size = 18 }: IconProps) => (
+    <Svg size={size}>
+      <circle cx="11" cy="11" r="6.5" />
+      <line x1="20" y1="20" x2="15.6" y2="15.6" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+    </Svg>
+  ),
   Lightbulb: ({ size = 20 }: IconProps) => (
     <Svg size={size}>
       <line x1="9" y1="18" x2="15" y2="18" />
