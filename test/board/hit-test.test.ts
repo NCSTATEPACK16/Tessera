@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { CubicPath, Point } from '@/core/geom';
-import { HitIndex, pointInPolygon, polygonFromPath } from '@/board/hit-test';
+import { distanceToPolygon, HitIndex, pointInPolygon, polygonFromPath } from '@/board/hit-test';
 import type { HitPiece } from '@/board/hit-test';
 
 /** A straight-sided closed square in bitmap-local pixels. */
@@ -155,5 +155,40 @@ describe('HitIndex', () => {
     // Unrotated this point is outside the 0.5-wide piece; rotated it is on it.
     expect(index.pick({ x: 1.1, y: 1 })?.id).toBe(5);
     expect(index.pick({ x: 0.25, y: 1.8 })).toBeNull();
+  });
+});
+
+describe('pickNear — a fingertip is wider than a piece', () => {
+  it('picks the nearest piece within the slop when the point is on bare mat', () => {
+    const index = new HitIndex();
+    index.rebuild([piece({ id: 1, x: 0, y: 0 }), piece({ id: 2, x: 3, y: 0 })]);
+    // 0.1 right of piece 1's edge, 1.9 left of piece 2's.
+    expect(index.pick({ x: 1.1, y: 0.5 })).toBeNull();
+    expect(index.pickNear({ x: 1.1, y: 0.5 }, 0.2)?.id).toBe(1);
+  });
+
+  it('picks nothing beyond the slop', () => {
+    const index = new HitIndex();
+    index.rebuild([piece({ id: 1, x: 0, y: 0 })]);
+    expect(index.pickNear({ x: 1.3, y: 0.5 }, 0.2)).toBeNull();
+  });
+
+  it('an exact hit always beats a nearer-edged neighbour', () => {
+    const index = new HitIndex();
+    // Piece 2 sits just right of piece 1; the point is inside 1, 0.02 from 2.
+    index.rebuild([piece({ id: 1, x: 0, y: 0 }), piece({ id: 2, x: 1.0, y: 0, pick: 5 })]);
+    expect(index.pickNear({ x: 0.98, y: 0.5 }, 0.3)?.id).toBe(1);
+  });
+
+  it('with slop 0 is exactly pick', () => {
+    const index = new HitIndex();
+    index.rebuild([piece({ id: 1, x: 0, y: 0 })]);
+    expect(index.pickNear({ x: 1.05, y: 0.5 }, 0)).toBeNull();
+  });
+
+  it('measures distance to the edge, not the centre', () => {
+    const square = [0, 0, 1, 0, 1, 1, 0, 1];
+    expect(distanceToPolygon(square, 1.5, 0.5)).toBeCloseTo(0.5, 10);
+    expect(distanceToPolygon(square, 2, 2)).toBeCloseTo(Math.SQRT2, 10);
   });
 });

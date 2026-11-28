@@ -1,12 +1,14 @@
 /**
- * Camera gestures — pinch zoom, drag pan, wheel, double-tap to fit.
+ * Camera gestures — pinch zoom, drag pan, wheel. Camera only; arbitration
+ * lives in `input/pointer.ts`.
  *
- * Camera only. The pointer machine that decides whether a touch is a camera
- * gesture or a piece drag arrives at step 2; until then every pointer is a
- * camera pointer, which is exactly what step 1 needs to inspect the cut.
+ * There is deliberately no double-tap-to-fit. It could not tell a double tap on
+ * bare mat from tap-a-piece-then-grab-it, so the board refit itself under the
+ * player's finger mid-move. Fit is the Fit button, and nothing else.
  *
- * Gesture arbitration when it does arrive (§05): two fingers always means
- * camera, one finger on a piece means drag, one finger on empty mat means pan.
+ * Wheel: a trackpad pinch arrives as `ctrlKey` wheel and zooms; a plain wheel
+ * or two-finger trackpad scroll pans. Zooming on plain scroll made every
+ * trackpad swipe a lurch in scale.
  */
 
 import type { Point, Rect, Size } from '@/core/geom';
@@ -28,7 +30,7 @@ export interface CameraControlsOptions {
   /** Board extent. The reference 1× is measured against. */
   getBoard: () => { w: number; h: number };
   /**
-   * What double-tap-to-fit should frame, when that is more than the board —
+   * What fit should frame, when that is more than the board —
    * the board plus everything scattered around it. Falls back to the board.
    */
   getFitBounds?: () => Rect;
@@ -52,17 +54,22 @@ export interface CameraControlsOptions {
   attach?: boolean;
 }
 
-const DOUBLE_TAP_MS = 300;
 /** §5: the eased refit, `--duration-slow`. */
 const FIT_EASE_MS = 320;
-const DOUBLE_TAP_SLOP = 24;
+/** `WheelEvent.deltaMode` line and page units, in px. */
+const WHEEL_LINE_PX = 16;
+/**
+ * Zoom per px of ctrl-wheel delta. A trackpad pinch sends many small deltas,
+ * Ctrl + a mouse wheel a few large ones — so the rate is steep and each event
+ * is capped, which leaves one wheel notch at about 1.5×.
+ */
+const WHEEL_ZOOM_RATE = 0.01;
+const WHEEL_ZOOM_MAX_DELTA = 40;
 
 export class CameraControls {
   private readonly pointers = new Map<number, Point>();
   private lastCentroid: Point | null = null;
   private lastSpread = 0;
-  private lastTapAt = 0;
-  private lastTapPoint: Point = { x: 0, y: 0 };
 
   private readonly attached: boolean;
   private minRelativeZoom: number;
@@ -106,6 +113,46 @@ export class CameraControls {
   readonly feedMove = (event: PointerEvent): void => this.onPointerMove(event);
   readonly feedUp = (event: PointerEvent): void => this.onPointerUp(event);
   readonly feedWheel = (event: WheelEvent): void => this.onWheel(event);
+  /**
+   * Keep a pointer's position current without moving the camera — for moves
+   * during a piece drag. Without it the map holds where the finger first
+   * touched, and a second finger landing mid-drag pinches from that stale
+   * baseline: the board jumps by half the drag and rescales at once.
+   * Unknown pointers are ignored, so a hovering mouse never enters the map.
+   */
+  readonly feedTrack = (event: PointerEvent): void => {
+    if (this.pointers.has(event.pointerId)) this.pointers.set(event.pointerId, this.local(event));
+  };
+  /**
+   * Register a pointer that went down somewhere else — a drag adopted from the
+   * tray — so a second finger pinches from the right baseline. No capture: the
+   * adopted drag already runs on window listeners.
+   */
+  readonly feedAdd = (event: PointerEvent): void => {
+    this.pointers.set(event.pointerId, this.local(event));
+    this.syncGestureBaseline();
+  };
+
+  /**
+   * Zoom by `factor` about the centre of the visible rect — the zoom buttons.
+   * Same clamp as every other zoom.
+   */
+  zoomBy(factor: number): void {
+    const camera = this.options.getCamera();
+    const viewport = this.options.getViewport();
+    const visible = this.options.getVisibleRect?.() ?? { x: 0, y: 0, w: viewport.w, h: viewport.h };
+    const fit = this.fitScale();
+    this.take(
+      zoomAbout(
+        camera,
+        viewport,
+        { x: visible.x + visible.w / 2, y: visible.y + visible.h / 2 },
+        clampZoom(camera.zoom * factor, fit, this.minRelativeZoom),
+        fit,
+        this.minRelativeZoom,
+      ),
+    );
+  }
 
   /**
    * Frame everything, clamped to the zoom range.
@@ -137,8 +184,8 @@ export class CameraControls {
   }
 
   /**
-   * True while the camera is still where the last fit put it. Any pan, zoom or
-   * double-tap the player makes clears it, so a sheet opening never throws
+   * True while the camera is still where the last fit put it. Any pan or zoom
+   * the player makes clears it, so a sheet opening never throws
    * away a view they chose (ruling R2).
    */
   atFit = false;
@@ -189,22 +236,17 @@ export class CameraControls {
       this.cancelEase();
       this.atFit = false;
     }
-    this.options.element.setPointerCapture(event.pointerId);
+    // Capture can refuse a pointer that is already gone (a press released in
+    // the same task). Losing capture is harmless; throwing here would drop the
+    // rest of the press on the floor.
+    try {
+      this.options.element.setPointerCapture(event.pointerId);
+    } catch {
+      /* the pointer is already gone */
+    }
     const p = this.local(event);
     this.pointers.set(event.pointerId, p);
     this.syncGestureBaseline();
-
-    const now = performance.now();
-    if (
-      now - this.lastTapAt < DOUBLE_TAP_MS &&
-      Math.hypot(p.x - this.lastTapPoint.x, p.y - this.lastTapPoint.y) < DOUBLE_TAP_SLOP
-    ) {
-      this.fit();
-      this.lastTapAt = 0;
-      return;
-    }
-    this.lastTapAt = now;
-    this.lastTapPoint = p;
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
@@ -252,8 +294,19 @@ export class CameraControls {
     const rect = this.options.element.getBoundingClientRect();
     const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     const camera = this.options.getCamera();
+    const unit =
+      event.deltaMode === 1 ? WHEEL_LINE_PX : event.deltaMode === 2 ? this.options.getViewport().h : 1;
+    const dx = event.deltaX * unit;
+    const dy = event.deltaY * unit;
+
+    if (!event.ctrlKey) {
+      this.take({ x: camera.x + dx / camera.zoom, y: camera.y + dy / camera.zoom, zoom: camera.zoom });
+      return;
+    }
+
     const fit = this.fitScale();
-    const factor = Math.exp(-event.deltaY * 0.0015);
+    const capped = Math.max(-WHEEL_ZOOM_MAX_DELTA, Math.min(WHEEL_ZOOM_MAX_DELTA, dy));
+    const factor = Math.exp(-capped * WHEEL_ZOOM_RATE);
     this.take(
       zoomAbout(
         camera,

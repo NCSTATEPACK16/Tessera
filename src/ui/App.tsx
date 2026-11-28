@@ -1511,6 +1511,7 @@ export function App(): React.ReactElement {
             total={summary.total}
             cut={summary.cut}
             onFit={() => runtime.current?.fit()}
+            onZoom={(factor) => runtime.current?.zoomBy(factor)}
             onPause={() => setPauseOpen(true)}
           />
         )}

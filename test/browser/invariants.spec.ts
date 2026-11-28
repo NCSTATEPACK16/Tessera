@@ -14,7 +14,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { BoardPage, rafCalls, trayMutations, watchRafCalls, watchTrayMutations } from './board-page';
+import { BoardPage, ctrlWheel, rafCalls, trayMutations, watchRafCalls, watchTrayMutations } from './board-page';
 
 /**
  * A single re-render of a ~70-chip grid is hundreds of mutations, so the gap
@@ -36,7 +36,7 @@ test.describe('the board never re-renders through React', { tag: ['@timing', '@s
     const before = await trayMutations(page);
     for (let i = 0; i < 40; i++) {
       await page.mouse.move(centre.x - 200 + i * 8, centre.y - 100 + (i % 7) * 6);
-      if (i % 4 === 0) await page.mouse.wheel(0, i % 8 === 0 ? -120 : 120);
+      if (i % 4 === 0) await ctrlWheel(page, i % 8 === 0 ? -120 : 120);
     }
     await page.waitForTimeout(200);
 

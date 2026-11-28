@@ -5,11 +5,11 @@
  * and tested. What is left here is plumbing, and two pieces of it are worth
  * pointing at because both are invisible until they are wrong:
  *
- * 1. The camera controller is fed *every* pointer down and up even while a piece
- *    is being dragged, but is only allowed to move the camera during a camera
- *    gesture. If it only heard about the second finger, a pinch that begins
- *    mid-drag would start from a one-finger baseline and the board would jump by
- *    the distance between the fingers.
+ * 1. The camera controller is fed *every* pointer down, move and up even while a
+ *    piece is being dragged, but only moves the camera during a camera gesture —
+ *    other moves go to `feedTrack`, which updates positions and nothing else. If
+ *    it only heard the downs, a pinch that begins mid-drag would baseline from
+ *    where the first finger *started* and the board would jump.
  *
  * 2. `touch-action: none` is set on the canvases by the renderer. Without it
  *    Safari takes pinch and pan for itself and the mat simply does not move.
@@ -27,7 +27,16 @@ import { LIFT_PX } from '@/play/session';
 import type { Camera } from '@/render/camera';
 import { screenToWorld } from '@/render/camera';
 import { CameraControls } from '@/render/camera-controls';
+import type { PointerKind } from './pointer';
 import { PointerMachine } from './pointer';
+
+/**
+ * Near-miss forgiveness for a fingertip, in screen px. Screen, not world, so a
+ * finger is forgiven the same amount at every zoom; converted through the
+ * camera at the one place that knows the zoom. A mouse gets none — it is
+ * precise, and a miss with one still pans.
+ */
+export const TOUCH_HIT_SLOP_PX = 14;
 
 export interface BoardControlsOptions {
   element: HTMLElement;
@@ -86,7 +95,11 @@ export class BoardControls {
 
     this.machine = new PointerMachine({
       toWorld: (p) => this.toWorld(p),
-      pickCluster: (world) => options.session.pickCluster(world),
+      pickCluster: (world, kind) =>
+        options.session.pickCluster(
+          world,
+          kind === 'mouse' ? 0 : TOUCH_HIT_SLOP_PX / options.getCamera().zoom,
+        ),
       onGrab: (event) => {
         options.session.grab(event.clusterId);
         options.onChange();
@@ -152,6 +165,7 @@ export class BoardControls {
   adoptPointer(event: PointerEvent, clusterId: number): boolean {
     if (!this.machine.adopt(this.local(event), clusterId)) return false;
 
+    this.camera.feedAdd(event);
     this.adopted = event.pointerId;
     this.lastClient = { x: event.clientX, y: event.clientY };
     window.addEventListener('pointermove', this.onMove);
@@ -178,13 +192,20 @@ export class BoardControls {
     return screenToWorld(this.options.getCamera(), this.options.getViewport(), p);
   }
 
-  private local(event: PointerEvent): { id: number; x: number; y: number; t: number } {
+  private local(event: PointerEvent): {
+    id: number;
+    x: number;
+    y: number;
+    t: number;
+    kind: PointerKind;
+  } {
     const rect = this.options.element.getBoundingClientRect();
     return {
       id: event.pointerId,
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
       t: event.timeStamp,
+      kind: event.pointerType === 'touch' || event.pointerType === 'pen' ? event.pointerType : 'mouse',
     };
   }
 
@@ -222,6 +243,7 @@ export class BoardControls {
     this.lastClient = { x: event.clientX, y: event.clientY };
     this.machine.move(this.local(event));
     if (this.machine.phase === 'camera') this.camera.feedMove(event);
+    else this.camera.feedTrack(event);
   };
 
   private readonly onUp = (event: PointerEvent): void => {

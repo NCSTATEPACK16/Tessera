@@ -42,6 +42,14 @@ Break any of these and something downstream breaks in a way that looks like a di
 - **Every piece placement goes through the union-find.** Merging with cluster 0 is what "placed"
   means; completion is `cluster0.pieceIds.length === N` and nothing else.
 - **Snap tolerance is always world-space**, so zoom never changes difficulty.
+- **One touch never moves the camera.** A single touch or pen press that misses every loose piece
+  goes to the inert `ignored` phase (`input/pointer.ts`) — it does not pan. Touch pans and zooms
+  with two fingers or the top bar's zoom buttons; a mouse keeps drag-on-mat to pan. A fingertip
+  gets `TOUCH_HIT_SLOP_PX` (screen px, converted through the camera) of near-miss forgiveness via
+  `HitIndex.pickNear`. There is no double-tap-to-fit — it could not tell tap-then-grab from a
+  double tap, and refit the board under the finger. A plain wheel pans; only a ctrl-wheel (a
+  trackpad pinch) zooms. A resize keeps the top-left world point fixed (`anchorTopLeft`), or
+  refits a camera still at fit.
 - **The cut is deterministic from a seed.** Never store geometry or piece images — a snapshot is
   ~6 KB because it stores neither.
 - **Per-concern PRNG streams**, derived from `(seed, kind, id)` via `rngFor`. Never a shared

@@ -353,7 +353,7 @@ export class PlaySession {
     const targets: HitPiece[] = [];
     for (const piece of this.board.pieces) {
       // Placed pieces are deliberately absent: the board is anchored, so one
-      // finger on it must fall through to a camera pan rather than a dead drag.
+      // finger on it does nothing (touch) or pans (mouse), never a dead drag.
       if (this.board.isPlaced(piece.id)) continue;
       // Tray pieces likewise — they are not on the mat to be touched.
       if (this.inTray.has(piece.id)) continue;
@@ -362,8 +362,9 @@ export class PlaySession {
     this.index.rebuild(targets);
   }
 
-  pickCluster(world: Point): number | null {
-    const hit = this.index.pick(world);
+  /** `slop` is world units of near-miss forgiveness — see `HitIndex.pickNear`. */
+  pickCluster(world: Point, slop = 0): number | null {
+    const hit = this.index.pickNear(world, slop);
     return hit ? this.board.clusterIdOf(hit.id) : null;
   }
 
