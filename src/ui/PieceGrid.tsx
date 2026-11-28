@@ -40,6 +40,8 @@ export interface PieceGridProps {
   onScroll?: ((top: number) => void) | undefined;
   /** Step 5c: applied once, before the first virtualisation pass. */
   initialScrollTop?: number | undefined;
+  /** Modernize §5: the piece that just went home — its chip arrives as the flight lands. */
+  arriving?: PieceId | null;
 }
 
 export function PieceGrid({
@@ -56,6 +58,7 @@ export function PieceGrid({
   onChipClick,
   onScroll,
   initialScrollTop,
+  arriving = null,
 }: PieceGridProps): React.ReactElement {
   // One `onActivate` for both meanings a tap can have, decided here rather than
   // by a second callback on `PieceChip` — locate-on-mat and toggle-in-select-mode
@@ -133,6 +136,7 @@ export function PieceGrid({
                 onActivate={activate}
                 badge={badgeOf ? badgeOf(id) : 0}
                 selecting={selecting ?? false}
+                arriving={id === arriving}
               />
             </div>
           ))}

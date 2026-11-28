@@ -94,7 +94,10 @@ export class BoardPage {
   readonly gridBody: Locator;
   /** Select mode's action bar (§06). Present only while select mode is on. */
   readonly pullOutButton: Locator;
+  readonly pinButton: Locator;
   readonly cancelButton: Locator;
+  /** The bar's `{n} selected` line — the count lives here, not in a button label. */
+  readonly selectedLabel: Locator;
 
   constructor(readonly page: Page) {
     this.tray = page.locator('[aria-label="Pieces"]');
@@ -103,7 +106,9 @@ export class BoardPage {
     this.shelf = page.locator('[aria-label="Shelf"]');
     this.gridBody = page.locator('[aria-label="Pieces"] .overflow-y-auto');
     this.pullOutButton = page.locator('[aria-label="Pieces"] button:has-text("Pull out")');
+    this.pinButton = this.tray.getByRole('button', { name: 'Pin', exact: true });
     this.cancelButton = page.locator('[aria-label="Pieces"] button:has-text("Cancel")');
+    this.selectedLabel = this.tray.getByText(/^\d+ selected$/);
   }
 
   /**
@@ -260,18 +265,42 @@ export class BoardPage {
     );
   }
 
+  /** The phone sheet's handle dragged until the sheet's top is at `y`; then it rests. */
+  async dragSheetTo(y: number): Promise<void> {
+    const handle = this.page.getByRole('separator', { name: 'Resize the piece tray' });
+    const box = (await handle.boundingBox())!;
+    const x = box.x + box.width / 2;
+    await this.page.mouse.move(x, box.y + box.height / 2);
+    await this.page.mouse.down();
+    await this.page.mouse.move(x, y, { steps: 12 });
+    await this.page.mouse.up();
+    // The sheet settles, then the board's 320ms refit, then a margin.
+    await this.page.waitForTimeout(900);
+  }
+
+  async frameRect(): Promise<{ left: number; top: number; right: number; bottom: number }> {
+    return (await this.page.evaluate(() => window.__tessera!.frameRect()))!;
+  }
+
+  /** The client-space centre of a piece's solved slot on the board. */
+  async slotPoint(pieceId: number): Promise<{ x: number; y: number } | null> {
+    return this.page.evaluate((id) => window.__tessera!.slotPoint(id), pieceId);
+  }
+
   /** Pieces not yet placed, from the top bar — unaffected by virtualisation. */
   async remaining(): Promise<number> {
     const text = await this.page.locator('header').innerText();
     const match = text.match(/(\d+)\s*\/\s*(\d+)/);
-    if (!match) throw new Error(`BoardPage: no progress in header "${text}"`);
+    // "Cutting", before the total is known: not yet a number, so a poll retries.
+    if (!match) return Number.NaN;
     return Number(match[2]) - Number(match[1]);
   }
 
   async placed(): Promise<{ placed: number; total: number }> {
     const text = await this.page.locator('header').innerText();
     const match = text.match(/(\d+)\s*\/\s*(\d+)/);
-    if (!match) throw new Error(`BoardPage: no progress in header "${text}"`);
+    // "Cutting", before the total is known: not yet numbers, so a poll retries.
+    if (!match) return { placed: Number.NaN, total: Number.NaN };
     return { placed: Number(match[1]), total: Number(match[2]) };
   }
 
@@ -555,7 +584,13 @@ export async function watchTrayMutations(page: Page): Promise<void> {
         return;
       }
       new MutationObserver((records) => {
-        (window as unknown as { __mutations: number }).__mutations += records.length;
+        // The phone sheet writes its own height to its own style attribute,
+        // frame by frame, by design (modernize C1: off React). That is the
+        // drag working, not the tray re-rendering, so it is not counted.
+        const counted = records.filter(
+          (r) => !(r.target === tray && r.type === 'attributes' && r.attributeName === 'style'),
+        );
+        (window as unknown as { __mutations: number }).__mutations += counted.length;
       }).observe(tray, { childList: true, subtree: true, attributes: true });
     };
     start();

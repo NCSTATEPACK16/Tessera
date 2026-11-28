@@ -7,32 +7,36 @@
  */
 
 import React from 'react';
+import { Button } from './kit';
 
 export interface SelectionBarProps {
   count: number;
+  /** Ruling R5: pins every selected piece and ends select mode. */
+  onPin: () => void;
   onPullOut: () => void;
   onCancel: () => void;
 }
 
-export function SelectionBar({ count, onPullOut, onCancel }: SelectionBarProps): React.ReactElement {
+export function SelectionBar({
+  count,
+  onPin,
+  onPullOut,
+  onCancel,
+}: SelectionBarProps): React.ReactElement {
   return (
     <div className="flex shrink-0 items-center gap-[8px] px-[12px] py-[8px]">
-      <button
-        type="button"
-        // 44pt floor, everywhere.
-        className="touch-target flex-1 rounded-[8px] bg-[var(--accent)] px-[12px] text-2 text-black disabled:opacity-40"
-        disabled={count < 2}
-        onClick={onPullOut}
-      >
-        Pull out {count}
-      </button>
-      <button
-        type="button"
-        className="touch-target rounded-[8px] border border-[var(--edge-hair)] px-[12px] text-2"
-        onClick={onCancel}
-      >
+      {/* The count lives here, once, rather than inside a button label. */}
+      <span className="meta flex-1 text-[var(--ink-muted)]">{count} selected</span>
+      <Button variant="outline" disabled={count < 1} onClick={onPin}>
+        Pin
+      </Button>
+      {/* A pull-out of one is just a drag; two is the least that is a group. */}
+      <Button variant="primary" disabled={count < 2} onClick={onPullOut}>
+        Pull out
+      </Button>
+      <Button variant="ghost" onClick={onCancel}>
         Cancel
-      </button>
+      </Button>
     </div>
   );
 }

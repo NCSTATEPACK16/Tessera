@@ -1,6 +1,7 @@
 /**
  * The hint button (§07/§12). Bottom-right, thumb-adjacent per the design
- * mockup — the same corner on both dock and phone.
+ * mockup — the same corner on both dock and phone. Modernize C4: a 52pt
+ * lightbulb, its allowance a numeral badge that bumps once when spent.
  *
  * Tap fires Tier 1 (free, unlimited — "the default button behaviour").
  * Holding past a threshold escalates to Tier 2, and further to Tier 3 — the
@@ -16,6 +17,7 @@
 import { useRef } from 'react';
 import type { HintTier } from '@/play/hints';
 import { tierForHoldMs } from '@/play/hints';
+import { Icon } from './kit';
 
 export interface HintButtonProps {
   /** Whether a loose piece has been tapped to receive the hint. */
@@ -26,14 +28,6 @@ export interface HintButtonProps {
    */
   count: number | null;
   onFire: (tier: HintTier) => boolean;
-  /**
-   * Height of whatever overlays the bottom of the viewport right now — the
-   * iPhone sheet at its current detent, 0 when docked. Without this the
-   * button sits bottom-anchored to the raw viewport and ends up underneath
-   * the sheet: invisible, and unclickable because the sheet's own section
-   * intercepts the pointer event first.
-   */
-  clearanceBottomPx?: number;
   /** v2 spec §5.3: the corner opposite a left dock, so it stays thumb-adjacent. */
   corner?: 'left' | 'right';
 }
@@ -42,7 +36,6 @@ export function HintButton({
   hasTarget,
   count,
   onFire,
-  clearanceBottomPx = 0,
   corner = 'right',
 }: HintButtonProps): React.ReactElement {
   const downAt = useRef<number | null>(null);
@@ -78,14 +71,31 @@ export function HintButton({
         ...(corner === 'left'
           ? { left: 'max(16px, env(safe-area-inset-left))' }
           : { right: 'max(16px, env(safe-area-inset-right))' }),
-        bottom:
-          clearanceBottomPx > 0
-            ? clearanceBottomPx + 16
-            : 'max(16px, env(safe-area-inset-bottom))',
+        // `--sheet-clearance`: the height of whatever overlays the bottom of
+        // the viewport right now — the phone sheet at its current height, 0
+        // when docked. Without it the button sits under the sheet: invisible,
+        // and unclickable because the sheet intercepts the pointer first. A
+        // CSS variable written by `App.updateInsets`, never a prop: the sheet
+        // moves every frame of a drag, and a prop would re-render the tray
+        // with it.
+        bottom: 'max(calc(var(--sheet-clearance, 0px) + 16px), env(safe-area-inset-bottom))',
       }}
-      className={`pointer-events-auto z-10 flex touch-target items-center justify-center rounded-full border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-2 text-[var(--ink-primary)] backdrop-blur-[12px] disabled:opacity-40 ${count === 0 ? 'opacity-60' : ''}`}
+      className={`pointer-events-auto z-10 flex h-[52px] w-[52px] items-center justify-center rounded-full border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] text-[var(--ink-primary)] backdrop-blur-[12px] disabled:opacity-40 ${count === 0 ? 'opacity-60' : ''}`}
     >
-      {count === null ? 'Hint' : `Hint · ${count}`}
+      <Icon.Lightbulb size={22} />
+      {count !== null && (
+        // C4: the count as a numeral badge. Keyed on the count, so a spend
+        // remounts it and the bump plays once; nothing ever loops.
+        <span
+          key={count}
+          data-hint-badge
+          aria-hidden
+          className="absolute -right-[2px] -top-[2px] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--accent)] px-[4px] font-data text-1 tabular-nums text-[var(--mat-void)]"
+          style={{ animation: 'badge-bump var(--duration-base) var(--ease-standard)' }}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }

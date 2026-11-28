@@ -53,9 +53,10 @@ import { composeCard } from '@/render/card';
 import type { CardMeta } from '@/play/card';
 import { Library } from './Library';
 import { Today } from './Today';
-import { collectionSummary, heroModel, puzzleTitle, streakModel } from '@/play/today';
+import { collectionSummary, heroModel, photoIdOf, puzzleTitle, streakModel } from '@/play/today';
 import { Shell } from './Shell';
 import { TAB_SCREEN, tabOf } from './tabs';
+import { PlayScreen } from './PlayScreen';
 import { PauseSheet } from './PauseSheet';
 import { CompletionCard } from './CompletionCard';
 import { CollectionWall } from './CollectionWall';
@@ -76,6 +77,7 @@ import type { StreakState } from '@/daily/streak';
 import { loadStreak, saveStreak } from '@/persist/daily';
 import { DailyHub } from './DailyHub';
 import type { StreakTone } from './StreakFlame';
+import { CHIP_CELL_PX } from './sheet-detents';
 import { DEFAULT_PUZZLE_CONFIG } from '@/play/setup';
 import { hintsAvailable } from '@/play/hints';
 import { HEIC_HEAD_BYTES, looksLikeHeic, namedLikeHeic } from '@/play/heic';
@@ -219,6 +221,8 @@ const FIRST_RUN_PUZZLE_ID = 'first-run';
 export function App(): React.ReactElement {
   const boardRef = useRef<HTMLDivElement>(null);
   const trayRef = useRef<HTMLDivElement>(null);
+  /** The top bar, measured so the board frames below it (spec §5). */
+  const topBarRef = useRef<HTMLElement>(null);
   const shelfRef = useRef<HTMLDivElement>(null);
   const runtime = useRef<PlayRuntime | null>(null);
 
@@ -334,8 +338,6 @@ export function App(): React.ReactElement {
   const [dragging, setDragging] = useState(false);
   // The group chip under a tap, mid-rename. `null` is "no rename open".
   const [renaming, setRenaming] = useState<number | null>(null);
-  // 0 when docked (the tray is a flex sibling, not an overlay). See `updateInsets`.
-  const [trayHeight, setTrayHeight] = useState(0);
 
   const [summary, setSummary] = useState<RuntimeSummary>({
     status: 'cutting',
@@ -345,6 +347,7 @@ export function App(): React.ReactElement {
     regionUnlocked: false,
     regionRevision: 0,
     trayRevision: 0,
+    arriving: null,
     hintTarget: null,
     hintsUsed: 0,
     hintsLeft: null,
@@ -404,6 +407,38 @@ export function App(): React.ReactElement {
     );
   };
 
+  // Modernize §5: when the player moves the sheet to a new detent, the board
+  // refits to the space above it — once the sheet has come to rest (120ms
+  // with no further resize), never per frame while it moves. A collapse for a
+  // drag, and the restore after it, are not the player's choice and refit
+  // nothing: the board would shift under the piece they just dropped.
+  const refitPending = useRef(false);
+  const refitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRefit = useCallback((): void => {
+    if (refitTimer.current !== null) clearTimeout(refitTimer.current);
+    refitTimer.current = setTimeout(() => {
+      refitTimer.current = null;
+      if (!refitPending.current) return;
+      refitPending.current = false;
+      runtime.current?.refitIfAtFit();
+    }, 120);
+  }, []);
+  const lastDetent = useRef({ detent: chrome.detent, before: chrome.detentBeforeDrag });
+  useEffect(() => {
+    const prev = lastDetent.current;
+    lastDetent.current = { detent: chrome.detent, before: chrome.detentBeforeDrag };
+    if (docked || prev.detent === chrome.detent) return;
+    if (chrome.detentBeforeDrag !== null || prev.before !== null) return;
+    refitPending.current = true;
+    scheduleRefit();
+  }, [chrome.detent, chrome.detentBeforeDrag, docked, scheduleRefit]);
+  useEffect(
+    () => () => {
+      if (refitTimer.current !== null) clearTimeout(refitTimer.current);
+    },
+    [],
+  );
+
   // Shared by the mount effect and the resize effect below, so there is one
   // place that knows how to compute insets rather than two branches that can
   // drift. Keyed on `docked` because the docked tray contributes nothing (a
@@ -411,18 +446,26 @@ export function App(): React.ReactElement {
   // height is the whole point.
   const updateInsets = useCallback((): void => {
     const rect = trayRef.current?.getBoundingClientRect();
+    // Modernize §5: the board frames below the top bar, too — measured from
+    // the board container's own top, since that is where the camera's
+    // viewport starts.
+    const boardTop = boardRef.current?.getBoundingClientRect().top ?? 0;
+    const barBottom = topBarRef.current?.getBoundingClientRect().bottom ?? boardTop;
+    const top = Math.max(0, barBottom - boardTop);
     if (docked || !rect) {
-      runtime.current?.setTrayInsets({ left: 0, right: 0, top: 0, bottom: 0 });
-      setTrayHeight(0);
+      runtime.current?.setTrayInsets({ left: 0, right: 0, top, bottom: 0 });
+      setSheetClearance(0);
     } else {
-      runtime.current?.setTrayInsets({ left: 0, right: 0, top: 0, bottom: rect.height });
+      runtime.current?.setTrayInsets({ left: 0, right: 0, top, bottom: rect.height });
       // The hint button's own floor: the sheet is a fixed overlay across the
       // bottom of the viewport, at every detent, and a button bottom-anchored
       // to the raw viewport sits underneath it — visible in neither layout nor
       // hit-testing. `test/browser/hints.spec.ts` caught this on the phone
       // project; the dock passed because the docked tray is a flex sibling and
-      // never overlaps the board at all.
-      setTrayHeight(rect.height);
+      // never overlaps the board at all. A CSS variable, not React state: this
+      // runs every frame of a sheet drag, and state here re-rendered the whole
+      // tray per frame (whole-branch review, modernize c).
+      setSheetClearance(rect.height);
     }
   }, [docked]);
 
@@ -825,13 +868,12 @@ export function App(): React.ReactElement {
 
   /**
    * The completion card's meta, assembled from the frozen run numbers and the
-   * photo. A resumed daily recovers its `photoId` from the date, since the
-   * snapshot does not store it (§15 attribution still shows on a resumed daily).
+   * photo. A daily saved before snapshots carried `photoId` recovers it from
+   * its own date (`photoIdOf`), so §15 attribution names the right photo.
    */
   const buildCardMeta = useCallback((): CardMeta | null => {
     if (!playConfig) return null;
-    const photoId =
-      playConfig.photoId ?? (isDailyPuzzleId(playConfig.puzzleId) ? daily.photoId : null);
+    const photoId = photoIdOf(playConfig.puzzleId, playConfig.photoId);
     const curated = photoId ? curatedPhotoById(photoId) : undefined;
     return {
       title: curated?.name ?? 'Your photo',
@@ -841,7 +883,7 @@ export function App(): React.ReactElement {
       cleanRun: summary.cleanRun,
       attribution: curated?.licence.attribution ?? null,
     };
-  }, [playConfig, daily, summary.elapsedMs, summary.total, summary.cleanRun]);
+  }, [playConfig, summary.elapsedMs, summary.total, summary.cleanRun]);
 
   /**
    * §15: record the finish, then remove the in-progress entry — in that order,
@@ -855,8 +897,7 @@ export function App(): React.ReactElement {
     const rt = runtime.current;
     await saveInFlight.current.catch(() => {});
     if (rt) {
-      const photoId =
-        playConfig.photoId ?? (isDailyPuzzleId(playConfig.puzzleId) ? daily.photoId : null);
+      const photoId = photoIdOf(playConfig.puzzleId, playConfig.photoId);
       const curated = photoId ? curatedPhotoById(photoId) : undefined;
       await waitForSettled(rt);
       const thumbnailBlob = await captureThumbnail(rt.boardCanvas());
@@ -881,7 +922,7 @@ export function App(): React.ReactElement {
     // covers every action this card offers (Done, New puzzle, or the
     // first-run-only pair below).
     if (playConfig.puzzleId === FIRST_RUN_PUZZLE_ID) void markFirstRunDone();
-  }, [playConfig, daily, summary.elapsedMs, summary.total, summary.cleanRun]);
+  }, [playConfig, summary.elapsedMs, summary.total, summary.cleanRun]);
 
   const clearCard = useCallback((): void => {
     setCardBlob(null);
@@ -987,6 +1028,7 @@ export function App(): React.ReactElement {
       },
       isOverTray: (client) => overTray.current(client),
       isOverShelf: (client) => overShelf.current(client),
+      chipPx: CHIP_CELL_PX,
       onDragStateChange: (isDragging) => {
         // §06: dragging a piece out auto-collapses the sheet to peek and
         // re-expands on release, so the mat is never obscured mid-drag.
@@ -1102,6 +1144,8 @@ export function App(): React.ReactElement {
     const observer = new ResizeObserver(() => {
       runtime.current?.resize();
       updateInsets();
+      // The sheet is still moving toward a new detent; wait for it to rest.
+      if (refitPending.current) scheduleRefit();
     });
     observer.observe(container);
     if (trayRef.current) observer.observe(trayRef.current);
@@ -1396,13 +1440,10 @@ export function App(): React.ReactElement {
   }
 
   return (
-    // v2 spec §5.3: a left dock is the same row, reversed — the tray stays after
-    // the board in the DOM, so focus order and the sheet path are unchanged.
-    <div
-      className={`flex h-full w-full bg-[var(--mat-void)] ${docked && chrome.traySide === 'left' ? 'flex-row-reverse' : ''}`}
-    >
-      <div className="relative min-w-0 flex-1">
-        {/* The canvas layers live in here and React never touches them again. */}
+    <PlayScreen
+      reversed={docked && chrome.traySide === 'left'}
+      /* The canvas layers live in here and React never touches them again. */
+      board={
         <div
           ref={boardRef}
           className="absolute inset-0"
@@ -1427,8 +1468,8 @@ export function App(): React.ReactElement {
             if (id !== null && id !== undefined) setRenaming(id);
           }}
         />
-
-        {summary.status === 'complete' ? (
+      }
+      header={summary.status === 'complete' ? (
           cardBlob && cardMeta ? (
             <CompletionCard
               meta={cardMeta}
@@ -1463,6 +1504,8 @@ export function App(): React.ReactElement {
           ) : null
         ) : (
           <TopBar
+            rootRef={topBarRef}
+            title={puzzleTitle(playConfig.puzzleId, playConfig.photoId)}
             status={summary.status}
             placed={summary.placed}
             total={summary.total}
@@ -1471,17 +1514,16 @@ export function App(): React.ReactElement {
             onPause={() => setPauseOpen(true)}
           />
         )}
-
-        {summary.status === 'playing' && (
+      hint={summary.status === 'playing' && (
           <HintButton
             hasTarget={summary.hintTarget !== null}
             count={summary.hintsLeft}
             onFire={(tier) => runtime.current?.fireHint(tier) ?? false}
-            clearanceBottomPx={trayHeight}
             corner={docked && chrome.traySide === 'left' ? 'left' : 'right'}
           />
         )}
-
+      overlays={
+        <>
         {renaming !== null && (
           <form
             className="absolute left-1/2 top-[64px] flex -translate-x-1/2 gap-[8px] rounded-[8px] border border-[var(--edge-hair)] bg-[var(--mat-felt)] p-[8px]"
@@ -1524,9 +1566,9 @@ export function App(): React.ReactElement {
             }}
           />
         )}
-      </div>
-
-      {/* §16: the tray is genuinely not mounted before the reveal beat —
+        </>
+      }
+      /* §16: the tray is genuinely not mounted before the reveal beat —
           "slides in on its own" means absent, not collapsed. Ordinary play
           (screen !== 'first-run') is unaffected.
 
@@ -1536,8 +1578,8 @@ export function App(): React.ReactElement {
           beside or behind the completion card (docked: a flex sibling
           eating half the screen; phone: the sheet's own overlay), which is
           how the reference thumbnail ended up visible next to "Your photo"
-          on the completion screen. */}
-      {summary.status !== 'complete' && (screen !== 'first-run' || trayRevealed) && (
+          on the completion screen. */
+      tray={summary.status !== 'complete' && (screen !== 'first-run' || trayRevealed) && (
         <Tray
           rootRef={trayRef}
           shelfRef={shelfRef}
@@ -1571,6 +1613,8 @@ export function App(): React.ReactElement {
             useChrome.getState().collapseForDrag();
             runtime.current?.pullOut(pieceIds);
           }}
+          onPinSelected={(pieceIds) => runtime.current?.pinPieces(pieceIds)}
+          arriving={summary.arriving}
           onUnpin={(id) => runtime.current?.unpinFromShelf(id)}
           onScroll={(top) => {
             trayScrollRef.current = top;
@@ -1582,10 +1626,9 @@ export function App(): React.ReactElement {
           loadReferenceBitmap={loadReferenceBitmap}
         />
       )}
-
-      {/* An overlay, never a replacement: the board stays mounted underneath,
-          so pausing does not tear down `PlayRuntime` and re-cut on resume. */}
-      {pauseOpen && (
+      /* An overlay, never a replacement: the board stays mounted underneath,
+          so pausing does not tear down `PlayRuntime` and re-cut on resume. */
+      pause={pauseOpen && (
         <PauseSheet
           puzzleId={playConfig.puzzleId}
           onResume={() => setPauseOpen(false)}
@@ -1607,6 +1650,11 @@ export function App(): React.ReactElement {
           }}
         />
       )}
-    </div>
+    />
   );
+}
+
+/** The phone sheet's current height, for the hint button's floor (`HintButton`). */
+function setSheetClearance(px: number): void {
+  document.documentElement.style.setProperty('--sheet-clearance', `${px}px`);
 }

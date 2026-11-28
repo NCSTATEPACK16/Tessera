@@ -157,6 +157,26 @@ button,
   min-width: var(--touch-min);
 }
 
+/*
+ * A tray chip's press (modernize §5): it rises to the finger over 120ms. CSS
+ * on `:active`, never React state — a state flip here would re-render the
+ * chip grid on every press. Reduced motion zeroes the transition globally.
+ */
+.chip {
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+.chip:active {
+  transform: scale(1.06);
+}
+
+/* A returned piece's chip, arriving — once, on mount. */
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
 /* Section labels: mono, small, uppercase, tracked. */
 .eyebrow {
   font-family: var(--font-data);
@@ -214,6 +234,13 @@ button,
 
 /* §16 Track 4: the guided twelve's tray-reveal beat, once, on mount. The
    reduced-motion rule below already zeroes this out — no separate guard. */
+/* Modernize C4: the hint badge on a spend — once, 1 → 1.15 → 1, never idle. */
+@keyframes badge-bump {
+  50% {
+    transform: scale(1.15);
+  }
+}
+
 @keyframes lens-chip-pulse {
   from {
     opacity: 0.3;

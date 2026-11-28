@@ -18,8 +18,10 @@ import type { PieceId } from '@/cut/types';
 import type { ColourBin } from '@/tray/colour';
 import type { Lens } from '@/tray/lenses';
 import { TraySelection } from '@/tray/selection';
+import { countRender } from '@/dev/e2e';
 import { LensChips } from './LensChips';
 import { PieceGrid } from './PieceGrid';
+import { ReferenceButton } from './ReferenceButton';
 import { ReferencePanel } from './ReferencePanel';
 import { SelectionBar } from './SelectionBar';
 import { Shelf } from './Shelf';
@@ -78,6 +80,10 @@ export interface TrayProps {
   dragging: boolean;
   /** §06's pull-out. The button that calls it is disabled below two pieces. */
   onPullSelection: (pieceIds: readonly PieceId[]) => void;
+  /** Modernize §5: the piece that just went home, from `RuntimeSummary.arriving`. */
+  arriving: PieceId | null;
+  /** Ruling R5: the selection bar's Pin. Ends select mode before it is called. */
+  onPinSelected: (pieceIds: readonly PieceId[]) => void;
   /** §06 D: a plain tap on a pinned shelf chip. */
   onUnpin: (pieceId: PieceId) => void;
   /** Step 5c: the grid's scroll position, captured for the save format. */
@@ -101,6 +107,7 @@ export interface TrayProps {
 }
 
 export function Tray(props: TrayProps): React.ReactElement {
+  if (import.meta.env.DEV) countRender('tray');
   const chrome = useChrome();
 
   // Never in state — the badges come from `selectedCount` plus a render-time
@@ -182,11 +189,13 @@ export function Tray(props: TrayProps): React.ReactElement {
   // the row that may clip, and a single header node offers nowhere to say so.
   // The dock has no peek to collide with and stacks them straight back up.
   const title = (
-    <div className="flex items-baseline justify-between">
-      <h2 className="text-3 text-[var(--ink-primary)]">Pieces</h2>
-      <span className="meta text-[var(--ink-muted)]">
-        {props.remaining} left
-      </span>
+    <div className="flex items-center justify-between gap-[12px]">
+      <h2 className="eyebrow">Tray · {props.remaining} loose</h2>
+      <ReferenceButton
+        loadBitmap={props.loadReferenceBitmap}
+        open={props.referenceOpen}
+        onToggle={props.onReferenceToggle}
+      />
     </div>
   );
 
@@ -198,6 +207,7 @@ export function Tray(props: TrayProps): React.ReactElement {
       bins={props.bins}
       binCount={props.binCount}
       pulse={props.pulseLenses ?? false}
+      wrap={props.docked}
       onPick={props.onPick}
     />
   );
@@ -229,31 +239,58 @@ export function Tray(props: TrayProps): React.ReactElement {
     <ReferencePanel
       loadBitmap={props.loadReferenceBitmap}
       open={props.referenceOpen}
-      onToggle={props.onReferenceToggle}
+      compact={!props.docked}
     />
   );
 
+  // Ruling R6: a lens change fades the new grid in over 120ms. Imperative and
+  // on the wrapper, so the grid is neither remounted (its scroll position and
+  // virtualisation survive) nor re-rendered by the fade; a virtualised grid
+  // has no old layer worth cross-fading from. The canonical order never moves.
+  const gridWrap = useRef<HTMLDivElement>(null);
+  const lensShown = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${props.lens}:${props.lensArg ?? ''}`;
+    const first = lensShown.current === null;
+    lensShown.current = key;
+    if (first) return;
+    const reduced = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    if (reduced) return;
+    gridWrap.current?.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 120,
+      easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
+    });
+  }, [props.lens, props.lensArg]);
+
   const grid = (
-    <PieceGrid
-      ids={props.ids}
-      cell={CELL}
-      gap={GAP}
-      bitmapOf={props.bitmapOf}
-      isEdge={props.isEdge}
-      isOnMat={props.isOnMat}
-      onChipPointerDown={onChipPointerDown}
-      onLocate={props.onLocate}
-      selecting={chrome.selecting}
-      badgeOf={(id) => selection.current.badgeOf(id)}
-      onChipClick={toggleSelected}
-      onScroll={props.onScroll}
-      initialScrollTop={props.initialScrollTop}
-    />
+    <div ref={gridWrap} className="flex min-h-0 flex-1 flex-col">
+      <PieceGrid
+        ids={props.ids}
+        cell={CELL}
+        gap={GAP}
+        bitmapOf={props.bitmapOf}
+        isEdge={props.isEdge}
+        isOnMat={props.isOnMat}
+        onChipPointerDown={onChipPointerDown}
+        onLocate={props.onLocate}
+        selecting={chrome.selecting}
+        badgeOf={(id) => selection.current.badgeOf(id)}
+        onChipClick={toggleSelected}
+        onScroll={props.onScroll}
+        initialScrollTop={props.initialScrollTop}
+        arriving={props.arriving}
+      />
+    </div>
   );
 
   const selectionBar = chrome.selecting && (
     <SelectionBar
       count={chrome.selectedCount}
+      onPin={() => {
+        const ids = selection.current.ordered;
+        exitSelect();
+        props.onPinSelected(ids);
+      }}
       onPullOut={() => {
         const ids = selection.current.ordered;
         exitSelect();
@@ -294,7 +331,9 @@ export function Tray(props: TrayProps): React.ReactElement {
     <aside
       ref={props.rootRef}
       aria-label="Pieces"
-      className={`relative flex h-full shrink-0 flex-col border-[var(--edge-hair)] bg-[var(--mat-raised)] ${props.side === 'left' ? 'border-r' : 'border-l'}`}
+      className={`relative flex h-full shrink-0 flex-col border-[var(--edge-hair)] bg-[var(--mat-raised)] ${
+        props.side === 'left' ? 'border-r' : 'border-l'
+      }`}
       style={
         props.side === 'left'
           ? { width: props.width, paddingLeft: 'env(safe-area-inset-left)' }
@@ -302,12 +341,12 @@ export function Tray(props: TrayProps): React.ReactElement {
       }
     >
       <ResizeEdge width={props.width} side={props.side} onWidth={props.onWidth} />
-      <div className="flex shrink-0 flex-col gap-[12px] px-[12px] pb-[12px] pt-[16px]">
-        {title}
-        {lenses}
-      </div>
+      {/* The comp's order (tray-ipad): the title row and what it opens, the
+          pinned well, then the lenses over the grid they filter. */}
+      <div className="shrink-0 px-[12px] pb-[12px] pt-[16px]">{title}</div>
       {reference}
       {shelf}
+      <div className="shrink-0 px-[12px] pb-[12px] pt-[12px]">{lenses}</div>
       {grid}
       {selectionBar}
     </aside>
@@ -335,7 +374,9 @@ function ResizeEdge({
       aria-valuemax={TRAY_MAX_WIDTH}
       // Wider than it looks: a 1px hairline is a 1px target, and §13 puts the
       // floor at 44pt for everything.
-      className={`absolute top-0 z-10 h-full w-[20px] cursor-col-resize ${side === 'left' ? 'right-[-10px]' : 'left-[-10px]'}`}
+      className={`absolute top-0 z-10 h-full w-[20px] cursor-col-resize ${
+        side === 'left' ? 'right-[-10px]' : 'left-[-10px]'
+      }`}
       style={{ touchAction: 'none' }}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);

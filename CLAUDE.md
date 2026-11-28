@@ -227,7 +227,7 @@ Do not drift from these without changing the design doc first.
 ```
 npm run dev          # host-exposed for real-device testing — the product at /
 npm test             # vitest — pure functions, node environment
-npm run test:browser:smoke # 14 @smoke tests — under 60s; run on every change
+npm run test:browser:smoke # 18 @smoke tests — under 60s; run on every change
 npm run test:browser:one -- <spec>  # one spec on dock, without the @timing project
 npm run test:browser      # playwright, minus @slow — under 3 minutes; before every PR
 npm run test:browser:full # everything, @slow included — what CI runs

@@ -10,6 +10,7 @@
 
 import React from 'react';
 import type { PieceId } from '@/cut/types';
+import { Icon } from './kit';
 import { PieceChip } from './PieceChip';
 
 export interface ShelfProps {
@@ -56,11 +57,18 @@ export function Shelf({
     <div
       ref={rootRef}
       aria-label="Shelf"
+      // A recessed well (modernize §5): the shelf reads as a place pieces are
+      // kept, below the felt rather than another row on it.
       className={[
-        'flex shrink-0 gap-[8px] overflow-x-auto px-[12px] py-[6px]',
-        ids.length === 0 ? 'rounded-[8px] border border-dashed border-[var(--edge-hair)]' : '',
+        'mx-[12px] flex shrink-0 items-center gap-[8px] overflow-x-auto px-[12px] py-[6px]',
+        'rounded-[var(--radius-md)] bg-[var(--mat-deep)] shadow-[inset_0_2px_6px_rgb(0_0_0/0.45)]',
+        ids.length === 0 ? 'border border-dashed border-[var(--edge-hair)]' : '',
       ].join(' ')}
     >
+      <span className="flex shrink-0 items-center gap-[4px] text-1 text-[var(--ink-secondary)]">
+        <Icon.Pin />
+        Pinned
+      </span>
       {ids.length === 0 ? (
         <p className="py-[8px] text-1 text-[var(--ink-muted)]">Drop a piece here to keep it.</p>
       ) : (

@@ -9,13 +9,24 @@
  * point of the detents is one-handed reach: a lens chip that scrolls out of the
  * thumb's arc is a lens chip that is not offered.
  *
- * Dragging the handle tracks the finger and lands on the nearest detent on
- * release — never a bounce, never a snap-back to where it started, for the same
- * reason a dropped piece stays where it was dropped.
+ * Dragging the handle tracks the finger 1:1 (rubber-banded past the end
+ * detents), and a release lands on the detent its velocity points at, settling
+ * on a critically damped spring — never a bounce, never a snap-back to where
+ * it started, for the same reason a dropped piece stays where it was dropped
+ * (modernize spec §5, C1; the physics is `sheet-motion.ts`).
+ *
+ * The height is written to the element's style, frame by frame, and never held
+ * in React state: React renders this component once per detent change, so a
+ * drag or a settle cannot re-render the chip grid inside it.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { heightOf, nearestDetent, type SheetDetent } from './sheet-detents';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { heightOf, type SheetDetent } from './sheet-detents';
+import { releaseTarget, rubberBand, settleSheet } from './sheet-motion';
+
+const DETENTS: readonly SheetDetent[] = ['peek', 'default', 'half', 'full'];
+/** Velocity is measured over the last stretch of the drag, not its whole length. */
+const VELOCITY_WINDOW_MS = 100;
 
 export interface SheetProps {
   rootRef?: React.Ref<HTMLElement> | undefined;
@@ -72,8 +83,14 @@ export function Sheet({
   children,
 }: SheetProps): React.ReactElement {
   const viewport = typeof window === 'undefined' ? 800 : window.innerHeight;
-  const [dragHeight, setDragHeight] = useState<number | null>(null);
+  const section = useRef<HTMLElement | null>(null);
   const origin = useRef<{ y: number; height: number } | null>(null);
+  const samples = useRef<{ t: number; h: number }[]>([]);
+  const frame = useRef<number | null>(null);
+  /** The height on screen right now — what a new drag or settle starts from. */
+  const shown = useRef<number | null>(null);
+  /** Where the running settle is headed, so a re-render toward it leaves it alone. */
+  const aim = useRef<number | null>(null);
 
   // The handle, the title and the shelf: everything peek is obliged to fit.
   const pinned = useRef<HTMLDivElement>(null);
@@ -125,15 +142,80 @@ export function Sheet({
   // same `pinnedPx`.
   const growPeek = shelfVisible || referenceVisible;
   const resting = heightOf(detent, viewport, growPeek, pinnedPx, chromePx);
-  const height = dragHeight ?? resting;
-  const peekFloor = heightOf('peek', viewport, growPeek, pinnedPx, chromePx);
+  const heights = DETENTS.map((d) => heightOf(d, viewport, growPeek, pinnedPx, chromePx));
+  const peekFloor = heights[0]!;
+  const fullCeiling = heights[heights.length - 1]!;
 
-  const nearest = (target: number): SheetDetent =>
-    nearestDetent(target, viewport, growPeek, pinnedPx, chromePx);
+  const setRootRef = useCallback(
+    (element: HTMLElement | null) => {
+      section.current = element;
+      if (typeof rootRef === 'function') rootRef(element);
+      else if (rootRef) (rootRef as React.MutableRefObject<HTMLElement | null>).current = element;
+    },
+    [rootRef],
+  );
+
+  const write = (h: number): void => {
+    shown.current = h;
+    const element = section.current;
+    if (element) element.style.height = `${h}px`;
+  };
+
+  const stop = (): void => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    frame.current = null;
+  };
+
+  /** Settle from what is on screen to `target`, seeded with `v` (px/s, + = growing). */
+  const settleTo = useCallback((target: number, v: number): void => {
+    stop();
+    aim.current = target;
+    const element = section.current;
+    const from = shown.current;
+    if (!element || from === null || from === target) {
+      write(target);
+      return;
+    }
+    const reduced =
+      globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    if (reduced) {
+      // §5: reduced motion is a 120ms ease to the detent, no spring.
+      element.style.transition = 'height var(--duration-fast) var(--ease-standard)';
+      write(target);
+      return;
+    }
+    element.style.transition = 'none';
+    let state = { h: from, v };
+    let last = performance.now();
+    const step = (now: number): void => {
+      // Clamped: a backgrounded tab must not integrate one enormous step.
+      const dt = Math.min(1 / 30, (now - last) / 1000);
+      last = now;
+      const next = settleSheet(state, target, dt);
+      state = next;
+      write(next.h);
+      frame.current = next.done ? null : requestAnimationFrame(step);
+      if (next.done) aim.current = null;
+    };
+    frame.current = requestAnimationFrame(step);
+  }, []);
+
+  // A detent change from outside — a collapse for a drag, its restore, a
+  // remeasure that moves where a detent sits — settles from wherever the
+  // sheet is. Layout effect: the first height lands before the first paint.
+  useLayoutEffect(() => {
+    if (origin.current) return; // under a finger: the release will settle it
+    // The release already set off toward this detent, with its own velocity.
+    if (aim.current === resting && frame.current !== null) return;
+    if (shown.current === null) write(resting);
+    else settleTo(resting, 0);
+  }, [resting, settleTo]);
+
+  useEffect(() => stop, []);
 
   return (
     <section
-      ref={rootRef}
+      ref={setRootRef}
       aria-label="Pieces"
       // `overflow-hidden`: `height` here is a fixed, JS-computed detent value
       // and pinned content (`shrink-0`) does not get squeezed to fit it —
@@ -143,11 +225,7 @@ export function Sheet({
       // area directly over a piece chip above it (nothing looked wrong on
       // screen; taps just landed on the wrong thing).
       className="pointer-events-auto fixed inset-x-0 bottom-0 z-10 flex flex-col overflow-hidden rounded-t-[22px] border-t border-[var(--edge-hair)] bg-[var(--mat-raised)]"
-      style={{
-        height,
-        paddingBottom: 'env(safe-area-inset-bottom)',
-        transition: dragHeight === null ? 'height var(--duration-base) var(--ease-standard)' : 'none',
-      }}
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       {/* Everything peek must fit, in one measured box. */}
       <div ref={pinned} className="shrink-0">
@@ -158,22 +236,40 @@ export function Sheet({
           style={{ touchAction: 'none' }}
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture(event.pointerId);
-            origin.current = { y: event.clientY, height: resting };
+            stop();
+            const height = shown.current ?? resting;
+            origin.current = { y: event.clientY, height };
+            samples.current = [{ t: event.timeStamp, h: height }];
+            if (section.current) section.current.style.transition = 'none';
           }}
           onPointerMove={(event) => {
             const start = origin.current;
             if (!start) return;
-            const next = start.height + (start.y - event.clientY);
-            setDragHeight(Math.max(peekFloor, Math.min(viewport * 0.94, next)));
+            const h = rubberBand(start.height + (start.y - event.clientY), peekFloor, fullCeiling);
+            write(h);
+            samples.current.push({ t: event.timeStamp, h });
+            const cutoff = event.timeStamp - VELOCITY_WINDOW_MS;
+            while (samples.current.length > 2 && samples.current[0]!.t < cutoff) {
+              samples.current.shift();
+            }
           }}
-          onPointerUp={() => {
-            if (dragHeight !== null) onDetent(nearest(dragHeight));
+          onPointerUp={(event) => {
+            if (!origin.current) return;
             origin.current = null;
-            setDragHeight(null);
+            const first = samples.current[0];
+            const last = samples.current[samples.current.length - 1];
+            const span = first && last ? (last.t - first.t) / 1000 : 0;
+            // A finger that stopped before lifting has no velocity left.
+            const still = last ? event.timeStamp - last.t > VELOCITY_WINDOW_MS : true;
+            const v = span > 0 && !still ? (last!.h - first!.h) / span : 0;
+            const target = releaseTarget(shown.current ?? resting, v, heights);
+            settleTo(target, v);
+            const next = DETENTS[heights.indexOf(target)]!;
+            if (next !== detent) onDetent(next);
           }}
           onPointerCancel={() => {
             origin.current = null;
-            setDragHeight(null);
+            settleTo(resting, 0);
           }}
         >
           <span aria-hidden className="h-[4px] w-[36px] rounded-full bg-[var(--edge-hair)]" />
@@ -183,8 +279,9 @@ export function Sheet({
         <div className="shrink-0 px-[12px]">{header}</div>
 
         {/* The one thing in the sheet that must survive peek — see `shelf`. */}
-        {shelf}
+        {/* The reference panel sits under the title row that toggles it. */}
         {reference}
+        {shelf}
       </div>
 
       {/* Pinned too, so the lenses stay in the thumb's arc at half and full.

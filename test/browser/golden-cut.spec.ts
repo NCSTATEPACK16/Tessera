@@ -46,7 +46,9 @@ test.describe('golden cut geometry', () => {
     await expect(board.chip(0)).toBeVisible();
     await expect(board.chip(1)).toBeVisible();
 
-    await expect(board.chip(0)).toHaveScreenshot('piece-0.png');
-    await expect(board.chip(1)).toHaveScreenshot('piece-1.png');
+    // Soft, so one run reports (and its test-results artifact carries) both
+    // pieces: a hard first assertion hid piece-1 behind piece-0's failure.
+    await expect.soft(board.chip(0)).toHaveScreenshot('piece-0.png');
+    await expect.soft(board.chip(1)).toHaveScreenshot('piece-1.png');
   });
 });

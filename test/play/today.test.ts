@@ -7,11 +7,15 @@ import { describe, expect, it } from 'vitest';
 import type { CompletionRecord } from '@/persist/completions';
 import { CURATED_PHOTOS } from '@/play/curated';
 import { dailyFor, dailyPuzzleId } from '@/daily/daily';
+import type { DayCell } from '@/daily/streak';
 import {
+  MOSAIC_TILES,
   collectionSummary,
   formatResetsIn,
   heroModel,
+  photoIdOf,
   puzzleTitle,
+  streakCardLabel,
   streakModel,
 } from '@/play/today';
 
@@ -124,8 +128,9 @@ describe('collectionSummary', () => {
     const summary = collectionSummary(records);
     expect(summary.finished).toBe(10);
     expect(summary.piecesPlaced).toBe(1045);
+    expect(MOSAIC_TILES).toBe(8);
     expect(summary.recent.map((r) => r.puzzleId)).toEqual(
-      records.slice(0, 8).map((r) => r.puzzleId),
+      records.slice(0, MOSAIC_TILES).map((r) => r.puzzleId),
     );
   });
 
@@ -150,5 +155,49 @@ describe('puzzleTitle', () => {
 
   it('an upload', () => {
     expect(puzzleTitle('some-uuid', null)).toBe('Your photo');
+  });
+});
+
+describe('photoIdOf', () => {
+  it('a stored photo id wins', () => {
+    expect(photoIdOf(dailyPuzzleId('2026-11-21'), 'kept')).toBe('kept');
+  });
+
+  it('a legacy daily recovers the photo of its own date, not today’s', () => {
+    // Two dates with different photos, so "today's daily" would be caught.
+    const dates = ['2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23'];
+    const [a, b] = dates.filter(
+      (d, i, all) => all.findIndex((e) => dailyFor(e).photoId === dailyFor(d).photoId) === i,
+    );
+    expect(dailyFor(a!).photoId).not.toBe(dailyFor(b!).photoId);
+    expect(photoIdOf(dailyPuzzleId(a!), null)).toBe(dailyFor(a!).photoId);
+    expect(photoIdOf(dailyPuzzleId(b!), undefined)).toBe(dailyFor(b!).photoId);
+  });
+
+  it('an upload has none', () => {
+    expect(photoIdOf('some-uuid', null)).toBeNull();
+  });
+});
+
+describe('streakCardLabel', () => {
+  const week = (statuses: DayCell['status'][]): DayCell[] =>
+    statuses.map((status, i) => ({ dateKey: `2026-11-${String(15 + i).padStart(2, '0')}`, status }));
+
+  it('one period per sentence, and the week the pips draw', () => {
+    const label = streakCardLabel(
+      24,
+      'Played today.',
+      week(['completed', 'frozen', 'completed', 'missed', 'completed', 'completed', 'future']),
+    );
+    expect(label).toBe(
+      'Daily streak: 24 days. Played today. This week: 4 played, 1 covered by a freeze. Open the daily',
+    );
+    expect(label).not.toContain('..');
+  });
+
+  it('a line without a period, one day, nothing played', () => {
+    expect(streakCardLabel(1, 'Start one today', week(['missed', 'today']))).toBe(
+      'Daily streak: 1 day. Start one today. This week: none played yet. Open the daily',
+    );
   });
 });

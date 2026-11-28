@@ -16,6 +16,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { PieceId } from '@/cut/types';
+import { CHIP_INSET } from '@/play/handoff';
 
 export interface PieceChipProps {
   pieceId: PieceId;
@@ -30,6 +31,11 @@ export interface PieceChipProps {
   badge?: number;
   pinned?: boolean;
   selecting?: boolean;
+  /**
+   * Modernize §5: this chip's piece was just dropped on the tray. It fades in
+   * at once — once, on mount, never idle.
+   */
+  arriving?: boolean;
 }
 
 export function PieceChip({
@@ -43,6 +49,7 @@ export function PieceChip({
   badge = 0,
   pinned,
   selecting,
+  arriving = false,
 }: PieceChipProps): React.ReactElement {
   const canvas = useRef<HTMLCanvasElement>(null);
 
@@ -60,13 +67,20 @@ export function PieceChip({
     // Fit the piece inside the cell with a little air, preserving its aspect —
     // a squashed thumbnail is unrecognisable against the piece on the mat, and
     // recognising it is the entire job of this element.
-    const inset = size * 0.1 * ratio;
+    const inset = size * CHIP_INSET * ratio;
     const box = size * ratio - inset * 2;
     const scale = Math.min(box / bitmap.width, box / bitmap.height);
     const w = bitmap.width * scale;
     const h = bitmap.height * scale;
 
     ctx.clearRect(0, 0, element.width, element.height);
+    // One shared soft shadow, drawn once here at mount (ruling R4) — the chip
+    // has no frame, so the shadow is what lifts the silhouette off the felt.
+    // Baked into the pixels rather than a CSS filter, which would be re-run on
+    // every scroll frame for every mounted chip.
+    ctx.shadowColor = 'rgb(0 0 0 / 0.45)';
+    ctx.shadowBlur = 6 * ratio;
+    ctx.shadowOffsetY = 2 * ratio;
     ctx.drawImage(bitmap, (size * ratio - w) / 2, (size * ratio - h) / 2, w, h);
   }, [bitmap, size]);
 
@@ -117,12 +131,17 @@ export function PieceChip({
         WebkitUserSelect: 'none',
         userSelect: 'none',
         WebkitTouchCallout: 'none',
+        ...(arriving
+          ? { animation: 'chip-in var(--duration-fast) var(--ease-standard) both' }
+          : {}),
       }}
+      // No frame and no fill: the piece on the felt (modernize §5). `chip` is
+      // the press scale, pure CSS (`theme.css`), never React state. Selected
+      // is a ring; the numeral badge below is what it reads on.
       className={[
-        'relative flex items-center justify-center rounded-[8px] border transition-colors',
-        onMat ? 'opacity-40' : 'active:border-[var(--accent)]',
-        pinned && !onMat ? 'border-[var(--accent)]' : 'border-[var(--edge-hair)]',
-        'bg-[var(--mat-felt)]',
+        'relative flex items-center justify-center rounded-[10px]',
+        onMat ? 'opacity-40' : 'chip',
+        badge > 0 ? 'ring-2 ring-[var(--accent)]' : '',
       ].join(' ')}
     >
       <canvas ref={canvas} style={{ width: size, height: size }} className="pointer-events-none" />
@@ -134,18 +153,9 @@ export function PieceChip({
           className="pointer-events-none absolute left-[3px] top-[3px] h-[9px] w-[9px] border-l-2 border-t-2 border-[var(--accent)] opacity-80"
         />
       )}
-      {pinned && !onMat && (
-        // The pinned glyph — drawn, not typed, matching the notch's approach
-        // above. A free corner (badge top-right, notch top-left, mat label
-        // bottom-right), because colour is never the only signal: the accent
-        // border is decoration, this shape is what the state actually reads
-        // on, colour vision or not.
-        <span
-          aria-hidden
-          className="pointer-events-none absolute bottom-[2px] left-[3px] h-[9px] w-[7px] bg-[var(--accent)] opacity-80"
-          style={{ clipPath: 'polygon(50% 100%, 0% 35%, 15% 0%, 85% 0%, 100% 35%)' }}
-        />
-      )}
+      {/* No pinned glyph: a pinned chip leaves every lens and appears only on
+          the shelf, whose "Pinned" label and pin icon are the signal — a glyph
+          on each chip there would say it a second time (modernize §5). */}
       {badge > 0 && (
         // §06's numbered order badge. The numeral is the signal; the ring is
         // decoration, because colour is never the only signal.

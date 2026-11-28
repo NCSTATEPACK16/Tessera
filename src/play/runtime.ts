@@ -22,6 +22,7 @@ import { BoardControls } from '@/input/board-controls';
 import { hintsLeft, msUntilNextHint } from '@/play/hints';
 import type { HintTier, PuzzleMode } from '@/play/hints';
 import { firstRunScatter, gridLayout } from '@/play/layout';
+import { CHIP_INSET, HANDOFF_MS, handoffLiftScale } from '@/play/handoff';
 import { PlaySession } from '@/play/session';
 import type { PlayEvent } from '@/play/session';
 import { haptic } from '@/platform';
@@ -32,7 +33,7 @@ import {
   MIN_ZOOM,
   REGION_LENS_ZOOM,
   createCamera,
-  fitCameraToContent,
+  fitCameraInRect,
   fitScale,
   insetWorldRect,
   relativeZoom,
@@ -89,6 +90,12 @@ export interface RuntimeSummary {
   regionRevision: number;
   /** Ticks whenever a piece changed hands, so the tray re-reads itself. */
   trayRevision: number;
+  /**
+   * Modernize §5: the piece that just went home on this tray revision, so its
+   * chip can fade in. Null on every other revision, and always null under
+   * reduced motion.
+   */
+  arriving: PieceId | null;
   /** §07: the loose mat piece a hint would act on, or null. Set by a tap. */
   hintTarget: PieceId | null;
   hintsUsed: number;
@@ -150,6 +157,12 @@ export interface PlayRuntimeOptions {
    * exists, and `board-controls.ts` gains nothing.
    */
   isOverShelf?: (client: Point) => boolean;
+  /**
+   * A tray cell's size in CSS px, so a chip pulled onto the mat starts its
+   * lift at the chip's own size (`handoff.ts`). Without it the lift starts
+   * at full size, which is also what reduced motion gets.
+   */
+  chipPx?: number;
   /** The tray collapses to peek while a piece is out of it (§06). */
   onDragStateChange?: (dragging: boolean) => void;
   /**
@@ -182,6 +195,8 @@ export class PlayRuntime {
 
   private pumping = false;
   private lastFrameMs = 0;
+  /** A chip just adopted from the tray, growing to the lift (`handoff.ts`). */
+  private handoff: { t0: number; start: number } | null = null;
   private regionTimer: ReturnType<typeof setTimeout> | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private hintTimer: ReturnType<typeof setTimeout> | null = null;
@@ -214,6 +229,7 @@ export class PlayRuntime {
     regionUnlocked: false,
     regionRevision: 0,
     trayRevision: 0,
+    arriving: null,
     hintTarget: null,
     hintsUsed: 0,
     hintsLeft: null,
@@ -542,6 +558,7 @@ export class PlayRuntime {
     // dragged to the mat is simply on the mat, and returning it does not
     // restore the pin — one less piece of state to keep coherent.
     this.tray?.unpin(pieceId);
+    this.startHandoff();
     this.options.onDragStateChange?.(true);
     this.bumpTray();
     this.wake();
@@ -556,12 +573,38 @@ export class PlayRuntime {
     const origin = session.board.worldOf(pieceId);
     const piece = session.board.piece(pieceId);
     this.camera = { ...this.camera, x: origin.x + piece.w / 2, y: origin.y + piece.h / 2 };
+    // The player asked for this view: a sheet move must not refit it away (R2).
+    if (this.controls) this.controls.camera.atFit = false;
     this.render();
     this.scheduleRegion();
   }
 
   setTrayInsets(insets: { left: number; right: number; top: number; bottom: number }): void {
     this.insets = insets;
+  }
+
+  /**
+   * Modernize §5: the sheet came to rest at a new detent, so the visible part
+   * of the board changed. Refit — eased, 320ms — but only a camera still where
+   * the last fit left it (ruling R2), and never under a finger.
+   */
+  refitIfAtFit(): void {
+    const camera = this.controls?.camera;
+    if (!camera?.atFit || this.controls?.busy) return;
+    camera.fit({ animate: true });
+    this.scheduleRegion();
+  }
+
+  /** The board container less the top bar and the phone sheet, screen px. */
+  private visibleRect(): Rect {
+    const { w, h } = this.viewport;
+    const { left, right, top, bottom } = this.insets;
+    return {
+      x: left,
+      y: top,
+      w: Math.max(1, w - left - right),
+      h: Math.max(1, h - top - bottom),
+    };
   }
 
   /**
@@ -704,6 +747,18 @@ export class PlayRuntime {
     });
   }
 
+  /** Dev-only: the client-space centre of a piece's solved slot. */
+  e2eSlotPoint(id: PieceId): { x: number; y: number } | null {
+    if (!this.session) return null;
+    const piece = this.session.board.piece(id);
+    const rect = this.options.container.getBoundingClientRect();
+    const at = worldToScreen(this.camera, this.viewport, {
+      x: piece.targetX + piece.w / 2,
+      y: piece.targetY + piece.h / 2,
+    });
+    return { x: rect.left + at.x, y: rect.top + at.y };
+  }
+
   /** Dev-only: the board frame's client-space rectangle. */
   e2eFrameRect(): E2eClientRect | null {
     if (this.boardW <= 0 || this.boardH <= 0) return null;
@@ -773,6 +828,30 @@ export class PlayRuntime {
     this.bumpTray();
     this.wake();
     return id;
+  }
+
+  /**
+   * Modernize §5 (ruling R5): the selection bar's Pin — every selected piece
+   * still in the tray goes onto the shelf. The same `TrayModel.pin` a drop on
+   * the shelf reaches through its `return` event, and the same autosave.
+   * Returns how many were newly pinned.
+   */
+  pinPieces(ids: readonly PieceId[]): number {
+    const tray = this.tray;
+    const session = this.session;
+    if (!tray || !session) return 0;
+    let pinned = 0;
+    for (const id of ids) {
+      if (session.locationOf(id) !== 'tray' || tray.isPinned(id)) continue;
+      tray.pin(id);
+      pinned += 1;
+    }
+    if (pinned > 0) {
+      this.bumpTray();
+      this.scheduleSave();
+      this.wake();
+    }
+    return pinned;
   }
 
   /** §06 D: a plain tap on a pinned shelf chip sends it back, undeployed. */
@@ -932,6 +1011,7 @@ export class PlayRuntime {
         this.scheduleRegion();
       },
       getBoard: () => ({ w: this.boardW, h: this.boardH }),
+      getVisibleRect: () => this.visibleRect(),
       minRelativeZoom: assists.largePieceMode ? REGION_LENS_ZOOM : undefined,
       tremorDamping: assists.comfort,
       onChange: () => this.wake(),
@@ -944,8 +1024,13 @@ export class PlayRuntime {
         // release path stays unaware a shelf exists; `board-controls.ts` gains
         // nothing.
         const pin = this.options.isOverShelf?.(client) ?? false;
+        // Read before the return: once home, the piece is no longer in hand.
+        const pieceId = session.scene().held[0]?.id ?? null;
         const returned = session.returnToTray(clusterId, pin);
-        if (returned) this.bumpTray();
+        // Its chip arrives with a short fade (`chip-in`), unless motion is
+        // reduced. No flight is drawn: the drop point is over the tray, which
+        // in both layouts covers the board canvas a flight would be drawn on.
+        if (returned) this.bumpTray(prefersReducedMotion() ? null : pieceId);
         return returned;
       },
       onTap: (clusterId) => this.onBoardTap(clusterId),
@@ -974,7 +1059,11 @@ export class PlayRuntime {
     // After `frameContent`, deliberately: a restore should reopen exactly
     // where the player left it, not on a freshly fitted view.
     if (restore) {
+      const fitted = this.camera;
       this.camera = { ...restore.snapshot.camera };
+      // Still "at fit" only if the save was the fitted view; a resumed
+      // zoomed-in view is the player's, and a sheet move must keep it (R2).
+      if (this.controls) this.controls.camera.atFit = sameView(fitted, this.camera);
       this.render();
     }
   }
@@ -1102,16 +1191,30 @@ export class PlayRuntime {
     const bounds = this.session
       ? this.session.contentBounds()
       : { x: 0, y: 0, w: this.boardW, h: this.boardH };
-    this.camera = fitCameraToContent(
+    this.camera = fitCameraInRect(
       this.viewport,
+      this.visibleRect(),
       bounds,
       { w: this.boardW, h: this.boardH },
       this.liveAssists.largePieceMode ? REGION_LENS_ZOOM : undefined,
     );
+    if (this.controls) this.controls.camera.atFit = true;
+  }
+
+  /** Modernize §5: the lift starts at the chip's size, not the piece's (`handoff.ts`). */
+  private startHandoff(): void {
+    this.handoff = null;
+    const chipPx = this.options.chipPx;
+    const held = this.session?.scene().held[0];
+    if (!chipPx || !held || prefersReducedMotion()) return;
+    // The chip fits the same bitmap into its cell less `CHIP_INSET` a side.
+    const chip = chipPx * (1 - 2 * CHIP_INSET);
+    const start = chip / (Math.max(held.w, held.h) * this.camera.zoom);
+    this.handoff = { t0: performance.now(), start };
   }
 
   private render(): void {
-    const scene: Scene = this.session
+    let scene: Scene = this.session
       ? this.session.scene()
       : {
           ...emptyScene(),
@@ -1119,6 +1222,15 @@ export class PlayRuntime {
           boardH: this.boardH,
           loose: [...this.materialising],
         };
+    const now = performance.now();
+    if (this.handoff) {
+      const elapsed = now - this.handoff.t0;
+      if (elapsed >= HANDOFF_MS || scene.held.length === 0) this.handoff = null;
+      else {
+        const scale = handoffLiftScale(elapsed, this.handoff.start, scene.heldLift.scale);
+        scene = { ...scene, heldLift: { ...scene.heldLift, scale } };
+      }
+    }
     this.renderer.draw(scene, this.camera);
   }
 
@@ -1176,8 +1288,8 @@ export class PlayRuntime {
     }, REGION_SETTLE_MS);
   }
 
-  private bumpTray(): void {
-    this.patch({ trayRevision: this.summary.trayRevision + 1 });
+  private bumpTray(arriving: PieceId | null = null): void {
+    this.patch({ trayRevision: this.summary.trayRevision + 1, arriving });
   }
 
   /**
@@ -1215,4 +1327,18 @@ export class PlayRuntime {
     Object.assign(this.summary, next);
     this.options.notify({ ...this.summary, cut: { ...this.summary.cut } });
   }
+}
+
+function prefersReducedMotion(): boolean {
+  return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+}
+
+
+/** Two cameras that frame the same view, to within a pixel's worth of drift. */
+function sameView(a: Camera, b: Camera): boolean {
+  return (
+    Math.abs(a.zoom - b.zoom) / a.zoom < 0.005 &&
+    Math.abs(a.x - b.x) * a.zoom < 1 &&
+    Math.abs(a.y - b.y) * a.zoom < 1
+  );
 }

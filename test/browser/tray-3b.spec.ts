@@ -29,6 +29,7 @@ import type { Page } from '@playwright/test';
 import { MOVE_THRESHOLD_PX } from '@/input/pointer';
 import {
   BoardPage,
+  openTab,
   boardInk,
   boardPaints,
   trayMutations,
@@ -101,7 +102,7 @@ test('the pull-out puts the selection on the mat as one labelled group', async (
   // Every one of them, the chip the hold started on included — that chip is
   // selection #1, and it used to be toggled straight back off by the click that
   // ended its own hold.
-  const selected = Number((await board.pullOutButton.innerText()).match(/(\d+)/)![1]);
+  const selected = Number((await board.selectedLabel.innerText()).match(/(\d+)/)![1]);
   expect(selected).toBe(ids.length);
 
   await board.pullOutButton.click();
@@ -392,7 +393,7 @@ test.describe('select mode', () => {
     await board.enterSelect(ids[0]!);
     await board.chipAny(ids[1]!).click();
     await board.chipAny(ids[2]!).click();
-    const label = await board.pullOutButton.innerText();
+    const label = await board.selectedLabel.innerText();
 
     const at = await board.matPoint();
     await board.tapAt(at);
@@ -401,7 +402,7 @@ test.describe('select mode', () => {
     // Exit is explicit — Cancel, Escape, or completing the pull-out — and never
     // an outside tap. A careful ten-piece selection must survive a fumble.
     await expect(board.pullOutButton).toBeVisible();
-    expect(await board.pullOutButton.innerText()).toBe(label);
+    expect(await board.selectedLabel.innerText()).toBe(label);
   });
 
   test('Escape leaves it, and the badges go with it', async ({ page }) => {
@@ -416,6 +417,66 @@ test.describe('select mode', () => {
     await expect(board.chip(ids[1]!)).toHaveCount(1);
   });
 
+  // Modernize §5: the selection bar's Pin pins the lot (ruling R5), through
+  // the same tray pin and the same autosave a drop on the shelf takes.
+  test('Pin in the selection bar pins every selected piece', async ({ page }) => {
+    test.setTimeout(90_000);
+    const board = await BoardPage.open(page);
+    const ids = (await board.mountedIds()).slice(0, 3);
+    await board.enterSelect(ids[0]!);
+    await board.chipAny(ids[1]!).click();
+    await board.chipAny(ids[2]!).click();
+    await board.pinButton.click();
+
+    const shelved = board.shelf.locator('button[aria-label^="Piece "]');
+    await expect(shelved).toHaveCount(3);
+    await expect(board.pullOutButton).toHaveCount(0);
+
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              new Promise<number>((res, rej) => {
+                const r = indexedDB.open('tessera');
+                r.onsuccess = () => {
+                  const all = r.result.transaction('sessions', 'readonly').objectStore('sessions').getAll();
+                  all.onsuccess = () =>
+                    res(
+                      Math.max(
+                        0,
+                        ...(all.result as { tray?: { pinned?: number[] } }[]).map(
+                          (s) => s.tray?.pinned?.length ?? 0,
+                        ),
+                      ),
+                    );
+                  all.onerror = () => rej(all.error);
+                };
+                r.onerror = () => rej(r.error);
+              }),
+          ),
+        { timeout: 15_000 },
+      )
+      .toBe(3);
+    await page.reload({ waitUntil: 'load' });
+    await openTab(page, 'Puzzles');
+    await page.getByLabel(/Open puzzle:/).first().click();
+    await board.waitForCut();
+    for (const id of ids) {
+      await expect(board.shelf.locator(`button[aria-label="Piece ${id}"]`)).toHaveCount(1);
+    }
+  });
+
+  test('one selected piece can be pinned, but not pulled out', async ({ page }) => {
+    const board = await BoardPage.open(page);
+    const id = (await board.mountedIds())[0]!;
+    await board.enterSelect(id);
+    await expect(board.pullOutButton).toBeDisabled();
+    await expect(board.pinButton).toBeEnabled();
+    await board.pinButton.click();
+    await expect(board.shelf.locator(`button[aria-label="Piece ${id}"]`)).toHaveCount(1);
+  });
+
   test('Pull out is refused below two pieces, and clears the 44pt floor', async ({ page }) => {
     const board = await BoardPage.open(page);
     const ids = (await board.mountedIds()).slice(0, 3);
@@ -427,7 +488,7 @@ test.describe('select mode', () => {
     await board.chipAny(ids[2]!).click();
     await expect(board.pullOutButton).toBeEnabled();
 
-    for (const button of [board.pullOutButton, board.cancelButton]) {
+    for (const button of [board.pullOutButton, board.pinButton, board.cancelButton]) {
       expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     }
   });
@@ -451,12 +512,12 @@ test.describe('select mode', () => {
 
     await board.enterSelect(id);
     await expect(board.chipAny(id)).toHaveAttribute('aria-label', `Piece ${id}, selected 1`);
-    await expect(board.pullOutButton).toHaveText(/Pull out 1/);
+    await expect(board.selectedLabel).toHaveText('1 selected');
 
     await board.chipAny(id).click();
-    await expect(board.pullOutButton).toHaveText(/Pull out 0/);
+    await expect(board.selectedLabel).toHaveText('0 selected');
     await board.chipAny(id).click();
-    await expect(board.pullOutButton).toHaveText(/Pull out 1/);
+    await expect(board.selectedLabel).toHaveText('1 selected');
   });
 
   test('holding a shelf chip shows the same numbered badge a tray chip would', async ({ page }) => {

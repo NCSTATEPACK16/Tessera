@@ -149,6 +149,75 @@ function keepSpanInView(centre: number, span: number, half: number, margin = 0.9
 }
 
 /**
+ * Modernize §5: frame `bounds` into the part of the viewport the player can
+ * actually see — below the top bar, above the phone sheet — rather than the
+ * whole board container. `visible` is in screen px within `viewport`.
+ *
+ * The zoom clamp still measures 1× against the *whole* viewport (`fitScale`),
+ * so CLAUDE.md's zoom range keeps its meaning and a sheet that opens never
+ * moves the 0.5×–4× goalposts (ruling R1). Only where the fit lands changes.
+ */
+export function fitCameraInRect(
+  viewport: Size,
+  visible: Rect,
+  bounds: Rect,
+  board: { w: number; h: number },
+  minRelativeZoom = MIN_ZOOM,
+): Camera {
+  const area: Size = { w: Math.max(1, visible.w), h: Math.max(1, visible.h) };
+  const framed = fitCameraToBounds(area, bounds);
+  if (bounds.w <= 0 || bounds.h <= 0) return framed;
+  const zoom = clampZoom(framed.zoom, fitScale(viewport, board.w, board.h), minRelativeZoom);
+  const centre =
+    zoom === framed.zoom
+      ? framed
+      : {
+          x: keepSpanInView(framed.x, board.w, area.w / 2 / zoom),
+          y: keepSpanInView(framed.y, board.h, area.h / 2 / zoom),
+        };
+  // The camera's point is the viewport's centre; shift it so the content's
+  // centre lands on the visible rect's centre instead.
+  const dx = visible.x + area.w / 2 - viewport.w / 2;
+  const dy = visible.y + area.h / 2 - viewport.h / 2;
+  return { x: centre.x - dx / zoom, y: centre.y - dy / zoom, zoom };
+}
+
+/**
+ * `--ease-standard`, cubic-bezier(0.32, 0.72, 0, 1), as a function of time.
+ * Solved for x by bisection: monotone, exact at both ends, no table.
+ */
+export function easeStandard(t: number): number {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  const bez = (a: number, b: number, u: number): number =>
+    3 * a * u * (1 - u) ** 2 + 3 * b * u * u * (1 - u) + u ** 3;
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    if (bez(0.32, 0, mid) < t) lo = mid;
+    else hi = mid;
+  }
+  return bez(0.72, 1, (lo + hi) / 2);
+}
+
+/**
+ * The eased fit (§5: a refit on a detent change takes 320ms on
+ * `--ease-standard`). Position moves linearly in the eased progress; zoom moves
+ * in log space, so zooming 2× feels the same speed as zooming ½×.
+ */
+export function easeCamera(from: Camera, to: Camera, t: number): Camera {
+  if (t <= 0) return from;
+  if (t >= 1) return to;
+  const p = easeStandard(t);
+  return {
+    x: from.x + (to.x - from.x) * p,
+    y: from.y + (to.y - from.y) * p,
+    zoom: from.zoom * (to.zoom / from.zoom) ** p,
+  };
+}
+
+/**
  * The visible world rectangle, inset from the viewport's edges by `insets`
  * screen pixels each side — the part of the mat the player can actually see
  * and reach once chrome (a docked tray, an iPhone sheet) is sitting on top of

@@ -56,7 +56,11 @@ test('not played, with a puzzle in progress: Start, and the rail', async ({ page
 
   await expect(hero(page).getByRole('button', { name: /^Start today/ })).toBeVisible();
   await expect(hero(page).getByRole('button', { name: /^Keep going/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /^Continue your puzzle/ })).toHaveCount(1);
+  // The snapshot's photoId survived the reload: a curated photo with a
+  // non-daily id has no other way to its name, so it would read "Your photo".
+  const rail = page.getByRole('button', { name: /^Continue your puzzle/ });
+  await expect(rail).toHaveCount(1);
+  await expect(rail).not.toHaveAccessibleName(/^Continue your puzzle: Your photo,/);
   await expect(page.getByRole('button', { name: 'All puzzles' })).toBeVisible();
   // The invitation is for an empty rail only.
   await expect(page.getByText('Any photo works.', { exact: false })).toHaveCount(0);
@@ -152,4 +156,12 @@ test('the derived accent tokens follow the daily’s accent, not the root’s', 
   expect(accent.toLowerCase()).not.toBe('#6fa8ff');
   expect(dim).toContain(accent);
   expect(glow).toContain(accent);
+});
+
+test('the streak card’s name reads the week, one period per sentence', async ({ page }) => {
+  await firstVisitToday(page);
+  const card = page.getByRole('button', { name: /^Daily streak/ });
+  const name = (await card.getAttribute('aria-label'))!;
+  expect(name).toContain('This week:');
+  expect(name).not.toContain('..');
 });

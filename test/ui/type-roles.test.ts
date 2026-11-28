@@ -29,11 +29,12 @@ const countIn = (name: string, pattern: RegExp): number =>
 
 /**
  * Where mono stays: the live `n / N` (TopBar), lens counts (LensChips), the
- * order numeral (PieceChip), the calendar until phase e redesigns it
+ * order numeral (PieceChip), the hint's count badge (HintButton, C4), the calendar until phase e redesigns it
  * (MonthCalendar), and Badge, which is the eyebrow role in a pill.
  */
 const MONO_ALLOWED = new Set([
   'TopBar.tsx',
+  'HintButton.tsx',
   'LensChips.tsx',
   'PieceChip.tsx',
   'MonthCalendar.tsx',

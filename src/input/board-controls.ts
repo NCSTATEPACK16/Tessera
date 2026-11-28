@@ -21,7 +21,7 @@
  *    once bubbling through the board, once at the window.
  */
 
-import type { Point, Size } from '@/core/geom';
+import type { Point, Rect, Size } from '@/core/geom';
 import type { PlaySession } from '@/play/session';
 import { LIFT_PX } from '@/play/session';
 import type { Camera } from '@/render/camera';
@@ -36,6 +36,8 @@ export interface BoardControlsOptions {
   getCamera: () => Camera;
   setCamera: (camera: Camera) => void;
   getBoard: () => { w: number; h: number };
+  /** Modernize §5: what fit frames into — below the top bar, above the sheet. */
+  getVisibleRect?: () => Rect;
   /** Zoom floor, in multiples of the fitted board. Large-piece mode raises it. */
   minRelativeZoom?: number | undefined;
   /** Something changed that the renderer should hear about. */
@@ -64,6 +66,11 @@ export class BoardControls {
   /** Viewport coordinates of the last event seen, for the release intercept. */
   private lastClient: Point = { x: 0, y: 0 };
 
+  /** A press, drag or camera gesture is under way — a refit must not move the board now. */
+  get busy(): boolean {
+    return this.machine.phase !== 'idle';
+  }
+
   constructor(private readonly options: BoardControlsOptions) {
     this.camera = new CameraControls({
       element: options.element,
@@ -73,6 +80,7 @@ export class BoardControls {
       getBoard: options.getBoard,
       minRelativeZoom: options.minRelativeZoom,
       getFitBounds: () => options.session.contentBounds(),
+      ...(options.getVisibleRect ? { getVisibleRect: options.getVisibleRect } : {}),
       attach: false,
     });
 

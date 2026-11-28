@@ -1,75 +1,76 @@
 /**
- * The top bar (§12).
+ * The top bar (§12; modernize spec §5).
  *
- * Deliberately quiet. Progress is the arc and the numerals; the real progress
- * indicator is the light on the board (§07), and chrome that competes with it
- * would be arguing with the entire thesis.
- *
- * The count is **the real computed number, never the target** (§04) — "200"
- * lands on 17 × 12 = 204, and showing 200 would be a small lie the player can
- * check.
+ * Deliberately quiet: the puzzle's name, `n / N`, two ghost icon buttons and a
+ * 3px line. The real progress indicator is the light on the board (§07), and
+ * chrome that competes with it would be arguing with the entire thesis. The
+ * line's width is one CSS transition on one property, set when a placement
+ * changes the summary — never a per-frame update.
  */
 
-import { ProgressRing } from './ProgressRing';
+import type { Ref } from 'react';
+import { topBarModel, type TopBarInput } from '@/play/top-bar';
+import { Icon } from './kit';
 
-export interface TopBarProps {
-  status: 'cutting' | 'playing' | 'complete' | 'failed';
-  placed: number;
-  total: number;
-  cut: { done: number; total: number; cols: number; rows: number };
+export interface TopBarProps extends TopBarInput {
+  /** The puzzle's name — `puzzleTitle`. */
+  title: string;
+  /** Measured by `App` so the board can be framed below the bar. */
+  rootRef?: Ref<HTMLElement>;
   onFit: () => void;
   onPause: () => void;
 }
 
+const ICON_BUTTON =
+  'pointer-events-auto touch-target flex items-center justify-center rounded-full text-[var(--ink-primary)] transition-colors duration-[var(--duration-fast)] hover:bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)]';
+
 export function TopBar({
-  status,
-  placed,
-  total,
-  cut,
+  title,
+  rootRef,
   onFit,
   onPause,
+  ...input
 }: TopBarProps): React.ReactElement {
-  const completion = total === 0 ? 0 : placed / total;
+  const { count, progress } = topBarModel(input);
+  const percent = Math.round(progress * 100);
 
   return (
     <header
-      className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-[16px] p-[12px]"
+      ref={rootRef}
+      className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col gap-2 px-4 pb-1"
       style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}
     >
-      <div className="pointer-events-auto flex items-center gap-[12px] rounded-[14px] border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[14px] py-[8px] backdrop-blur-[12px]">
-        <ProgressRing completion={completion} size={32} />
-        <div className="flex flex-col">
-          <span className="font-data text-2 tabular-nums text-[var(--ink-primary)]">
-            {placed} / {total}
-          </span>
-          <span className="text-1 text-[var(--ink-muted)]">
-            {status === 'cutting'
-              ? cut.total > 0
-                ? `Cutting ${cut.done} of ${cut.total}`
-                : 'Cutting'
-              : status === 'failed'
-                ? 'The cut failed'
-                : `${cut.cols} × ${cut.rows}`}
-          </span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-col">
+          <h1 className="m-0 truncate font-display text-4 font-normal leading-tight text-[var(--ink-primary)]">
+            {title}
+          </h1>
+          <span className="font-data text-1 tabular-nums text-[var(--ink-secondary)]">{count}</span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button type="button" aria-label="Fit" onClick={onFit} className={ICON_BUTTON}>
+            <Icon.Fit />
+          </button>
+          <button type="button" aria-label="Pause" onClick={onPause} className={ICON_BUTTON}>
+            <Icon.Pause />
+          </button>
         </div>
       </div>
-
-      <div className="flex items-center gap-[8px]">
-        <button
-          type="button"
-          onClick={onFit}
-          className="pointer-events-auto touch-target rounded-[14px] border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-2 text-[var(--ink-primary)] backdrop-blur-[12px]"
-        >
-          Fit
-        </button>
-        <button
-          type="button"
-          aria-label="Pause"
-          onClick={onPause}
-          className="pointer-events-auto touch-target rounded-[14px] border border-[var(--edge-hair)] bg-[color-mix(in_srgb,var(--mat-raised)_82%,transparent)] px-[16px] text-2 text-[var(--ink-primary)] backdrop-blur-[12px]"
-        >
-          Pause
-        </button>
+      <div
+        role="progressbar"
+        aria-label="Progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        className="h-[3px] w-full overflow-hidden rounded-full bg-[var(--edge-hair)]"
+      >
+        <div
+          className="h-full rounded-full bg-[var(--accent)]"
+          style={{
+            width: `${progress * 100}%`,
+            transition: 'width var(--duration-slow) var(--ease-standard)',
+          }}
+        />
       </div>
     </header>
   );
