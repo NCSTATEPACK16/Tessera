@@ -1,7 +1,7 @@
 # Testing on iOS, and shipping to TestFlight
 
 The iOS app is the web build inside a Capacitor shell (`ios/`, v2 spec §7.4). Bundle id
-`com.johnbradner.tessera`, display name **Tessera**, store name **Tessera: Photo Jigsaw**.
+`com.bradner.tessera`, display name **Tessera**, store name **Tessera: Photo Jigsaw**.
 
 Capacitor 8 uses Swift Package Manager, so there is no `.xcworkspace` and no Podfile: open
 **`ios/App/App.xcodeproj`**, scheme **App**.
@@ -57,7 +57,7 @@ At [appstoreconnect.apple.com](https://appstoreconnect.apple.com) → **Apps** �
 | Platforms | iOS |
 | Name | Tessera: Photo Jigsaw (if it's taken, try a variant; the home-screen name stays "Tessera") |
 | Primary language | English (U.S.) |
-| Bundle ID | com.johnbradner.tessera |
+| Bundle ID | com.bradner.tessera |
 | SKU | tessera-ios |
 
 ## 4. Archive and upload
